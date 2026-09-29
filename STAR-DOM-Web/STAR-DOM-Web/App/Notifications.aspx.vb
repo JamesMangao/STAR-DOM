@@ -60,13 +60,22 @@ Namespace STAR_DOM.Web
                 sb.Append("<span class=""sub"" style=""font-size:12px"">" & WebUi.Esc(n.CreatedAt.ToString("MMM d, yyyy h:mm tt")) & "</span>")
                 sb.Append("</div>")
                 sb.Append("<p style=""margin:8px 0 4px"">" & WebUi.Esc(n.Message) & "</p>")
-                sb.Append("<div class=""rowact"">")
-                If Not n.IsRead Then sb.Append("<a href=""/App/Notifications.aspx?read=" & n.Id.ToString() & """>Mark read</a>")
+                sb.Append("<div class=""notif-actions"" style=""display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--surface-mid);flex-wrap:wrap"">")
+                If Not n.IsRead Then
+                    sb.Append("<a class=""btn ghost sm"" href=""/App/Notifications.aspx?read=" & n.Id.ToString() & """ style=""padding:4px 10px;font-size:11.5px"">" &
+                              "<span class=""ms sm"" style=""color:var(--primary);font-size:16px"">check_circle</span> Mark as read</a>")
+                End If
                 If n.LinkPath <> "" Then
                     Dim dest As String = ResolveLink(n.LinkPath)
-                    If dest <> "" Then sb.Append("<a href=""" & dest & """><span class=""ms sm"">open_in_new</span> Open</a>")
+                    If dest <> "" Then
+                        sb.Append("<a class=""btn secondary sm"" href=""" & dest & """ style=""padding:4px 10px;font-size:11.5px"">" &
+                                  "<span class=""ms sm"" style=""font-size:16px"">open_in_new</span> Open</a>")
+                    End If
                 End If
-                sb.Append("<a href=""/App/Notifications.aspx?del=" & n.Id.ToString() & """>Delete</a>")
+                sb.Append("<a class=""btn ghost sm"" href=""/App/Notifications.aspx?del=" & n.Id.ToString() & """ " &
+                          "data-confirm=""Delete this notification?"" data-confirm-ok=""Delete"" data-confirm-danger=""true"" " &
+                          "style=""padding:4px 10px;font-size:11.5px;color:var(--ink-soft)"">" &
+                          "<span class=""ms sm"" style=""font-size:16px"">delete</span> Delete</a>")
                 sb.Append("</div></div>")
             Next
             sb.Append("</div>")

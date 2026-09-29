@@ -156,6 +156,16 @@ Namespace STAR_DOM.Web
             If target = "app/orders.aspx" AndAlso (cur = "app/orderdetail.aspx" OrElse cur = "app/orderdetail") Then
                 Return True
             End If
+            ' Commission request/detail live behind the Commission Hub in the nav
+            If target = "app/commissionhub.aspx" AndAlso
+               (cur = "app/commissionrequest.aspx" OrElse cur = "app/commissionrequest" OrElse
+                cur = "app/commissiondetail.aspx" OrElse cur = "app/commissiondetail") Then
+                Return True
+            End If
+            If target = "app/merchant/pipeline.aspx" AndAlso
+               (cur = "app/commissiondetail.aspx" OrElse cur = "app/commissiondetail") Then
+                Return True
+            End If
             
             Return False
         End Function
@@ -176,7 +186,10 @@ Namespace STAR_DOM.Web
             Next
             sb.Append("</div>")
 
-            If STAR_DOM.Helpers.Session.IsAdmin Then
+            ' MERCHANT STUDIO is gated on CanManageStore (IsMerchant OrElse IsAdmin) to match
+            ' Guard.RequireMerchant() on the pages themselves — gating on IsAdmin alone hid
+            ' these links from MERCHANT-role users who can still open the pages by URL.
+            If STAR_DOM.Helpers.Session.CanManageStore Then
                 sb.Append("<div class=""nav-group"">")
                 sb.Append("<div class=""nav-head"">MERCHANT STUDIO<span class=""pill small yellow"">LIVE DOCK</span></div>")
                 Dim studio As NavItem() = {

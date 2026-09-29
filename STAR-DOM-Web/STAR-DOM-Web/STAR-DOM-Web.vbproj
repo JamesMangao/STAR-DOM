@@ -72,6 +72,7 @@
 
   <!-- Web-only code (Db, Session, Validators, Guard) -->
   <ItemGroup>
+    <Compile Include="Code\Csrf.vb" />
     <Compile Include="Code\Db.vb" />
     <Compile Include="Code\Helpers\Session.vb" />
     <Compile Include="Code\Helpers\Validators.vb" />

@@ -43,7 +43,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""frow"">")
             sb.Append(WebUi.BtnHref("/App/Catalog.aspx", "Explore Marketplace Catalog"))
             sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx", "Visit Current Pop-up Booth", "secondary", "storefront"))
-            sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request Custom Commission", "ghost"))
+            sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request Custom Commission", "ghost", "draw"))
             sb.Append("</div>")
             Dim rep As New ReportService()
             Dim totalCreators As Integer = Math.Max(1, rep.TotalCreators())
@@ -110,7 +110,7 @@ Namespace STAR_DOM.Web
                 sb.Append("</div>")
                 sb.Append("<div class=""grid cards"">")
                 For Each s As CommissionSlotView In slots
-                    sb.Append(CommissionSlotCard(s))
+                    sb.Append(WebUi.CommissionSlotCard(s, "Starting Price", "/App/CommissionHub.aspx", "View on Commission Hub"))
                 Next
                 sb.Append("</div>")
             End If
@@ -193,26 +193,6 @@ Namespace STAR_DOM.Web
             sb.Append(If(p.StockQuantity <= p.LowStockThreshold, "<span class=""stockline"" style=""color:var(--primary)"">Only " &
                         p.StockQuantity.ToString() & " remaining!</span>", "<span class=""stockline"">" &
                         p.StockQuantity.ToString() & " in booth stock</span>"))
-            sb.Append("</div></div>")
-            Return sb.ToString()
-        End Function
-
-        Private Function CommissionSlotCard(s As CommissionSlotView) As String
-            Dim sb As New StringBuilder()
-            sb.Append("<div class=""pcard"">")
-            sb.Append("<div style=""position:relative"">")
-            sb.Append(WebUi.Art(s.Seed, s.MerchantName, "height:170px"))
-            sb.Append("<span class=""badge warn"" style=""position:absolute;top:8px;right:8px"">" & WebUi.Esc(s.SlotsText) & "</span></div>")
-            sb.Append("<div class=""pbody"">")
-            sb.Append("<span class=""brand"">" & WebUi.Esc(s.MerchantTagline) & "</span>")
-            sb.Append("<b style=""font-size:16px"">" & WebUi.Esc(s.MerchantName) & "</b>")
-            sb.Append("<div class=""kv"" style=""grid-template-columns:110px 1fr"">")
-            sb.Append("<dt>Starting Price</dt><dd>" & WebUi.Money(s.StartingPrice) & "</dd>")
-            sb.Append("<dt>Turnaround</dt><dd>" & WebUi.Esc(s.Turnaround) & "</dd>")
-            sb.Append("<dt>Formats</dt><dd>" & WebUi.Esc(s.Formats) & "</dd>")
-            sb.Append("</div>")
-            Dim cta As String = If(s.CtaText <> "", s.CtaText, "Request Slot")
-            sb.Append(WebUi.BtnHref("/App/CommissionRequest.aspx?m=" & s.MerchantId.ToString(), cta, "primary", "draw"))
             sb.Append("</div></div>")
             Return sb.ToString()
         End Function

@@ -65,3 +65,49 @@ All custom-host code was deleted; this note prevents re-attempting it.
 - VB gotchas (kept from desktop build): module members can't be `Shared`;
   case-insensitive identifiers shadow types (`Path` param vs `Path.Combine`);
   `Select Case` names; keyword collisions; use `Step -1` not `DownTo`.
+  Two more hit while adding CSRF: a method named `NewToken()` is parsed as
+  `New Token()` (use `MakeToken()`), and `Imports System` is rejected as a
+  duplicate because the vbproj already imports it project-wide.
+
+## CSRF protection (added — do not remove or weaken)
+Pages render raw `<form method="post">` markup from VB strings, so there are no
+WebForms buttons to hang `[ValidateAntiForgeryToken]` on. Protection is a
+hand-rolled synchronizer token instead:
+
+- `Code/Csrf.vb` — per-session token (32 random bytes, base64url) kept in ASP.NET
+  Session; `HiddenField()` emits the hidden input, `IsValidRequest()` compares it
+  in constant time, `Rotate()` reissues it.
+- Enforcement is **only** in `Global.asax.vb Application_AcquireRequestState`, so
+  no individual page can forget to check it. Every POST in the site goes through it.
+- The token is emitted once in the `Site.master` shell form, which wraps every App
+  page, plus `Login.aspx` and `Register.aspx` which stand alone.
+- `Login.aspx.vb` calls `Csrf.Rotate()` after a successful sign-in.
+- Expired/absent session → 302 to `/Login.aspx?r=...`. Session present but token
+  missing or mismatched → 403 page + a row in `AppErrors` with `Context='Security'`.
+
+Two traps, both already hit once and fixed — don't "simplify" back into them:
+1. The check must run on `AcquireRequestState`, **not** `BeginRequest`.
+   `SessionStateModule` has not loaded the session yet in `BeginRequest`, so
+   `HttpContext.Session` is `Nothing` there and *every* POST looks token-less.
+2. For the expired-session redirect, set `Response.StatusCode`/`RedirectLocation`
+   and call `CompleteRequest()`. `Response.Redirect(url, True)` does not reliably
+   stop the pipeline on .NET 4 — execution falls through into the 403 branch,
+   which then `Clear()`s the 302 and turns it into a 403 on a valid request.
+
+## Secrets and error pages
+- No keys in `web.config`. The Supabase publishable/secret keys that were there
+  were removed (nothing read them — the port is still on MySql.Data). Real
+  credentials come from environment variables; `Code/Db.vb` already prefers
+  `MYSQL_URL` / `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` /
+  `DB_SSLMODE` over the connection string.
+- `customErrors` is `RemoteOnly`, not `Off`. Flip to `Off` only while debugging
+  locally, then put it back — `Off` on the Render host leaks stack traces.
+  Detailed errors are still written to the `AppErrors` table either way.
+- Session cookie is `httpOnly` via `<httpCookies>`. `sameSite` is deliberately
+  omitted: it is a .NET 4.7.2+ attribute and the Linux/Mono (xsp4) deploy in the
+  Dockerfile may reject the whole config on it. `requireSSL` is `false` only
+  because local dev is http://localhost — set it `true` behind HTTPS.
+- `bin\STAR_DOM_Web.dll` is committed on purpose (the Dockerfile builds with
+  `|| true` and xsp4 runs the prebuilt binary), so **rebuild and commit `bin\`**
+  after any code change or the cloud host keeps serving the old build.
+

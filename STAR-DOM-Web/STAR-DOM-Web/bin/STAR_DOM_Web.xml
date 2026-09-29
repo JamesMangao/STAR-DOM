@@ -6,6 +6,118 @@ STAR_DOM_Web
 </name>
 </assembly>
 <members>
+<member name="T:STAR_DOM.Web.Csrf">
+ <summary>
+ Per-session CSRF token (double-submit / synchronizer pattern).
+ The token lives in ASP.NET Session and is echoed back by every POST form as
+ a hidden field. A POST whose token is missing or does not match the session
+ token is rejected centrally in Global.asax.vb Application_BeginRequest.
+ Enforcement lives in exactly one place, so a page cannot forget to check.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.Token">
+ <summary>Current session token, created on first access.</summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.Rotate">
+ <summary>
+ Issue a new token for the session. Called right after authentication so a
+ token that was exposed before login cannot be replayed afterwards.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.HiddenField">
+ <summary>Hidden input to drop inside any POST form. Safe to call on GET renders.</summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.IsValidRequest">
+ <summary>True when the request carries a token matching the session's.</summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.SessionHasNoToken">
+ <summary>
+ True when the session looks like it simply expired (no token was ever
+ issued), as opposed to a token that was issued and then tampered with.
+ Used to send the visitor to sign-in instead of showing a hard 403.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.FixedTimeEquals(System.String,System.String)">
+ <summary>Length-independent constant-time compare (no early exit on first diff).</summary>
+</member>
+<member name="T:STAR_DOM.Web.Guard">
+ <summary>Role-based access guards used at the top of every protected page.</summary>
+</member>
+<member name="T:STAR_DOM.Web.WebUi">
+ <summary>Shared server-side HTML helpers for the STAR:DOM web UI.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Art(System.Int32,System.String,System.String)">
+ <summary>Deterministic placeholder artwork block (gradient + initials) for a product.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.ProductImg(System.Object,System.Int32,System.String,System.String)">
+ <summary>Real product image block when one is on file, else gradient placeholder art.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.CommissionSlotCard(STAR_DOM.Helpers.CommissionSlotView,System.String,System.String,System.String)">
+ <summary>
+ Commission slot card, shared by the Commission Hub and the Marketplace preview so the
+ two renderers cannot drift apart again. Prefers the artist's real sample work, then
+ their avatar, and only falls back to gradient placeholder art when neither is on file.
+ Pass <paramref name="ctaUrl"/>/<paramref name="ctaText"/> to retarget the button (the
+ Marketplace uses this to funnel visitors through the Hub instead of jumping
+ straight to the request form).
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Badge(System.String)">
+ <summary>Status pill colored per state.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.OutLink(System.String,System.String,System.Boolean)">
+ <summary>Category/filter chip link.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Pager(System.Int32,System.Int32,System.Int32,System.String)">
+ <summary>
+ Prev/next pager for bounded lists. Pass a URL template containing "{P}" for the page number,
+ e.g. "/App/Merchant/Orders.aspx?p={P}".
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Ic(System.String,System.String)">
+ <summary>Material Symbols Outlined icon literal. Size classes: "sm", "lg", "xl", "filled".</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Donut(System.Double,System.Double,System.String,System.String,System.String,System.Boolean)">
+ <summary>Two-channel SVG donut for share analytics (e.g. omnichannel revenue mix).</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.IsGlyph(System.String)">
+ <summary>True when the icon string is an emoji/unicode glyph rather than a Material Symbol name.</summary>
+</member>
+<member name="M:STAR_DOM.Web.GlobalApp.Application_AcquireRequestState(System.Object,System.EventArgs)">
+ <summary>
+ Single choke point for CSRF protection: every POST in the site is checked
+ here, before any page code runs, so no individual page can forget to check.
+
+ This must run on AcquireRequestState, NOT BeginRequest: SessionStateModule
+ loads the session during AcquireRequestState, so HttpContext.Session is
+ still Nothing in BeginRequest and every POST would look token-less.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.PopupLocationsPage.CurrentHero(STAR_DOM.Models.PopUpEvent)">
+ <summary>Split hero stage for the current active location (4.html).</summary>
+</member>
+<member name="M:STAR_DOM.Web.PopupLocationsPage.StampCard">
+ <summary>Merchant stamp card callout (collect 4 stamps).</summary>
+</member>
+<member name="M:STAR_DOM.Web.PopupLocationsPage.VenueImage(STAR_DOM.Models.PopUpEvent)">
+ <summary>Background for a venue photo: the mall photo when one is on file, else the brand gradient.</summary>
+</member>
+<member name="T:STAR_DOM.Web.CommissionHubPage">
+ <summary>
+ Single entry point for every commission flow: customers discover artists and open a
+ slot here, merchants are bridged to their pipeline. Other pages funnel here rather
+ than linking straight to the request form.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionHubPage.HubHeader(System.Int32)">
+ <summary>Page-level "Request a Commission" CTA so the action is always reachable, even with zero open slots.</summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionHubPage.MerchantBridge">
+ <summary>Bridges the customer-facing hub to the merchant pipeline, which used to be unreachable from here.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
+ <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
+</member>
 <member name="T:STAR_DOM.Database.Db">
  <summary>Core MySQL access for the web app. All SQL flows through here with parameters only.</summary>
 </member>
@@ -82,48 +194,6 @@ STAR_DOM_Web
  Password hashing using PBKDF2-HMAC-SHA256 (10,000 iterations).
  Stored format: PBKDF2$10000$&lt;base64 salt&gt;$&lt;base64 hash&gt;
  </summary>
-</member>
-<member name="T:STAR_DOM.Web.Guard">
- <summary>Role-based access guards used at the top of every protected page.</summary>
-</member>
-<member name="T:STAR_DOM.Web.WebUi">
- <summary>Shared server-side HTML helpers for the STAR:DOM web UI.</summary>
-</member>
-<member name="M:STAR_DOM.Web.WebUi.Art(System.Int32,System.String,System.String)">
- <summary>Deterministic placeholder artwork block (gradient + initials) for a product.</summary>
-</member>
-<member name="M:STAR_DOM.Web.WebUi.ProductImg(System.Object,System.Int32,System.String,System.String)">
- <summary>Real product image block when one is on file, else gradient placeholder art.</summary>
-</member>
-<member name="M:STAR_DOM.Web.WebUi.Badge(System.String)">
- <summary>Status pill colored per state.</summary>
-</member>
-<member name="M:STAR_DOM.Web.WebUi.OutLink(System.String,System.String,System.Boolean)">
- <summary>Category/filter chip link.</summary>
-</member>
-<member name="M:STAR_DOM.Web.WebUi.Pager(System.Int32,System.Int32,System.Int32,System.String)">
- <summary>
- Prev/next pager for bounded lists. Pass a URL template containing "{P}" for the page number,
- e.g. "/App/Merchant/Orders.aspx?p={P}".
- </summary>
-</member>
-<member name="M:STAR_DOM.Web.WebUi.Ic(System.String,System.String)">
- <summary>Material Symbols Outlined icon literal. Size classes: "sm", "lg", "xl", "filled".</summary>
-</member>
-<member name="M:STAR_DOM.Web.WebUi.Donut(System.Double,System.Double,System.String,System.String,System.String,System.Boolean)">
- <summary>Two-channel SVG donut for share analytics (e.g. omnichannel revenue mix).</summary>
-</member>
-<member name="M:STAR_DOM.Web.WebUi.IsGlyph(System.String)">
- <summary>True when the icon string is an emoji/unicode glyph rather than a Material Symbol name.</summary>
-</member>
-<member name="M:STAR_DOM.Web.PopupLocationsPage.CurrentHero(STAR_DOM.Models.PopUpEvent)">
- <summary>Split hero stage for the current active location (4.html).</summary>
-</member>
-<member name="M:STAR_DOM.Web.PopupLocationsPage.StampCard">
- <summary>Merchant stamp card callout (collect 4 stamps).</summary>
-</member>
-<member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
- <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
 </member>
 <member name="T:STAR_DOM.Models.Commission">
  <summary>Commission request with the full merchant-atelier lifecycle.</summary>

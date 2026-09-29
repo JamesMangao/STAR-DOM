@@ -99,7 +99,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div style=""display:flex;gap:14px;flex-wrap:wrap"">")
             ' photo
             sb.Append("<div class=""photo-frame"" style=""width:100%;max-width:270px;height:180px;flex-shrink:0"">")
-            sb.Append(WebUi.Art(ev.Id * 5 + 2, ev.Name, "height:180px"))
+            sb.Append(WebUi.ProductImg(ev.ImageFile, ev.Id * 5 + 2, ev.Name, "height:180px"))
             sb.Append("<div class=""ph-overlay"" style=""justify-content:space-between;flex-direction:row;align-items:flex-end""><div class=""ph-title"" style=""font-size:12px"">" & WebUi.Esc(ev.BoothNumber) & " Atrium Booth</div><span style=""font-size:9px;opacity:.9"">Updated " & Clock.RelativeTime(ev.UpdatedAt) & "</span></div></div>")
             ' info
             sb.Append("<div style=""flex:1;min-width:260px"">")
@@ -166,7 +166,7 @@ Namespace STAR_DOM.Web
             Dim days As Integer = (ev.StartDate.Date - Clock.Now.Date).Days
             Dim daysTxt As String = If(ev.Status = "NOW OPEN", "LIVE NOW", If(days >= 0, days.ToString() & " DAYS TO GO", "SOON"))
             sb.Append("<div class=""event-card""><div class=""ec-top""><span class=""ec-tag"">" & WebUi.Esc(ev.RegionLabel) & "</span><span class=""ec-days"">" & daysTxt & "</span></div>")
-            sb.Append("<div class=""ec-img""><div class=""ph-img"" style=""background-image:" & CategoryGradient(ev.Id) & """></div><span class=""ec-booth"">" & WebUi.Esc(ev.BoothNumber) & "</span></div>")
+            sb.Append("<div class=""ec-img""><div class=""ph-img"" style=""background-image:" & VenueImage(ev) & """></div><span class=""ec-booth"">" & WebUi.Esc(ev.BoothNumber) & "</span></div>")
             sb.Append("<div class=""ec-body""><div><div class=""ec-title"">STAR:DOM @ " & WebUi.Esc(ev.Name) & "</div><div class=""ec-addr"">" & WebUi.Esc(ev.VenueDetail) & ", " & WebUi.Esc(ev.CityLabel) & "</div></div>")
             sb.Append("<div class=""ec-meta"">")
             sb.Append("<div class=""kv-row""><span>Dates:</span><b>" & WebUi.Esc(ev.WindowText) & "</b></div>")
@@ -178,6 +178,15 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx?id=" & ev.Id.ToString(), "View Event Details", "ghost", "arrow_forward"))
             sb.Append("</div></div>")
             Return sb.ToString()
+        End Function
+
+        ''' <summary>Background for a venue photo: the mall photo when one is on file, else the brand gradient.</summary>
+        Private Function VenueImage(ev As PopUpEvent) As String
+            Dim f As String = Convert.ToString(ev.ImageFile).Trim()
+            If f.Length > 0 Then
+                Return "url('" & WebUi.Attr(f) & "')"
+            End If
+            Return CategoryGradient(ev.Id)
         End Function
 
         Private Function CategoryGradient(seed As Integer) As String
@@ -193,10 +202,56 @@ Namespace STAR_DOM.Web
 
         Private Function MapBlock(current As PopUpEvent) As String
             Dim sb As New StringBuilder()
-            Dim name As String = If(current IsNot Nothing, current.Name, "the tour")
-            Dim address As String = If(current IsNot Nothing, current.VenueDetail & " · " & current.LocationAddress, "South Luzon & Metro Manila")
-            sb.Append("<div class=""map-frame""><div class=""panel-hd""><div><h3>Physical Tour Hub Map</h3><p class=""sub"" style=""margin:0;font-size:12px"">Geographic distribution of pop-up activations</p></div><span class=""status-chip yellow""><span class=""dot""></span> GPS VERIFIED</span></div>")
-            sb.Append("<div class=""map-canvas""><div class=""map-pin""><div class=""pin-live""><span class=""pulse""></span>Live Pin: " & WebUi.Esc(name) & "</div><p>" & WebUi.Esc(address) & "</p></div></div>")
+            Dim name As String = If(current IsNot Nothing, current.Name, "Robinson's Galleria South")
+            Dim venue As String = If(current IsNot Nothing, current.VenueDetail, "Ground Floor Activity Center")
+            Dim address As String = If(current IsNot Nothing, current.LocationAddress, "KM 31 National Highway, San Pedro, Laguna")
+            Dim currentId As Integer = If(current IsNot Nothing, current.Id, 1)
+
+            Dim upcoming As List(Of PopUpEvent) = _events.ListUpcoming()
+            Dim allVenues As New List(Of PopUpEvent)()
+            If current IsNot Nothing Then allVenues.Add(current)
+            For Each u In upcoming
+                If current Is Nothing OrElse u.Id <> current.Id Then allVenues.Add(u)
+            Next
+
+            sb.Append("<div class=""map-frame""><div class=""panel-hd""><div><h3 style=""display:flex;align-items:center;gap:8px""><span class=""ph-ic"" style=""width:28px;height:28px;font-size:14px;background:var(--yellow);color:var(--on-yellow)"">" & WebUi.Ic("explore", "sm") & "</span> Physical Tour Hub Map</h3><p class=""sub"" style=""margin:0;font-size:12px"">Interactive geographic locations &amp; venue navigation</p></div><span class=""status-chip yellow""><span class=""dot""></span> " & allVenues.Count.ToString() & " HUBS MAPPED</span></div>")
+
+            ' Dynamic Stylized SVG Map canvas with interactive venue pins & visual routes
+            sb.Append("<div class=""map-canvas"" style=""height:320px;position:relative;background:#f5eee9;overflow:hidden"">")
+            ' Stylized SVG Grid & Transit Lines
+            sb.Append("<svg style=""position:absolute;inset:0;width:100%;height:100%;pointer-events:none"" xmlns=""http://www.w3.org/2000/svg"">")
+            sb.Append("<defs>")
+            sb.Append("<pattern id=""grid"" width=""32"" height=""32"" patternUnits=""userSpaceOnUse""><path d=""M 32 0 L 0 0 0 32"" fill=""none"" stroke=""rgba(183,0,17,0.06)"" stroke-width=""1""/></pattern>")
+            sb.Append("<linearGradient id=""tourRoute"" x1=""0%"" y1=""0%"" x2=""100%"" y2=""100%""><stop offset=""0%"" stop-color=""var(--primary)"" stop-opacity=""0.7""/><stop offset=""100%"" stop-color=""var(--yellow)"" stop-opacity=""0.9""/></linearGradient>")
+            sb.Append("</defs>")
+            sb.Append("<rect width=""100%"" height=""100%"" fill=""url(#grid)"" />")
+            sb.Append("<path d=""M 40 180 Q 180 80 320 140 T 620 220"" fill=""none"" stroke=""url(#tourRoute)"" stroke-width=""3"" stroke-dasharray=""6,6"" />")
+            sb.Append("<circle cx=""120"" cy=""140"" r=""70"" fill=""rgba(254,208,27,0.08)"" />")
+            sb.Append("<circle cx=""360"" cy=""160"" r=""90"" fill=""rgba(183,0,17,0.05)"" />")
+            sb.Append("</svg>")
+
+            ' Live Floating Active Card
+            sb.Append("<div class=""map-pin"" style=""position:absolute;top:16px;left:16px;z-index:5;background:rgba(255,255,255,0.95);border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;max-width:320px;box-shadow:0 6px 20px rgba(30,27,25,0.12)"">")
+            sb.Append("<div class=""pin-live"" style=""display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:var(--ink)""><span class=""pulse""></span>Live Node: STAR:DOM @ " & WebUi.Esc(name) & "</div>")
+            sb.Append("<p style=""margin:4px 0 8px;font-size:11.5px;color:var(--ink-soft);line-height:1.4"">" & WebUi.Esc(venue) & "<br/><b style=""color:var(--ink);font-weight:600"">" & WebUi.Esc(address) & "</b></p>")
+            sb.Append("<div style=""display:flex;gap:6px;align-items:center;margin-top:6px"">")
+            sb.Append("<a class=""btn primary sm"" href=""https://www.google.com/maps/search/?api=1&query=" & Server.UrlEncode("STAR:DOM " & venue & " " & address) & """ target=""_blank"" style=""padding:4px 10px;font-size:11px"">" & WebUi.Ic("directions", "sm") & " Google Maps</a>")
+            sb.Append("<a class=""btn ghost sm"" href=""/App/PopupLocations.aspx?id=" & currentId.ToString() & """ style=""padding:4px 10px;font-size:11px"">" & WebUi.Ic("info", "sm") & " Booth Details</a>")
+            sb.Append("</div></div>")
+
+            ' Interactive Map Venue Chips at the bottom of the canvas
+            sb.Append("<div style=""position:absolute;bottom:12px;left:12px;right:12px;z-index:5;display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none"">")
+            For Each ev In allVenues
+                Dim isLive As Boolean = (current IsNot Nothing AndAlso ev.Id = current.Id)
+                Dim chipStyle As String = If(isLive, "background:var(--primary);color:#fff;border:1px solid var(--primary);box-shadow:var(--sh-1)", "background:rgba(255,255,255,0.92);color:var(--ink);border:1px solid var(--line)")
+                Dim dotColor As String = If(isLive, "background:#fed01b", "background:var(--primary)")
+                sb.Append("<a href=""/App/PopupLocations.aspx?id=" & ev.Id.ToString() & """ style=""display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;text-decoration:none;transition:transform .12s;" & chipStyle & """>")
+                sb.Append("<span style=""width:7px;height:7px;border-radius:50%;" & dotColor & """></span>")
+                sb.Append(WebUi.Esc(ev.Name) & " (" & WebUi.Esc(ev.CityLabel) & ")")
+                sb.Append("</a>")
+            Next
+            sb.Append("</div>")
+
             sb.Append("</div></div>")
             Return sb.ToString()
         End Function
@@ -209,7 +264,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("smartphone") & "</span><div><b>Cashless Preferred</b><span>All stalls accept GCash, Maya, and major Philippine bank QR Ph codes.</span></div></div>")
             sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("draw") & "</span><div><b>Live Commissions</b><span>Queue tickets for on-the-spot ink sketches open at 11:00 AM daily.</span></div></div>")
             sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("package_2") & "</span><div><b>Online Pickups</b><span>Pre-ordered online prints can be collected instantly at the booth with your order ID.</span></div></div>")
-            sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Visit Commission Kiosk", "ghost", "draw"))
+            sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request a Commission", "ghost", "draw"))
             sb.Append("</div></div>")
             Return sb.ToString()
         End Function
@@ -223,6 +278,11 @@ Namespace STAR_DOM.Web
             Dim sb As New StringBuilder()
             sb.Append("<a href=""/App/PopupLocations.aspx"" class=""sub"" style=""display:inline-flex;align-items:center;gap:6px"">" & WebUi.Ic("arrow_back", "sm") & " All locations</a>")
             sb.Append(WebUi.Section("STAR:DOM @ " & ev.Name, "EVENT DETAIL · " & ev.WindowText, ev.Description))
+            If ev.ImageFile.Trim() <> "" Then
+                sb.Append("<div class=""photo-frame"" style=""height:240px;margin-bottom:16px"">")
+                sb.Append(WebUi.ProductImg(ev.ImageFile, ev.Id * 5 + 2, ev.Name, "height:240px"))
+                sb.Append("</div>")
+            End If
             sb.Append("<div class=""card""><div class=""kv"">")
             sb.Append("<dt>Venue</dt><dd>" & WebUi.Esc(ev.VenueDetail) & "</dd>")
             sb.Append("<dt>Address</dt><dd>" & WebUi.Esc(ev.LocationAddress) & "</dd>")

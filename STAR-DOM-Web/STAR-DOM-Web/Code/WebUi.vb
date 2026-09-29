@@ -1,5 +1,6 @@
 Imports System.Text
 Imports System.Web
+Imports STAR_DOM.Helpers
 
 Namespace STAR_DOM.Web
 
@@ -42,6 +43,41 @@ Namespace STAR_DOM.Web
             Dim f As String = Convert.ToString(imageFile)
             If String.IsNullOrWhiteSpace(f) Then Return Art(seed, name, style)
             Return "<div class=""art"" style=""background-image:url('" & Attr(f) & "');" & style & """></div>"
+        End Function
+
+        ''' <summary>
+        ''' Commission slot card, shared by the Commission Hub and the Marketplace preview so the
+        ''' two renderers cannot drift apart again. Prefers the artist's real sample work, then
+        ''' their avatar, and only falls back to gradient placeholder art when neither is on file.
+        ''' Pass <paramref name="ctaUrl"/>/<paramref name="ctaText"/> to retarget the button (the
+        ''' Marketplace uses this to funnel visitors through the Hub instead of jumping
+        ''' straight to the request form).
+        ''' </summary>
+        Public Function CommissionSlotCard(s As CommissionSlotView,
+                                           Optional startingLabel As String = "Starting",
+                                           Optional ctaUrl As String = "",
+                                           Optional ctaText As String = "") As String
+            Dim art As String = If(Not String.IsNullOrWhiteSpace(s.SampleImage), s.SampleImage, s.MerchantAvatar)
+            Dim target As String = ctaUrl
+            If target = "" Then target = "/App/CommissionRequest.aspx?m=" & s.MerchantId.ToString()
+            Dim label As String = If(ctaText <> "", ctaText, If(s.CtaText <> "", s.CtaText, "Request Slot"))
+            Dim sb As New StringBuilder()
+            sb.Append("<div class=""pcard"">")
+            sb.Append("<div style=""position:relative"">")
+            sb.Append(ProductImg(art, s.Seed, s.MerchantName, "height:170px"))
+            sb.Append("<span class=""badge warn"" style=""position:absolute;top:8px;right:8px"">" & Esc(s.SlotsText) & "</span></div>")
+            sb.Append("<div class=""pbody"">")
+            sb.Append("<span class=""brand"">" & Esc(s.MerchantTagline) & "</span>")
+            sb.Append("<b style=""font-size:16px"">" & Esc(s.MerchantName) & "</b>")
+            sb.Append("<div class=""kv"" style=""grid-template-columns:110px 1fr"">")
+            sb.Append("<dt>" & Esc(startingLabel) & "</dt><dd>" & Money(s.StartingPrice) & "</dd>")
+            sb.Append("<dt>Deposit</dt><dd>" & Money(s.Deposit) & "</dd>")
+            sb.Append("<dt>Turnaround</dt><dd>" & Esc(s.Turnaround) & "</dd>")
+            sb.Append("<dt>Formats</dt><dd>" & Esc(s.Formats) & "</dd>")
+            sb.Append("</div>")
+            sb.Append(BtnHref(target, label, "primary", "draw"))
+            sb.Append("</div></div>")
+            Return sb.ToString()
         End Function
 
         Public Function Money(value As Object) As String

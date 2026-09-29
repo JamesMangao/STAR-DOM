@@ -10,14 +10,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500..700,0..1,-50..200&amp;display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/site.css" />
-    <link rel="icon" type="image/png" href="/Assets/stardom-logo.PNG" />
-    <link rel="apple-touch-icon" href="/Assets/stardom-logo.PNG" />
+    <link rel="icon" type="image/webp" href="/Assets/stardom-logo.webp" />
+    <link rel="apple-touch-icon" href="/Assets/stardom-logo.webp" />
 </head>
 <body>
 <div class="auth-shell">
     <aside class="auth-art">
         <div class="auth-brand">
-            <img src="/Assets/stardom-logo.PNG" alt="STAR:DOM logo" style="height:44px;width:auto;object-fit:contain" />
+            <img src="/Assets/stardom-logo.webp" alt="STAR:DOM logo" style="height:44px;width:auto;object-fit:contain" />
             <div>
                 <div class="brand-logo">STAR:DOM<span class="brand-dot"></span></div>
                 <div class="brand-sub">ARTISAN &amp; POP-UP HUB</div>
@@ -44,6 +44,7 @@
                 <p class="sub" style="margin:0 0 16px">Create your account to start shopping and collecting art.</p>
                 <%= STAR_DOM.Web.WebUi.AlertBox(Me.Message, "err") %>
                 <form method="post" action="/Register.aspx">
+                    <%= STAR_DOM.Web.Csrf.HiddenField() %>
                     <div class="field">
                         <label for="fn">Full name</label>
                         <input id="fn" name="fullName" value="<%= STAR_DOM.Web.WebUi.Attr(Me.Prev("fullName")) %>" required />

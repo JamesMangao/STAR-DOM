@@ -1,6 +1,9 @@
 .git
 .vs
+bin/
 obj/
 *.user
 *.suo
 ~$*
+# NOTE: packages/ must stay in the image - it carries MySql.Data.dll, and the
+# Dockerfile builds with msbuild without a package restore step.

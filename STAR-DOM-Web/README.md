@@ -70,6 +70,24 @@ All business data (products, categories, events, orders, commissions) is read
 from and written to MySQL via parameterized ADO.NET (`MySql.Data`); nothing is
 hardcoded.
 
+## Security notes
+
+- Every POST is CSRF-checked. Pages render raw `<form method="post">` markup from
+  VB strings, so protection is a hand-rolled per-session token (`Code\Csrf.vb`)
+  verified in one place — `Global.asax.vb Application_AcquireRequestState` — rather
+  than per-page. The token rides in the `Site.master` shell form that wraps every
+  App page, and is reissued on sign-in. A mismatch returns 403 and logs to
+  `AppErrors` with `Context='Security'`.
+- **No keys in `web.config`.** DB credentials come from the `MYSQL_URL` /
+  `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_SSLMODE`
+  environment variables (`Code\Db.vb` prefers them over the connection string).
+  Keep it that way — do not paste a real password into the file.
+- `customErrors` is `RemoteOnly`, so stack traces are not served. The friendly
+  `Error.aspx` page shows a short message and the full detail goes to the
+  `AppErrors` table. Set it to `Off` only while debugging, then put it back.
+- `bin\STAR_DOM_Web.dll` is committed because the Linux/Mono deploy runs the
+  prebuilt binary — rebuild and commit `bin\` with any code change.
+
 ## Rebuilding after code changes
 
 The project compiles with **MSBuild / Visual Studio**. On this machine there is

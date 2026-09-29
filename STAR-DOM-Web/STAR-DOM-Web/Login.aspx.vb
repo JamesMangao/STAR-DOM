@@ -42,6 +42,9 @@ Namespace STAR_DOM.Web
                 Dim result As ServiceResult = New AuthService().Login(identifier, password)
                 If result.Success Then
                     Session("flash_id") = Nothing
+                    ' New token for the privileged session: a token captured before
+                    ' login cannot be replayed after it.
+                    Csrf.Rotate()
                     Response.Redirect(If(ReturnUrl <> "", ReturnUrl, DefaultHome()), True)
                 Else
                     Session("flash_msg") = result.Message
