@@ -59,9 +59,12 @@
     <Reference Include="System.Threading.Tasks.Extensions">
       <HintPath>packages\System.Threading.Tasks.Extensions.4.5.4\lib\net461\System.Threading.Tasks.Extensions.dll</HintPath>
     </Reference>
-    <Reference Include="System.ValueTuple">
-      <HintPath>packages\System.ValueTuple.4.5.0\lib\net461\System.ValueTuple.dll</HintPath>
-    </Reference>
+    <!-- System.ValueTuple is deliberately NOT referenced. On .NET 4.7+ (and on
+         Mono's 4.8 profile) ValueTuple and TupleElementNamesAttribute are built
+         into mscorlib. Referencing the package as well makes the type ambiguous
+         and the image build fails with BC37305 ("declared in multiple referenced
+         assemblies") plus BC37268 (TupleElementNamesAttribute not found). The
+         package only exists for net461-and-earlier targets. -->
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
   </ItemGroup>
