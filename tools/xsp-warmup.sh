@@ -1,6 +1,6 @@
 #!/bin/sh
 # Compile-check every .aspx under the web root by starting XSP4 and requesting
-# each page, then fail the Docker build if any page failed to COMPILE.
+# each page, then fail the Docker build if the runtime could not build them.
 #
 # Why this exists: XSP4 compiles .aspx on first request by shelling out to vbnc.
 # If vbnc cannot be launched, every page returns HTTP 500 and the site looks
@@ -11,9 +11,10 @@
 # IMPORTANT: at build time there are no Supabase env vars, so Db.ConnString()
 # falls back to an unreachable local PostgreSQL. Pages that query the database
 # will legitimately 500 here. So this script does NOT fail on 5xx -- it fails on
-# the *compilation* failure signature, and on the absence of any compiled
-# assembly in XSP4's cache. A database error and a compile error are different
-# failures and only one of them should break the build.
+# the *compilation* failure signature, on a page that never produced an HTTP
+# response at all, and on the absence of any compiled assembly in XSP4's cache.
+# A database error and a compile error are different failures and only one of
+# them should break the build.
 
 set -u
 
@@ -24,6 +25,19 @@ COMPILE_SIGNATURES="Error running vbnc|Error running mcs|VBCodeGenerator|CodeDom
 
 export TMPDIR
 mkdir -p "$TMPDIR"
+
+# Read an HTTP status as exactly three digits, or 000 when the request never
+# completed. Never write `curl ... || echo 000`: curl already emits 000 through
+# -w on failure, so that idiom yields "000000", which silently defeats every
+# comparison against "000" and lets a dead server look healthy.
+http_code() {
+    _c=$(curl -s -o "$2" -w '%{http_code}' --max-time "$3" "$1" 2>/dev/null)
+    _c=$(printf '%s' "$_c" | tr -cd '0-9')
+    if [ "${#_c}" -ne 3 ]; then
+        _c=000
+    fi
+    printf '%s' "$_c"
+}
 
 echo ">> web root : $ROOT"
 echo ">> cache    : $TMPDIR"
@@ -46,9 +60,19 @@ echo ">> app assembly present: $(ls -l "$APP_DLL" | awk '{print $5" bytes"}')"
 # ---------------------------------------------------------------------------
 # 2. Start XSP4 and wait until it actually answers.
 # ---------------------------------------------------------------------------
-echo ">> starting xsp4..."
-mono /usr/lib/mono/4.5/xsp4.exe --nonstop --port="$PORT" --address=127.0.0.1 \
-     --root="$ROOT" >"$TMPDIR/xsp4.log" 2>&1 &
+if command -v xsp4 >/dev/null 2>&1; then
+    XSP_CMD=xsp4
+elif [ -f /usr/lib/mono/4.5/xsp4.exe ]; then
+    XSP_CMD="mono /usr/lib/mono/4.5/xsp4.exe"
+else
+    echo "FATAL: xsp4 is not installed (no xsp4 on PATH, no /usr/lib/mono/4.5/xsp4.exe)."
+    exit 1
+fi
+
+echo ">> starting xsp4 via: $XSP_CMD"
+# shellcheck disable=SC2086
+$XSP_CMD --nonstop --port="$PORT" --address=127.0.0.1 --root="$ROOT" \
+    >"$TMPDIR/xsp4.log" 2>&1 &
 XSP_PID=$!
 
 cleanup() {
@@ -65,8 +89,7 @@ while [ "$i" -lt 60 ]; do
         cat "$TMPDIR/xsp4.log"
         exit 1
     fi
-    code=$(curl -s -o /dev/null -w '%{http_code}' \
-           "http://127.0.0.1:$PORT/Login.aspx" 2>/dev/null || echo 000)
+    code=$(http_code "http://127.0.0.1:$PORT/Login.aspx" /dev/null 10)
     if [ "$code" != "000" ]; then
         READY=1
         break
@@ -80,41 +103,43 @@ if [ "$READY" -ne 1 ]; then
     cat "$TMPDIR/xsp4.log"
     exit 1
 fi
-echo ">> xsp4 is up (pid $XSP_PID)"
+echo ">> xsp4 is up (pid $XSP_PID, first status $code)"
 
 # ---------------------------------------------------------------------------
 # 3. Request EVERY .aspx, discovered from disk so a new page can never be
 #    silently left out of this check again.
 # ---------------------------------------------------------------------------
+find "$ROOT" -name '*.aspx' -not -path '*/bin/*' -not -path '*/obj/*' \
+     -not -path '*/packages/*' | sort > "$TMPDIR/pages"
+echo ">> discovered $(wc -l < "$TMPDIR/pages" | tr -d ' ') page(s) on disk"
+
 TOTAL=0
 FAILED=0
-find "$ROOT" -name '*.aspx' -not -path '*/bin/*' -not -path '*/obj/*' \
-     -not -path '*/packages/*' | sort | while :; do
-    read -r f || break
+NORESP=0
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
     TOTAL=$((TOTAL + 1))
 
     page="/${f#"$ROOT"}"
     body="$TMPDIR/body.tmp"
-    code=$(curl -s -o "$body" -w '%{http_code}' \
-           --max-time 120 "http://127.0.0.1:$PORT$page" 2>/dev/null || echo 000)
+    code=$(http_code "http://127.0.0.1:$PORT$page" "$body" 120)
 
-    if grep -Eq "$COMPILE_SIGNATURES" "$body" 2>/dev/null; then
+    if [ "$code" = "000" ]; then
+        # No HTTP response at all: the server dropped the connection or never
+        # answered. Reporting this as "ok" is how a completely dead site once
+        # passed this gate, so it is a hard failure.
+        NORESP=$((NORESP + 1))
+        echo "   NO-RESPONSE $page"
+    elif grep -Eq "$COMPILE_SIGNATURES" "$body" 2>/dev/null; then
         FAILED=$((FAILED + 1))
         echo "   COMPILE-FAIL $page (HTTP $code)"
         sed -n '1,12p' "$body" | sed 's/^/        /'
     else
         echo "   ok          $page (HTTP $code)"
     fi
-    # counters live in this subshell; publish them for the summary below
-    echo "$TOTAL $FAILED" > "$TMPDIR/counters"
-done
+done < "$TMPDIR/pages"
 
-TOTAL=0
-FAILED=0
-if [ -f "$TMPDIR/counters" ]; then
-    read -r TOTAL FAILED < "$TMPDIR/counters"
-fi
-echo ">> requested $TOTAL page(s), $FAILED compile failure(s)"
+echo ">> requested $TOTAL page(s), $FAILED compile failure(s), $NORESP no-response(s)"
 
 # ---------------------------------------------------------------------------
 # 4. Independent proof that compilation actually happened: XSP4 caches the
@@ -123,8 +148,21 @@ echo ">> requested $TOTAL page(s), $FAILED compile failure(s)"
 CACHED=$(find "$TMPDIR" -name '*.dll' 2>/dev/null | wc -l | tr -d ' ')
 echo ">> compiled assemblies in cache: $CACHED"
 
+if [ "$NORESP" -gt 0 ]; then
+    echo ">> xsp4 log:"
+    sed 's/^/       /' "$TMPDIR/xsp4.log"
+fi
+
 cleanup
 trap - EXIT INT TERM
+
+if [ "$NORESP" -gt 0 ]; then
+    echo ""
+    echo "FATAL: $NORESP page(s) returned no HTTP response (status 000)."
+    echo "       The warm-up proves nothing when the server is not answering,"
+    echo "       so it is treated as a failure rather than a pass. xsp4 log above."
+    exit 1
+fi
 
 if [ "$FAILED" -gt 0 ]; then
     echo ""
@@ -139,6 +177,8 @@ if [ "$CACHED" -eq 0 ]; then
     echo ""
     echo "FATAL: no compiled assemblies in $TMPDIR. Nothing was actually"
     echo "       compiled, so the warm-up proved nothing."
+    echo "       xsp4 log:"
+    sed 's/^/       /' "$TMPDIR/xsp4.log"
     exit 1
 fi
 
