@@ -21,6 +21,7 @@ RUN apt-get update && \
         mono-devel \
         mono-vbnc \
         mono-xsp4 \
+        mono-utils \
         nuget \
         msbuild && \
     rm -rf /var/lib/apt/lists/*
@@ -58,6 +59,28 @@ COPY . /app
 # holds the .vbproj, Site.master, App/, css/, packages/ and bin/).
 WORKDIR /app/STAR-DOM-Web
 
+# ── vbnc shim ─────────────────────────────────────────────────────────────────
+# Mono's ASP.NET code generator emits an #ExternalChecksum(...) directive as the
+# first line of every .vb it produces. That is a Roslyn construct and Mono's own
+# vbnc has no parser for it, so every single page failed to compile with
+#
+#   App_global.asax_..._1.vb (1,19) : error VBNC30248: CHANGEME
+#
+# "CHANGEME" is vbnc's placeholder for error 30248, which has no resource string,
+# which is why the real cause was invisible from the ASP.NET error page. The
+# generated source is otherwise valid VB and compiles the moment that one line is
+# removed. Since the generator runs inside XSP4 and rewrites its scratch file on
+# every request, the only place to intervene is between it and vbnc.
+#
+# The real vbnc is moved aside rather than shadowed under a new name: System.Web
+# locates vbnc by absolute path, so PATH ordering is not enough.
+RUN set -e; \
+    if [ ! -f /usr/bin/vbnc.real ]; then cp /usr/bin/vbnc /usr/bin/vbnc.real; fi; \
+    cp /app/tools/vbnc-shim.sh /usr/bin/vbnc; \
+    chmod +x /usr/bin/vbnc; \
+    echo ">> vbnc shim installed at /usr/bin/vbnc"; \
+    echo ">> real vbnc saved as /usr/bin/vbnc.real"
+
 # Build the VB.NET Web application. Do NOT swallow failures: if this breaks, the
 # deploy should fail here with a real compiler error instead of booting XSP4
 # against a half-built output and 500ing on the first request.
@@ -79,7 +102,24 @@ RUN msbuild /nologo /v:minimal /p:Configuration=Release /p:Platform="AnyCPU" \
 # directory and the GAC. Left alone, every request dies with
 # "VBNC99999: Failed to resolve assembly: 'System.ValueTuple, Version=4.0.3.0'".
 #
-# This must be the *forwarding* facade that Mono itself provides, not the
+# The facade is chosen by VERSION and the version is asserted after copying.
+# That is not over-engineering: an earlier revision preferred
+# /usr/lib/mono/4.8-api/Facades because that path is where .NET Framework keeps
+# its facades, but Mono's 4.8-api facade is version 4.0.2.0. It is a
+# plausible-looking file that does not satisfy the reference, so the copy step
+# reported success and vbnc then failed on every single page. Measured inside
+# this image:
+#
+#   4.5/Facades            4.0.3.0   <- the only one Npgsql can bind to
+#   4.7.1-api/Facades      4.0.2.0
+#   4.7.2-api/Facades      4.0.2.0
+#   4.8-api/Facades        4.0.2.0
+#
+# Only files under a Facades directory are considered, so the build can never
+# pick up one of Mono's real *implementations* (msbuild/Current/bin and
+# xbuild/Microsoft both carry one) and define ValueTuple a second time.
+#
+# It must be the *forwarding* facade that Mono itself provides, not the
 # System.ValueTuple NuGet package. The package carries the real implementation
 # (78,992 bytes versus 4,608 for Mono's facade), so shipping it would define
 # ValueTuple twice and reintroduce BC37305. The facade forwards to mscorlib,
@@ -88,19 +128,26 @@ RUN msbuild /nologo /v:minimal /p:Configuration=Release /p:Platform="AnyCPU" \
 # It is copied in after msbuild on purpose: referencing it during the build is
 # exactly what caused the ambiguity in the first place.
 RUN set -e; \
+    want="4.0.3.0"; \
     found=""; \
-    for d in /usr/lib/mono/4.8-api/Facades /usr/lib/mono/4.7.2-api/Facades /usr/lib/mono/4.5/Facades; do \
-        if [ -f "$d/System.ValueTuple.dll" ]; then found="$d"; break; fi; \
+    for f in $(find /usr/lib/mono -path '*/Facades/*' -name 'System.ValueTuple.dll' | sort); do \
+        v=$(monodis --assembly "$f" 2>/dev/null | awk -F': *' '/^Version:/{print $2}'); \
+        echo ">> candidate $f -> version ${v:-unknown}"; \
+        if [ "$v" = "$want" ]; then found="$f"; break; fi; \
     done; \
     if [ -z "$found" ]; then \
-        echo "FATAL: no System.ValueTuple facade found under /usr/lib/mono."; \
-        echo "       Npgsql cannot be loaded without it, so the site would 500."; \
-        echo "       Searched: /usr/lib/mono/{4.8-api,4.7.2-api,4.5}/Facades"; \
+        echo "FATAL: no System.ValueTuple facade with version $want under /usr/lib/mono."; \
+        echo "       Npgsql 4.1 hard-references it, so vbnc would fail on every"; \
+        echo "       page with VBNC99999 and the deployed site would 500."; \
         exit 1; \
     fi; \
-    cp "$found/System.ValueTuple.dll" bin/System.ValueTuple.dll; \
-    echo ">> bin/System.ValueTuple.dll <- $found/System.ValueTuple.dll ($(stat -c%s bin/System.ValueTuple.dll) B)"; \
-    ls -l bin/System.ValueTuple.dll
+    cp "$found" bin/System.ValueTuple.dll; \
+    got=$(monodis --assembly bin/System.ValueTuple.dll 2>/dev/null | awk -F': *' '/^Version:/{print $2}'); \
+    if [ "$got" != "$want" ]; then \
+        echo "FATAL: bin/System.ValueTuple.dll came out as version '$got', need $want"; \
+        exit 1; \
+    fi; \
+    echo ">> bin/System.ValueTuple.dll <- $found (version $got, $(stat -c%s bin/System.ValueTuple.dll) B)"
 
 # ── Compile gate ─────────────────────────────────────────────────────────────
 # XSP4 compiles .aspx at request time via vbnc. This step requests EVERY page so

@@ -44,6 +44,28 @@ echo ">> web root : $ROOT"
 echo ">> cache    : $TMPDIR"
 echo ">> port     : $PORT"
 
+# Print what an error page actually says. The first dozen lines of an ASP.NET
+# error page are the <style> block, so dumping the head of the body shows CSS and
+# hides the message. Drop the style/script blocks, strip the tags, unescape the
+# handful of entities .NET emits, and show the first lines of real text.
+dump_error() {
+    awk '
+        BEGIN { skip = 0 }
+        tolower($0) ~ /<style/ { skip = 1 }
+        skip == 0 { print }
+        tolower($0) ~ /<\/style>/ { skip = 0 }
+        tolower($0) ~ /<script/ { skip = 1 }
+        tolower($0) ~ /<\/script>/ { skip = 0 }
+    ' "$1" \
+    | sed -e 's/<[^>]*>//g' \
+          -e 's/&nbsp;/ /g' -e 's/&quot;/"/g' -e 's/&lt;/</g' \
+          -e 's/&gt;/>/g'  -e 's/&#39;/'"'"'/g' -e 's/&amp;/\&/g' \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+    | grep -v '^$' \
+    | head -"${2:-18}" \
+    | sed 's/^/        /'
+}
+
 # ---------------------------------------------------------------------------
 # 1. The precompiled Web Application assembly must exist. Without it XSP4 has
 #    no Inherits base class to reference and falls back to vbnc for everything.
@@ -118,11 +140,15 @@ TOTAL=0
 FAILED=0
 NORESP=0
 UNEXPLAINED=0
+MISSING=0
 while IFS= read -r f; do
     [ -n "$f" ] || continue
     TOTAL=$((TOTAL + 1))
 
-    page="/${f#"$ROOT"}"
+    # Strip the web root, leaving a path that already starts with "/". Do not
+    # prepend another one: that produced "//App/Orders.aspx", which XSP4 answers
+    # with 404 on some Mono builds while compiling it on others.
+    page="${f#"$ROOT"}"
     body="$TMPDIR/body.tmp"
     code=$(http_code "http://127.0.0.1:$PORT$page" "$body" 120)
 
@@ -132,22 +158,26 @@ while IFS= read -r f; do
         # passed this gate, so it is a hard failure.
         NORESP=$((NORESP + 1))
         echo "   NO-RESPONSE $page"
+    elif [ "$code" = "404" ]; then
+        # The file is on disk, so a 404 means the server is not serving it.
+        MISSING=$((MISSING + 1))
+        echo "   NOT-SERVED-404 $page"
     elif grep -Eq "$COMPILE_SIGNATURES" "$body" 2>/dev/null; then
         FAILED=$((FAILED + 1))
         echo "   COMPILE-FAIL $page (HTTP $code)"
-        sed -n '1,12p' "$body" | sed 's/^/        /'
+        dump_error "$body"
     elif [ "$code" -ge 500 ] 2>/dev/null && ! grep -Eq "$DB_ERROR_SIGNATURES" "$body" 2>/dev/null; then
-        # A 5xx that is not the expected "no database at build time" failure.
-        # Something else is wrong and must not reach production.
+        # A 5xx that is not the expected "no database configured at build time"
+        # failure. Something else is wrong and must not reach production.
         UNEXPLAINED=$((UNEXPLAINED + 1))
         echo "   UNEXPLAINED-5XX $page (HTTP $code)"
-        sed -n '1,12p' "$body" | sed 's/^/        /'
+        dump_error "$body"
     else
         echo "   ok          $page (HTTP $code)"
     fi
 done < "$TMPDIR/pages"
 
-echo ">> requested $TOTAL page(s), $FAILED compile failure(s), $NORESP no-response(s), $UNEXPLAINED unexplained 5xx"
+echo ">> requested $TOTAL page(s), $FAILED compile failure(s), $NORESP no-response(s), $UNEXPLAINED unexplained 5xx, $MISSING 404"
 
 # ---------------------------------------------------------------------------
 # 4. Independent proof that compilation actually happened: XSP4 caches the
@@ -178,6 +208,15 @@ if [ "$FAILED" -gt 0 ]; then
     echo "       cannot build this application, so the deployed site would 500 on"
     echo "       every request. Aborting the build."
     echo "       xsp4 log: $TMPDIR/xsp4.log"
+    exit 1
+fi
+
+if [ "$MISSING" -gt 0 ]; then
+    echo ""
+    echo "FATAL: $MISSING page(s) exist on disk but the server answered 404."
+    echo "       XSP4 is not serving them, so the warm-up proves nothing."
+    echo "       xsp4 log:"
+    sed 's/^/       /' "$TMPDIR/xsp4.log"
     exit 1
 fi
 
