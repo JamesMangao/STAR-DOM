@@ -76,8 +76,14 @@ every other file calls `Db.Exec/Query/Rows/Scalar*` with plain SQL and
   `DB_NAME`/`DB_USER`/`DB_PASSWORD` → `web.config` → a localhost default.
   The project URL host is **not** a Postgres endpoint; only its `db.*` sibling
   serves the wire protocol. That is why the derivation exists.
-- **Time zone**: the connection sets `Time Zone=Asia/Manila` (override with
-  `APP_TIMEZONE`). Timestamps are stored `TIMESTAMPTZ`, but every `Fmt.*` call
+- **Time zone**: the connection sets `Timezone=Asia/Manila` (override with
+  `APP_TIMEZONE`). Npgsql spells this keyword `Timezone`, with no space: it is
+  the name of a property on `NpgsqlConnectionStringBuilder`, and the
+  connection string is parsed against that class. `Time Zone` looks like the
+  right English but is rejected with `ArgumentException: Keyword not
+  supported: time zone`, which surfaces as an unhandled error on the first
+  page that touches the database rather than as a configuration error.
+  Timestamps are stored `TIMESTAMPTZ`, but every `Fmt.*` call
   formats a local `DateTime`. Without this, Npgsql hands back UTC and the UI
   silently shows the wrong wall-clock time.
 - **`Db.ExecIdentity`** appends `RETURNING Id` and reads it with

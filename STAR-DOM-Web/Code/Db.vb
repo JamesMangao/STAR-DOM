@@ -45,7 +45,7 @@ Namespace STAR_DOM.Database
                 Return String.Format(
                     "Host={0};Port={1};Database={2};Username={3};Password={4};SSL Mode={5};" &
                     "Timeout=15;Command Timeout=30;Pooling=true;Max Pool Size=50;" &
-                    "Time Zone={6};Include Error Detail=true",
+                    "Timezone={6};Include Error Detail=true",
                     host, port, name, user, pass, ssl, AppTimeZone())
             End If
 
@@ -57,7 +57,7 @@ Namespace STAR_DOM.Database
 
             ' 4. Local Postgres default.
             Return "Host=localhost;Port=5432;Database=stardom;Username=postgres;Password=postgres;" &
-                   "SSL Mode=Disable;Timeout=15;Command Timeout=30;Time Zone=" & AppTimeZone()
+                   "SSL Mode=Disable;Timeout=15;Command Timeout=30;Timezone=" & AppTimeZone()
         End Function
 
         ''' <summary>
