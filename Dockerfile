@@ -71,6 +71,37 @@ WORKDIR /app/STAR-DOM-Web
 RUN msbuild /nologo /v:minimal /p:Configuration=Release /p:Platform="AnyCPU" \
         /p:TargetFrameworkVersion=v4.8 STAR-DOM-Web.vbproj
 
+# ── System.ValueTuple facade ──────────────────────────────────────────────────
+# Npgsql 4.1's net461 build carries a hard reference to
+# 'System.ValueTuple, Version=4.0.3.0'. .NET Framework satisfies that from its
+# own Facades folder with no help, but Mono ships the same facade without putting
+# it in the GAC, and vbnc's Cecil resolver only searches the application
+# directory and the GAC. Left alone, every request dies with
+# "VBNC99999: Failed to resolve assembly: 'System.ValueTuple, Version=4.0.3.0'".
+#
+# This must be the *forwarding* facade that Mono itself provides, not the
+# System.ValueTuple NuGet package. The package carries the real implementation
+# (78,992 bytes versus 4,608 for Mono's facade), so shipping it would define
+# ValueTuple twice and reintroduce BC37305. The facade forwards to mscorlib,
+# where the type already lives, so there is exactly one definition.
+#
+# It is copied in after msbuild on purpose: referencing it during the build is
+# exactly what caused the ambiguity in the first place.
+RUN set -e; \
+    found=""; \
+    for d in /usr/lib/mono/4.8-api/Facades /usr/lib/mono/4.7.2-api/Facades /usr/lib/mono/4.5/Facades; do \
+        if [ -f "$d/System.ValueTuple.dll" ]; then found="$d"; break; fi; \
+    done; \
+    if [ -z "$found" ]; then \
+        echo "FATAL: no System.ValueTuple facade found under /usr/lib/mono."; \
+        echo "       Npgsql cannot be loaded without it, so the site would 500."; \
+        echo "       Searched: /usr/lib/mono/{4.8-api,4.7.2-api,4.5}/Facades"; \
+        exit 1; \
+    fi; \
+    cp "$found/System.ValueTuple.dll" bin/System.ValueTuple.dll; \
+    echo ">> bin/System.ValueTuple.dll <- $found/System.ValueTuple.dll ($(stat -c%s bin/System.ValueTuple.dll) B)"; \
+    ls -l bin/System.ValueTuple.dll
+
 # ── Compile gate ─────────────────────────────────────────────────────────────
 # XSP4 compiles .aspx at request time via vbnc. This step requests EVERY page so
 # that (a) the assemblies get built once here instead of on the first live hit,

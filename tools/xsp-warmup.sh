@@ -9,19 +9,20 @@
 # which is exactly how a broken image reached production.
 #
 # IMPORTANT: at build time there are no Supabase env vars, so Db.ConnString()
-# falls back to an unreachable local PostgreSQL. Pages that query the database
-# will legitimately 500 here. So this script does NOT fail on 5xx -- it fails on
-# the *compilation* failure signature, on a page that never produced an HTTP
-# response at all, and on the absence of any compiled assembly in XSP4's cache.
-# A database error and a compile error are different failures and only one of
-# them should break the build.
-
+# falls back to Host=localhost;Port=5432 where nothing is listening. Pages that
+# query the database therefore legitimately 500 here, and that must not fail the
+# build. But "tolerate every 5xx" is exactly how a completely broken image once
+# shipped: this gate passed an image whose every request died with
+# "VBNC99999: Failed to resolve assembly". So a 5xx is tolerated only when the
+# body is demonstrably a *connection* failure. Any other 5xx -- a compile error,
+# a missing assembly, a type-load failure -- fails the build.
 set -u
 
 ROOT="${1:-/app/STAR-DOM-Web}"
 PORT="${2:-19876}"
 TMPDIR="${TMPDIR:-/app/.xsp-cache}"
-COMPILE_SIGNATURES="Error running vbnc|Error running mcs|VBCodeGenerator|CodeDomProvider|Could not load file or assembly .*STAR_DOM_Web"
+COMPILE_SIGNATURES="Error running vbnc|Error running mcs|VBNC99999|VBCodeGenerator|CodeDomProvider|Failed to resolve assembly|Could not load file or assembly|CompilationException|Error compiling|Error origin: Compiler|BC[0-9]{5}"
+DB_ERROR_SIGNATURES="Npgsql|SocketException|Connection refused|ECONNREFUSED|No such host|Failed to connect|Unable to connect|Connection timed out|Name or service not known"
 
 export TMPDIR
 mkdir -p "$TMPDIR"
@@ -116,6 +117,7 @@ echo ">> discovered $(wc -l < "$TMPDIR/pages" | tr -d ' ') page(s) on disk"
 TOTAL=0
 FAILED=0
 NORESP=0
+UNEXPLAINED=0
 while IFS= read -r f; do
     [ -n "$f" ] || continue
     TOTAL=$((TOTAL + 1))
@@ -134,12 +136,18 @@ while IFS= read -r f; do
         FAILED=$((FAILED + 1))
         echo "   COMPILE-FAIL $page (HTTP $code)"
         sed -n '1,12p' "$body" | sed 's/^/        /'
+    elif [ "$code" -ge 500 ] 2>/dev/null && ! grep -Eq "$DB_ERROR_SIGNATURES" "$body" 2>/dev/null; then
+        # A 5xx that is not the expected "no database at build time" failure.
+        # Something else is wrong and must not reach production.
+        UNEXPLAINED=$((UNEXPLAINED + 1))
+        echo "   UNEXPLAINED-5XX $page (HTTP $code)"
+        sed -n '1,12p' "$body" | sed 's/^/        /'
     else
         echo "   ok          $page (HTTP $code)"
     fi
 done < "$TMPDIR/pages"
 
-echo ">> requested $TOTAL page(s), $FAILED compile failure(s), $NORESP no-response(s)"
+echo ">> requested $TOTAL page(s), $FAILED compile failure(s), $NORESP no-response(s), $UNEXPLAINED unexplained 5xx"
 
 # ---------------------------------------------------------------------------
 # 4. Independent proof that compilation actually happened: XSP4 caches the
@@ -170,6 +178,15 @@ if [ "$FAILED" -gt 0 ]; then
     echo "       cannot build this application, so the deployed site would 500 on"
     echo "       every request. Aborting the build."
     echo "       xsp4 log: $TMPDIR/xsp4.log"
+    exit 1
+fi
+
+if [ "$UNEXPLAINED" -gt 0 ]; then
+    echo ""
+    echo "FATAL: $UNEXPLAINED page(s) returned 5xx for a reason other than the"
+    echo "       expected 'no database configured at build time'. A 5xx is only"
+    echo "       tolerated when the body shows a connection failure, so these are"
+    echo "       real defects and must not be deployed. Bodies are above."
     exit 1
 fi
 
