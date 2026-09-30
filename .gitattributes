@@ -1,0 +1,39 @@
+# Line endings must be deterministic, because the Docker build copies the working
+# tree into a Linux image. With core.autocrlf=true, git rewrote LF files to CRLF
+# on checkout, which would turn tools/xsp-warmup.sh into a script `sh` cannot run
+# ("\r: not found") and silently break the container build.
+* text=auto
+
+# The image and the vbnc/xsp4 toolchain require LF.
+Dockerfile    text eol=lf
+*.sh          text eol=lf
+*.sql         text eol=lf
+*.vb          text eol=lf
+*.aspx        text eol=lf
+*.asax        text eol=lf
+*.ascx        text eol=lf
+*.master      text eol=lf
+*.vbproj      text eol=lf
+*.sln         text eol=lf
+*.config      text eol=lf
+*.yaml        text eol=lf
+*.yml         text eol=lf
+*.md          text eol=lf
+*.css         text eol=lf
+*.resx        text eol=lf
+*.bat         text eol=crlf
+
+# Never mangle binaries.
+*.dll   binary
+*.exe   binary
+*.pdb   binary
+*.xml   binary
+*.ico   binary
+*.png   binary
+*.webp  binary
+*.jpg   binary
+*.docx  binary
+*.zip   binary
+*.msi   binary
+*.woff  binary
+*.woff2 binary

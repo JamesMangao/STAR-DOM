@@ -16,6 +16,11 @@
 .kilocode/
 
 # Packages / output
+# The WebForms project root is STAR-DOM-Web/ (it holds the .vbproj, Site.master,
+# App/, css/, packages/ and bin/), so these negations must sit at that level --
+# a nested STAR-DOM-Web/STAR-DOM-Web/ path does not exist and would silently
+# leave the vendored provider DLLs untracked, breaking the Docker build (which
+# has no package-restore step).
 packages/
-!STAR-DOM-Web/STAR-DOM-Web/packages/
-!STAR-DOM-Web/STAR-DOM-Web/bin/
+!STAR-DOM-Web/packages/
+!STAR-DOM-Web/bin/

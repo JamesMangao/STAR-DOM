@@ -25,14 +25,14 @@ RUN apt-get update && \
         msbuild && \
     rm -rf /var/lib/apt/lists/*
 
-# ── vbnc discovery hardening ───────────────────────────────────────────────────
-# Mono's VBCodeProvider looks for vbnc in several locations depending on build:
-#   1. $PATH  2. /usr/bin/vbnc  3. GAC-relative paths
-# Some Mono package versions install the binary to /usr/lib/mono/*/vbnc.exe but
-# do NOT create the /usr/bin/vbnc wrapper, causing the "Cannot find the specified
-# file" error at runtime even though the package IS installed.
-# Fix: locate the real vbnc / vbnc.exe and ensure /usr/bin/vbnc exists.
-ENV MONO_VBNC=/usr/bin/vbnc
+# ── vbnc discovery ───────────────────────────────────────────────────────────
+# XSP4 compiles .aspx on first request and VBCodeGenerator.FromFileBatch shells
+# out to vbnc. Mono's package layout has moved the binary between releases, so
+# make sure a vbnc is reachable on PATH and point MONO_VBNC at it.
+#
+# This block only guarantees vbnc is *present*. It deliberately does NOT claim
+# to validate compilation -- `vbnc --help` proves nothing about whether this
+# application actually builds. The real check is the compile gate further down.
 RUN set -e; \
     if ! command -v vbnc >/dev/null 2>&1; then \
         echo ">> vbnc not on PATH, searching for vbnc.exe..."; \
@@ -40,71 +40,54 @@ RUN set -e; \
         if [ -z "$VBNC_EXE" ]; then \
             echo "FATAL: vbnc.exe not found anywhere under /usr/lib/mono"; exit 1; \
         fi; \
-        echo ">> Found $VBNC_EXE — creating /usr/bin/vbnc wrapper"; \
+        echo ">> Found $VBNC_EXE - creating /usr/bin/vbnc wrapper"; \
         printf '#!/bin/sh\nexec mono "%s" "$@"\n' "$VBNC_EXE" > /usr/bin/vbnc; \
         chmod +x /usr/bin/vbnc; \
-    fi && \
-    echo ">> vbnc verification:" && vbnc --help >/dev/null 2>&1 && echo "OK" || \
-    (echo "FATAL: vbnc exists but cannot run" && exit 1)
-
-# Also wire up the CodeDom provider path that XSP4/Mono looks for at runtime.
-# VBCodeGenerator.FromFileBatch shells out to the path stored in the Mono config;
-# ensure it resolves even if the config points to an alternate location.
-RUN VBNC_REAL=$(command -v vbnc) && \
-    for d in /usr/lib/mono/4.5 /usr/lib/mono/4.0; do \
-        [ -d "$d" ] && [ ! -e "$d/vbnc.exe" ] && \
-        VBNC_EXE=$(find /usr/lib/mono -name 'vbnc.exe' 2>/dev/null | head -1) && \
-        [ -n "$VBNC_EXE" ] && ln -sf "$VBNC_EXE" "$d/vbnc.exe" || true; \
-    done && \
-    echo ">> vbnc symlinks OK"
+    fi; \
+    echo ">> vbnc at: $(command -v vbnc)"; \
+    vbnc --help >/dev/null 2>&1 || { echo "FATAL: vbnc present but not runnable"; exit 1; }; \
+    echo ">> vbnc is runnable (compilation itself is verified by the gate below)"
 
 WORKDIR /app
 
 # Copy project files
 COPY . /app
 
-WORKDIR /app/STAR-DOM-Web/STAR-DOM-Web
+# The website project root is /app/STAR-DOM-Web (the repo-root/STAR-DOM-Web folder
+# holds the .vbproj, Site.master, App/, css/, packages/ and bin/).
+WORKDIR /app/STAR-DOM-Web
 
 # Build the VB.NET Web application. Do NOT swallow failures: if this breaks, the
 # deploy should fail here with a real compiler error instead of booting XSP4
 # against a half-built output and 500ing on the first request.
-RUN msbuild /p:Configuration=Release /p:Platform="AnyCPU" STAR-DOM-Web.vbproj
+#
+# TargetFrameworkVersion is overridden to 4.8 on the command line on purpose.
+# The project file says 4.8.1 because that is the targeting pack installed on the
+# development machine, but Mono 6.12 ships a 4.8 reference-assembly set and has no
+# 4.8.1 one -- so an unoverridden build inside the image fails with MSB3644.
+# 4.8 is also what web.config declares (<compilation targetFramework="4.8">), so
+# the container compiles and runs against a consistent framework.
+RUN msbuild /nologo /v:minimal /p:Configuration=Release /p:Platform="AnyCPU" \
+        /p:TargetFrameworkVersion=v4.8 STAR-DOM-Web.vbproj
 
-# ── Precompile ASPX pages ─────────────────────────────────────────────────────
-# XSP4 normally compiles .aspx/.master pages on first request using vbnc.
-# Precompiling them here means the runtime never needs to invoke vbnc, which
-# eliminates the "Cannot find the specified file" error class entirely.
-# The -fixednames flag keeps the assembly names predictable.
-RUN mono /usr/lib/mono/4.5/xsp4.exe --nonstop --port=19876 --address=127.0.0.1 \
-        --root=/app/STAR-DOM-Web/STAR-DOM-Web & \
-    XSP_PID=$!; \
-    sleep 3; \
-    echo ">> Warming up pages to trigger precompilation..."; \
-    for page in \
-        /Login.aspx \
-        /Register.aspx \
-        /App/Marketplace.aspx \
-        /App/Catalog.aspx \
-        /App/Cart.aspx \
-        /App/Checkout.aspx \
-        /App/Orders.aspx \
-        /App/CommissionHub.aspx \
-        /App/Notifications.aspx \
-        /App/Profile.aspx \
-        /App/PopupLocations.aspx \
-    ; do \
-        echo "   warming $page"; \
-        curl -s -o /dev/null "http://127.0.0.1:19876$page" || true; \
-    done; \
-    kill $XSP_PID 2>/dev/null || true; \
-    wait $XSP_PID 2>/dev/null || true; \
-    echo ">> Precompilation warm-up done"
+# ── Compile gate ─────────────────────────────────────────────────────────────
+# XSP4 compiles .aspx at request time via vbnc. This step requests EVERY page so
+# that (a) the assemblies get built once here instead of on the first live hit,
+# and (b) a page that cannot compile fails the deploy here, with the real error
+# in the log, instead of shipping an image that 500s on every request.
+#
+# The previous version of this step warmed a hardcoded 11 of the 29 pages and
+# ended in `curl ... || true`, so it could not fail even when every page 500'd.
+# tools/xsp-warmup.sh discovers pages from disk and exits non-zero on failure.
+ENV TMPDIR=/app/.xsp-cache
+RUN mkdir -p "$TMPDIR" && \
+    sh /app/tools/xsp-warmup.sh /app/STAR-DOM-Web 19876
 
-WORKDIR /app/STAR-DOM-Web/STAR-DOM-Web
+WORKDIR /app/STAR-DOM-Web
 
 # Render dynamic port binding (defaults to 10000)
 ENV PORT=10000
 EXPOSE 10000
 
 # Start Mono XSP4 web server
-CMD ["sh", "-c", "xsp4 --nonstop --port=${PORT:-10000} --address=0.0.0.0 --root=/app/STAR-DOM-Web/STAR-DOM-Web"]
+CMD ["sh", "-c", "xsp4 --nonstop --port=${PORT:-10000} --address=0.0.0.0 --root=/app/STAR-DOM-Web"]

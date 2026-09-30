@@ -1,0 +1,356 @@
+﻿<?xml version="1.0"?>
+<doc>
+<assembly>
+<name>
+STAR_DOM_Web
+</name>
+</assembly>
+<members>
+<member name="T:STAR_DOM.Web.Csrf">
+ <summary>
+ Per-session CSRF token (double-submit / synchronizer pattern).
+ The token lives in ASP.NET Session and is echoed back by every POST form as
+ a hidden field. A POST whose token is missing or does not match the session
+ token is rejected centrally in Global.asax.vb Application_BeginRequest.
+ Enforcement lives in exactly one place, so a page cannot forget to check.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.Token">
+ <summary>Current session token, created on first access.</summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.Rotate">
+ <summary>
+ Issue a new token for the session. Called right after authentication so a
+ token that was exposed before login cannot be replayed afterwards.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.HiddenField">
+ <summary>Hidden input to drop inside any POST form. Safe to call on GET renders.</summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.IsValidRequest">
+ <summary>True when the request carries a token matching the session's.</summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.SessionHasNoToken">
+ <summary>
+ True when the session looks like it simply expired (no token was ever
+ issued), as opposed to a token that was issued and then tampered with.
+ Used to send the visitor to sign-in instead of showing a hard 403.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.Csrf.FixedTimeEquals(System.String,System.String)">
+ <summary>Length-independent constant-time compare (no early exit on first diff).</summary>
+</member>
+<member name="T:STAR_DOM.Web.Guard">
+ <summary>Role-based access guards used at the top of every protected page.</summary>
+</member>
+<member name="T:STAR_DOM.Web.WebUi">
+ <summary>Shared server-side HTML helpers for the STAR:DOM web UI.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Art(System.Int32,System.String,System.String)">
+ <summary>Deterministic placeholder artwork block (gradient + initials) for a product.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.ProductImg(System.Object,System.Int32,System.String,System.String)">
+ <summary>Real product image block when one is on file, else gradient placeholder art.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.CommissionSlotCard(STAR_DOM.Helpers.CommissionSlotView,System.String,System.String,System.String)">
+ <summary>
+ Commission slot card, shared by the Commission Hub and the Marketplace preview so the
+ two renderers cannot drift apart again. Prefers the artist's real sample work, then
+ their avatar, and only falls back to gradient placeholder art when neither is on file.
+ Pass <paramref name="ctaUrl"/>/<paramref name="ctaText"/> to retarget the button (the
+ Marketplace uses this to funnel visitors through the Hub instead of jumping
+ straight to the request form).
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Badge(System.String)">
+ <summary>Status pill colored per state.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.OutLink(System.String,System.String,System.Boolean)">
+ <summary>Category/filter chip link.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Pager(System.Int32,System.Int32,System.Int32,System.String)">
+ <summary>
+ Prev/next pager for bounded lists. Pass a URL template containing "{P}" for the page number,
+ e.g. "/App/Merchant/Orders.aspx?p={P}".
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Ic(System.String,System.String)">
+ <summary>Material Symbols Outlined icon literal. Size classes: "sm", "lg", "xl", "filled".</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.Donut(System.Double,System.Double,System.String,System.String,System.String,System.Boolean)">
+ <summary>Two-channel SVG donut for share analytics (e.g. omnichannel revenue mix).</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.IsGlyph(System.String)">
+ <summary>True when the icon string is an emoji/unicode glyph rather than a Material Symbol name.</summary>
+</member>
+<member name="M:STAR_DOM.Web.GlobalApp.Application_AcquireRequestState(System.Object,System.EventArgs)">
+ <summary>
+ Single choke point for CSRF protection: every POST in the site is checked
+ here, before any page code runs, so no individual page can forget to check.
+
+ This must run on AcquireRequestState, NOT BeginRequest: SessionStateModule
+ loads the session during AcquireRequestState, so HttpContext.Session is
+ still Nothing in BeginRequest and every POST would look token-less.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.PopupLocationsPage.CurrentHero(STAR_DOM.Models.PopUpEvent)">
+ <summary>Split hero stage for the current active location (4.html).</summary>
+</member>
+<member name="M:STAR_DOM.Web.PopupLocationsPage.StampCard">
+ <summary>Merchant stamp card callout (collect 4 stamps).</summary>
+</member>
+<member name="M:STAR_DOM.Web.PopupLocationsPage.VenueImage(STAR_DOM.Models.PopUpEvent)">
+ <summary>Background for a venue photo: the mall photo when one is on file, else the brand gradient.</summary>
+</member>
+<member name="T:STAR_DOM.Web.CommissionHubPage">
+ <summary>
+ Single entry point for every commission flow: customers discover artists and open a
+ slot here, merchants are bridged to their pipeline. Other pages funnel here rather
+ than linking straight to the request form.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionHubPage.HubHeader(System.Int32)">
+ <summary>Page-level "Request a Commission" CTA so the action is always reachable, even with zero open slots.</summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionHubPage.MerchantBridge">
+ <summary>Bridges the customer-facing hub to the merchant pipeline, which used to be unreachable from here.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
+ <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
+</member>
+<member name="T:STAR_DOM.Database.Db">
+ <summary>Core PostgreSQL/Supabase access for the web app. All SQL flows through here with parameters only.</summary>
+</member>
+<member name="F:STAR_DOM.Database.Db.Provider">
+ <summary>Which backend this build talks to. Surfaced by /health for smoke tests.</summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.ConnString">
+ <summary>
+ Builds an Npgsql connection string from Supabase's environment variables.
+ Supabase hands out the database host as a sibling of the project URL
+ (project-ref.supabase.co becomes db.project-ref.supabase.co), so both
+ spellings are accepted.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.ProjectHost(System.String)">
+ <summary>
+ Maps the Supabase project URL onto its Postgres endpoint:
+ project-ref.supabase.co becomes db.project-ref.supabase.co.
+ The project host does not speak the Postgres wire protocol; only the
+ db.* sibling does.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.AppTimeZone">
+ <summary>
+ Timestamps are stored as timestamptz but the UI presents Asia/Manila wall-clock
+ times. Asking Npgsql for that zone returns local DateTimes (Kind=Unspecified), which
+ keeps every Fmt.* call rendering exactly what the previous MySQL host produced.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.P(System.String,System.Object)">
+ <summary>Builds a named parameter. "@name" is valid in Npgsql as well as MySql.Data.</summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.InTransaction``1(System.Func{``0})">
+ <summary>Run work atomically: one connection, one transaction, rollback on any throw.</summary>
+</member>
+<member name="P:STAR_DOM.Database.Db.InTransactionScope">
+ <summary>True while InTransaction() has an open transaction on this thread.</summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.ResolveConnection(System.Boolean@)">
+ <summary>
+ The ambient connection when a transaction is open, otherwise a fresh one that
+ the caller owns and must dispose.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.ExecIdentity(System.String,Npgsql.NpgsqlParameter[])">
+ <summary>
+ Run an INSERT and return the new serial id.
+ PostgreSQL has no LAST_INSERT_ID(); the id comes back from a RETURNING clause on
+ the INSERT itself, so it is read in the same round trip and can never be
+ contaminated by another session the way a pooled connection's value could be.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.LogError(System.String,System.Exception)">
+ <summary>Log a technical error to the AppErrors table (created on demand).</summary>
+</member>
+<member name="M:STAR_DOM.Database.Db.PruneErrors(System.Int32)">
+ <summary>Trim old error-log rows so AppErrors never grows without bound.</summary>
+</member>
+<member name="T:STAR_DOM.Database.RowReader">
+ <summary>Safe typed readers over a DataRow (handles DBNull everywhere).</summary>
+</member>
+<member name="M:STAR_DOM.Database.RowReader.AsBool(System.Data.DataRow,System.String)">
+ <summary>
+ Accepts both a real boolean (PostgreSQL BOOLEAN) and the 0/1 that the retired
+ MySQL TINYINT(1) columns produced, so either backend shape reads correctly.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Helpers.Session">
+ <summary>
+ Signed-in user context for the current web request, backed by ASP.NET Session.
+ Mirrors the desktop module API so the shared Services layer compiles unchanged.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Helpers.Session.CanManageStore">
+ <summary>True when the user may open merchant management screens.</summary>
+</member>
+<member name="T:STAR_DOM.Helpers.Validators">
+ <summary>Field validation helpers. Each returns Nothing when valid, else an error message.
+ Web variant: no MessageBox — Alert/Info are no-ops (the page shows service messages).</summary>
+</member>
+<member name="T:STAR_DOM.Helpers.CommissionSlotView">
+ <summary>
+ Commission slot card data (web copy of the class the shared CatalogService returns).
+ </summary>
+</member>
+<member name="T:STAR_DOM.Helpers.ChartSeries">
+ <summary>
+ Chart data series (web copy of the class the shared report services return).
+ Colors are carried so the UI can render CSS bars with the same palette.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Helpers.Fmt.EventWindow(System.DateTime,System.DateTime)">
+ <summary>"Sept 4–7, 2026" style event window.</summary>
+</member>
+<member name="T:STAR_DOM.Helpers.Clock">
+ <summary>
+ Wall-clock time source for the STAR:DOM platform, pinned to Asia/Manila (UTC+8, no DST).
+ PostgreSQL's TimeZone setting depends on the host, so "now" is computed here in
+ .NET and passed into SQL as a plain wall-clock parameter.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Helpers.Clock.Now">
+ <summary>Current Asia/Manila wall-clock time.</summary>
+</member>
+<member name="M:STAR_DOM.Helpers.Clock.SqlNow">
+ <summary>"2026-09-08 14:30:00" (yyyy-MM-dd HH:mm:ss) string safe to pass to a PostgreSQL TIMESTAMPTZ parameter.</summary>
+</member>
+<member name="M:STAR_DOM.Helpers.Clock.ParseTimeOfDay(System.String)">
+ <summary>Parse "10:00 AM" style opening/closing times into a TimeOfDay. Returns Nothing if unparseable.</summary>
+</member>
+<member name="M:STAR_DOM.Helpers.Clock.RelativeTime(System.DateTime)">
+ <summary>Human-friendly relative label ("10s ago", "14m ago", "2h ago") against Manila time.</summary>
+</member>
+<member name="T:STAR_DOM.Helpers.AppColors">
+ <summary>
+ STAR:DOM design tokens (from DESIGN.md). All WinForms colors come from here
+ so the entire application keeps one visual language.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Helpers.PasswordHasher">
+ <summary>
+ Password hashing using PBKDF2-HMAC-SHA256 (10,000 iterations).
+ Stored format: PBKDF2$10000$&lt;base64 salt&gt;$&lt;base64 hash&gt;
+ </summary>
+</member>
+<member name="T:STAR_DOM.Models.Commission">
+ <summary>Commission request with the full merchant-atelier lifecycle.</summary>
+</member>
+<member name="T:STAR_DOM.Models.CommissionStatuses">
+ <summary>All known commission statuses, in workflow order.</summary>
+</member>
+<member name="T:STAR_DOM.Models.ServiceResult">
+ <summary>Service result: success flag + user-facing message + optional payload.</summary>
+</member>
+<member name="T:STAR_DOM.Reports.ReportRow">
+ <summary>Key/value row used by report grids and chart series.</summary>
+</member>
+<member name="T:STAR_DOM.Reports.KpiBlock">
+ <summary>Aggregated KPI block rendered on the reports screen.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionRepository.OpenSlotCounts">
+ <summary>Open-slot counts for all merchants at once (single query instead of 1-per-merchant).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionRepository.UpdateStatus(System.Int32,System.String,System.String,System.String,System.String)">
+ <summary>Transition status and record full history. Returns error string or Nothing.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.EventRepository.SetCurrent(System.Int32)">
+ <summary>Set a single event as the active physical node.</summary>
+</member>
+<member name="T:STAR_DOM.Repositories.EventRepository.SaleRejectedException">
+ <summary>
+ Raised inside the RecordSale transaction for a business-rule failure, so the
+ transaction rolls back instead of committing a partial sale.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.EventRepository.DeriveStatus(STAR_DOM.Models.PopUpEvent)">
+ <summary>
+ Effective event status computed from the Asia/Manila clock on every read.
+ CANCELLED is a manual merchant override; the rest are derived from the event window
+ (StartDate..EndDate) plus today's open/close hours.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.NotificationRepository.CreateForRole(System.String,System.String,System.String,System.String,System.String)">
+ <summary>Notify every user with the given role (e.g., every MERCHANT).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.ListRecent(System.Int32)">
+ <summary>Latest orders, bounded in SQL (used for dashboards instead of trimming full tables in memory).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.RestoreOrderStock(System.Int32)">
+ <summary>Put sold units back on the shelf when an order is cancelled.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.PurchaseOrderId(System.Int32,System.Int32)">
+ <summary>
+ Id of the user's most recent non-cancelled order containing the product.
+ Reviews are only allowed for verified purchases, so this gates SubmitReview.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Repositories.ReceiptRepository">
+ <summary>Issues and retrieves BIR-style official receipts (OR) for confirmed payments.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReceiptRepository.Issue(STAR_DOM.Models.Order,System.Collections.Generic.List{STAR_DOM.Models.OrderItem},System.Int32,System.String,System.Nullable{System.DateTime})">
+ <summary>Create a receipt for a paid payment. Idempotent per payment (UK Receipts.PaymentId).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReceiptRepository.GetByPaymentIds(System.Collections.Generic.List{System.Int32})">
+ <summary>Fetch receipts for many payment ids in one query (kills per-row receipt lookups).</summary>
+</member>
+<member name="T:STAR_DOM.Repositories.ReportRepository">
+ <summary>All aggregation queries for dashboards and the sales report screens.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.EventRevenueTotal">
+ <summary>Sum of all in-person event sales (single query, replaces per-event loops).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.EventStats">
+ <summary>Revenue + sales-count per event in one grouped query (kills dashboard N+1).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.UserRepository.ListMerchants">
+ <summary>Commission creators/artists (Admin or Merchant).</summary>
+</member>
+<member name="M:STAR_DOM.Services.CatalogService.CommissionSlots">
+ <summary>Open commission slot cards for merchants with capacity (drives the hub + marketplace sections).</summary>
+</member>
+<member name="T:STAR_DOM.Services.OrderService.StockShortageException">
+ <summary>
+ Raised inside the checkout transaction when a conditional stock decrement
+ matches no row. Rolling back is what we want here: a half-written order
+ (items inserted, stock taken, cart not cleared) is worse than no order.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.Checkout(System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.String)">
+ <summary>
+ Full checkout: validate stock, create order + items + payment/shipping records,
+ decrement stock, clear the cart. The order number is derived from the auto-increment
+ id so it can never collide under concurrent checkouts.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.ConfirmPayment(System.String,System.String)">
+ <summary>
+ Simulate an electronic payment confirmation (GCash/Maya/Card) for a demo order.
+ Only the buyer who placed the order, or a store operator (merchant/admin), may
+ confirm payment on it — never an arbitrary logged-in user who knows the number.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.UpdateOrderState(System.Int32,System.String,System.String)">
+ <summary>Merchant updates fulfilment state, keeping the payment status consistent.</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.CanReview(System.Int32)">
+ <summary>Whether the current user bought this product (non-cancelled order).</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.IssueReceiptByPaymentId(System.Int32)">
+ <summary>Merchant-side: force-issue a receipt for a payment. Prepaid payments need PAID; COD warrants one even unpaid.</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.IssueReceiptFor(STAR_DOM.Models.Order)">
+ <summary>Issue an official receipt whenever a payment becomes PAID (prepaid or COD on delivery).</summary>
+</member>
+</members>
+</doc>

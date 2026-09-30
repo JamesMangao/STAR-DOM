@@ -8,13 +8,33 @@ services:
     envVars:
       - key: PORT
         value: 10000
-      - key: DB_HOST
+
+      # ── Supabase (PostgreSQL) ─────────────────────────────────────────────
+      # The app reaches the database through Npgsql. SUPABASE_DB_URL is the
+      # easiest of the two: paste Supabase -> Project Settings -> Database ->
+      # "Connection string" (the URI form) into the dashboard as a secret and
+      # Db.ConnString uses it verbatim.
+      - key: SUPABASE_DB_URL
         sync: false
-      - key: DB_PORT
-        value: "3306"
-      - key: DB_NAME
-        value: stardom
-      - key: DB_USER
+
+      # If you would rather wire the parts individually, set SUPABASE_DB_URL to
+      # empty and fill these instead; Db.ConnString falls back to them in order:
+      #   SUPABASE_URL + SUPABASE_DB_PASSWORD  -> derives db.<ref>.supabase.co
+      #   or SUPABASE_DB_HOST / SUPABASE_DB_PORT / SUPABASE_DB_NAME /
+      #      SUPABASE_DB_USER / SUPABASE_DB_PASSWORD
+      - key: SUPABASE_URL
         sync: false
-      - key: DB_PASSWORD
+      - key: SUPABASE_DB_PASSWORD
         sync: false
+      - key: SUPABASE_DB_HOST
+        sync: false
+      - key: SUPABASE_DB_PORT
+        value: "5432"
+      - key: SUPABASE_DB_NAME
+        value: postgres
+      - key: SUPABASE_DB_USER
+        value: postgres
+
+      # Timestamps are stored as timestamptz but presented in Manila wall-clock.
+      - key: APP_TIMEZONE
+        value: Asia/Manila

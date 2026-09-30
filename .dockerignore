@@ -1,3 +1,7 @@
+# packages/ is intentionally NOT excluded: it carries the vendored Npgsql.dll
+# plus System.Memory / System.Runtime.CompilerServices.Unsafe /
+# System.Threading.Tasks.Extensions, and the Dockerfile builds with msbuild
+# without a package restore step. Excluding it makes the build fail.
 .git
 .vs
 bin/
@@ -5,5 +9,3 @@ obj/
 *.user
 *.suo
 ~$*
-# NOTE: packages/ must stay in the image - it carries MySql.Data.dll, and the
-# Dockerfile builds with msbuild without a package restore step.
