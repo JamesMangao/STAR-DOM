@@ -45,8 +45,9 @@ RUN set -e; \
         chmod +x /usr/bin/vbnc; \
     fi; \
     echo ">> vbnc at: $(command -v vbnc)"; \
-    vbnc --help >/dev/null 2>&1 || { echo "FATAL: vbnc present but not runnable"; exit 1; }; \
-    echo ">> vbnc is runnable (compilation itself is verified by the gate below)"
+    echo ">> presence confirmed. Do NOT probe it here: vbnc has no --help, so a" ; \
+    echo ">> version probe exits non-zero on a perfectly good install. Whether it" ; \
+    echo ">> can actually compile this app is proven by the gate further down."
 
 WORKDIR /app
 
