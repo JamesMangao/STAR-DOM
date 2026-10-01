@@ -189,7 +189,7 @@ Namespace STAR_DOM.Services
                              "We'll prepare it for pick-up at " & pickupEvent.Name & ".",
                              "It ships via J&T Express — track it in My Orders."),
                          "ORDER", "my-orders")
-            notif.NotifyRole("MERCHANT", "New order – " & orderNumber,
+            notif.NotifyRole("ADMIN", "New order – " & orderNumber,
                              Fmt.PHP(total) & " – " & items.Count.ToString() & " item(s) ready for processing.",
                              "ORDER", "merchant-orders")
 
@@ -295,7 +295,7 @@ Namespace STAR_DOM.Services
             End If
 
             If customerSide Then
-                notif.NotifyRole("MERCHANT", "Customer confirmed pick-up – " & fresh.OrderNumber,
+                notif.NotifyRole("ADMIN", "Customer confirmed pick-up – " & fresh.OrderNumber,
                                  "The customer has the order. Waiting for the stall team to confirm hand-over.",
                                  "ORDER", "merchant-orders")
                 Return ServiceResult.Ok("Thanks! Waiting for the stall team to confirm hand-over.")

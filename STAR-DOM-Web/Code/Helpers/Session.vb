@@ -52,9 +52,14 @@ Namespace STAR_DOM.Helpers
             End Get
         End Property
 
+        ''' <summary>
+        ''' True for anyone who can operate the store. STAR:DOM is a single-owner
+        ''' brand, so ADMIN is the merchant; the legacy MERCHANT role (pre-consolidation
+        ''' demo accounts) is still honoured for backwards compatibility.
+        ''' </summary>
         Public ReadOnly Property IsMerchant As Boolean
             Get
-                Return String.Equals(CurrentRoleName, "MERCHANT", StringComparison.OrdinalIgnoreCase)
+                Return IsAdmin OrElse String.Equals(CurrentRoleName, "MERCHANT", StringComparison.OrdinalIgnoreCase)
             End Get
         End Property
 

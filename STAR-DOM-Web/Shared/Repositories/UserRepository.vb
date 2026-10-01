@@ -106,7 +106,8 @@ Namespace STAR_DOM.Repositories
         Public Function ListMerchants() As List(Of User)
             Return Db.Rows(
                 "SELECT u.*, r.Name AS RoleName FROM Users u JOIN Roles r ON r.Id = u.RoleId " &
-                "WHERE (r.Name = 'ADMIN' OR r.Name = 'MERCHANT') AND u.CommissionSlotCapacity > 0 ORDER BY u.FullName").Select(Function(r) Map(r)).ToList()
+                "WHERE (r.Name = 'ADMIN' OR r.Name = 'MERCHANT') AND u.Status = 'ACTIVE' " &
+                "AND u.CommissionSlotCapacity > 0 ORDER BY u.FullName").Select(Function(r) Map(r)).ToList()
         End Function
 
         Public Sub SetStatus(userId As Integer, status As String)

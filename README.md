@@ -59,8 +59,8 @@ sign-in page. Close the IIS Express window to stop.
 | Role | Username | Password | Lands on |
 |---|---|---|---|
 | Customer | `bella` | `customer123` | Marketplace |
-| Merchant | `mika` | `admin123` | Merchant Dashboard |
-| Admin | `admin` | `admin123` | Admin Console |
+| Store owner (admin = merchant) | `admin` | `admin123` | Merchant Dashboard |
+| Store owner (legacy demo account) | `mika` | `admin123` | Merchant Dashboard |
 
 ## What you can do end-to-end
 
@@ -73,16 +73,18 @@ sign-in page. Close the IIS Express window to stop.
   ("Confirm order received" + the stall's "Confirm hand-over" closes the order),
   pop-up locations & schedules, commission requests (5-step wizard; commissioned
   products are delivery-only), reviews, notifications, profile.
-- **Merchant (Mika):** dashboard KPIs, products & stock (online stock is
+- **Store owner (`admin`, or the legacy `mika`/`renzo`/`puffu` owner
+  accounts):** dashboard KPIs, products & stock (online stock is
   adjusted manually after physical booth sales — the site sells online only),
   event & booth manager with per-event inventory, commission pipeline
   (accept / decline / clarify / offer / production), orders & payments:
   confirm orders, book J&T with the tracking number, confirm pick-up hand-over,
   and record payments behind a **password re-entry** (e-wallet reference number
-  required for GCash/Maya), sales reports, review moderation.
-- **Admin:** user list, role reassignment, activate/suspend accounts. Merchant
-  and admin accounts do not see the customer marketplace nav — they work in the
-  Merchant Studio.
+  required for GCash/Maya), sales reports, review moderation, Admin Console
+  (users & roles).
+- **Admin:** the owner account IS the admin — STAR:DOM has exactly two roles:
+  ADMIN (store owner, who is also the merchant/artist) and CUSTOMER. New
+  registrations always become CUSTOMER; only the owner can manage accounts.
 
 All business data is read from and written to PostgreSQL via parameterized
 `Npgsql` calls; nothing is hardcoded.

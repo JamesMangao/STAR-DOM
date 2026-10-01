@@ -47,8 +47,10 @@ Namespace STAR_DOM.Web
         Private Sub Render()
             ' Role counts come straight from SQL; don't load the whole table just to count.
             Dim nCust As Integer = _users.CountByRole("CUSTOMER")
-            Dim nMerc As Integer = _users.CountByRole("MERCHANT")
-            Dim nAdmin As Integer = _users.CountByRole("ADMIN")
+            ' STAR:DOM has two roles: the single owner (ADMIN, who is the merchant)
+            ' and customers. The MERCHANT role is a legacy alias still honoured by
+            ' the guards, so store-operator accounts are counted as staff.
+            Dim nStaff As Integer = _users.CountByRole("ADMIN") + _users.CountByRole("MERCHANT")
             Dim all As List(Of User) = _users.ListUsers("").OrderBy(Function(u) u.Id).ToList()
 
             Dim sb As New StringBuilder()
@@ -58,8 +60,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""grid kpis"">")
             sb.Append(Kpi("TOTAL USERS", all.Count.ToString()))
             sb.Append(Kpi("CUSTOMERS", nCust.ToString()))
-            sb.Append(Kpi("MERCHANTS", nMerc.ToString()))
-            sb.Append(Kpi("ADMINS", nAdmin.ToString()))
+            sb.Append(Kpi("STORE OWNERS / STAFF", nStaff.ToString()))
             sb.Append("</div>")
 
             sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
@@ -78,7 +79,9 @@ Namespace STAR_DOM.Web
                 sb.Append("<td><form method=""post"" style=""display:flex;gap:6px"">" &
                           "<input type=""hidden"" name=""roleUserId"" value=""" & u.Id.ToString() & """>" &
                           "<select name=""newRole"" style=""padding:5px;border:1px solid var(--line);border-radius:7px"">")
-                For Each r As Role In _users.GetRoles()
+                ' Two-role model: offer only CUSTOMER and ADMIN. (The MERCHANT role
+                ' still exists for legacy accounts and is honoured by the guards.)
+                For Each r As Role In _users.GetRoles().Where(Function(x) x.Name = "CUSTOMER" OrElse x.Name = "ADMIN")
                     Dim sel As String = If(String.Equals(r.Name, u.RoleName, StringComparison.OrdinalIgnoreCase), " selected", "")
                     sb.Append("<option value=""" & WebUi.Esc(r.Name) & """" & sel & ">" & WebUi.Esc(r.Name) & "</option>")
                 Next

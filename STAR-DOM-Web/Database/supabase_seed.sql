@@ -12,7 +12,9 @@
 --
 -- Demo logins (all lowercase):
 --   CUSTOMER : bella / customer123   | juan / customer123
---   ADMIN    : admin / admin123
+--   ADMIN (store owner / merchant) : admin / admin123
+--   legacy MERCHANT accounts share the admin hash (admin123),
+--   but the owner account is admin.
 --
 -- Everything lives in this one file: the 100-item ARTSHOP product catalog,
 -- its product images, and the product-linked demo data (event inventory,
@@ -23,10 +25,13 @@
 
 
 -- ---------- Roles ----------
+-- STAR:DOM is a single-owner brand: two roles only. ADMIN is the store owner
+-- (and the commission artist); MERCHANT stays as a legacy alias honoured by
+-- the guards for older databases.
 INSERT INTO Roles (Id, Name, Description) VALUES
   (1, 'CUSTOMER', 'Marketplace shopper & commission requester'),
-  (2, 'MERCHANT', 'Artisan creator / studio merchant'),
-  (3, 'ADMIN',    'System-level manager (also the artist / merchant)')
+  (2, 'MERCHANT', '(legacy) store staff — treated as an owner by the app'),
+  (3, 'ADMIN',    'Store owner: merchant, studio artist & system admin')
 ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name;
 
 -- ---------- Users & Creator Studios ----------

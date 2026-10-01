@@ -203,6 +203,13 @@ STAR_DOM_Web
  Mirrors the desktop module API so the shared Services layer compiles unchanged.
  </summary>
 </member>
+<member name="P:STAR_DOM.Helpers.Session.IsMerchant">
+ <summary>
+ True for anyone who can operate the store. STAR:DOM is a single-owner
+ brand, so ADMIN is the merchant; the legacy MERCHANT role (pre-consolidation
+ demo accounts) is still honoured for backwards compatibility.
+ </summary>
+</member>
 <member name="P:STAR_DOM.Helpers.Session.CanManageStore">
  <summary>True when the user may open merchant management screens.</summary>
 </member>

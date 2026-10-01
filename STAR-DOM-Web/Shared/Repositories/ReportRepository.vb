@@ -61,7 +61,8 @@ Namespace STAR_DOM.Repositories
         End Function
 
         Public Function TotalCreators() As Integer
-            Return Db.ScalarInt("SELECT COUNT(*) FROM Users u JOIN Roles r ON r.Id = u.RoleId WHERE r.Name = 'MERCHANT' AND u.Status = 'ACTIVE'")
+            Return Db.ScalarInt("SELECT COUNT(*) FROM Users u JOIN Roles r ON r.Id = u.RoleId " &
+                                "WHERE (r.Name = 'ADMIN' OR r.Name = 'MERCHANT') AND u.Status = 'ACTIVE'")
         End Function
 
         Public Function TotalCommissions() As Integer

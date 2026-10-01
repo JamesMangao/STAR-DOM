@@ -432,3 +432,30 @@ missing (user postgres / pw postgres, scram-sha-256), then createdb + load
 absent. Verified end-to-end on an isolated instance (port 5433, temp data dir):
 initdb → createdb → schema (28 tables) → seed → products=100, users=9,
 bundles=3. The live 5432 instance was untouched.
+
+## Two-role consolidation: ADMIN = the merchant (2026-10-01)
+STAR:DOM is a single-owner brand, so the roles are now exactly: CUSTOMER and
+ADMIN (the owner, who is also the merchant/artist). MERCHANT remains as a
+legacy alias, honoured everywhere by the guards.
+- `Session.IsMerchant` now returns true for ADMIN too (so `CanManageStore`,
+  `Guard.RequireMerchant`, the Merchant Studio nav and every merchant page
+  work for the owner without any other change).
+- Owner notifications: OrderService.NotifyRole("MERCHANT", ...) calls switched
+  to "ADMIN" (new order, customer pick-up confirm). Registration still always
+  creates CUSTOMER.
+- Admin Users page: KPIs are now TOTAL USERS / CUSTOMERS / STORE OWNERS-STAFF,
+  and the change-role dropdown offers only CUSTOMER and ADMIN.
+- Live DB migration: mika/renzo/puffu moved MERCHANT -> ADMIN (all products
+  keep their MerchantId ownership; commission slots intact). Role descriptions
+  updated.
+- Seed SQL updated to match (legacy note on the MERCHANT row; demo logins
+  comment now says the owner account is admin/admin123).
+- Latent bug fixed en route: CommissionService.PrimaryMerchantId used MySQL's
+  FIELD() which PostgreSQL does not have (CommissionRequest would 500 on a
+  fresh DB) - rewritten as CASE WHEN, now also filters Status='ACTIVE' and
+  prefers the ADMIN account. UserRepository.ListMerchants (commission slot
+  cards) now also filters Status='ACTIVE'.
+- Verified: mika (now ADMIN) logs in straight to Merchant Dashboard and can
+  open Dashboard/Admin Users/CommissionRequest (200s); the role dropdown shows
+  only CUSTOMER/ADMIN; a fresh bella order generated "New order" notifications
+  landing on ADMIN users.

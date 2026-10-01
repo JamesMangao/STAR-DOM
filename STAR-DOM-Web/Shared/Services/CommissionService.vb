@@ -12,9 +12,12 @@ Namespace STAR_DOM.Services
         Private ReadOnly _notif As New NotificationService()
 
         Public Function PrimaryMerchantId() As Integer
+            ' PostgreSQL has no MySQL FIELD(); a CASE orders ADMIN first. With the
+            ' two-role model the owner (ADMIN) is the commission artist.
             Dim id As Integer = Db.ScalarInt(
                 "SELECT u.Id FROM Users u JOIN Roles r ON r.Id = u.RoleId " &
-                "WHERE (r.Name = 'ADMIN' OR r.Name = 'MERCHANT') ORDER BY FIELD(r.Name, 'ADMIN', 'MERCHANT'), u.Id LIMIT 1")
+                "WHERE (r.Name = 'ADMIN' OR r.Name = 'MERCHANT') AND u.Status = 'ACTIVE' " &
+                "ORDER BY CASE WHEN r.Name = 'ADMIN' THEN 0 ELSE 1 END, u.Id LIMIT 1")
             Return id
         End Function
 
