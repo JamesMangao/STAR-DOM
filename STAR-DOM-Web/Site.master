@@ -20,7 +20,7 @@
     <%= STAR_DOM.Web.Csrf.HiddenField() %>
     <header class="topbar">
         <div class="topbar-inner">
-            <a class="brand" href="/App/Marketplace.aspx">
+            <a class="brand" id="brandLink" runat="server" href="/">
                 <img class="brand-img" src="/Assets/stardom-logo.webp" alt="STAR:DOM logo" />
                 <span class="brand-txt">
                     <span class="brand-logo">STAR:DOM<span class="brand-dot"></span></span>
@@ -37,7 +37,7 @@
                 <a class="icon-btn" id="cartBtn" runat="server" href="/App/Cart.aspx" title="Cart">
                     <span class="ms">shopping_bag</span><asp:Literal ID="cartCount" runat="server" />
                 </a>
-                <a class="icon-btn" href="/App/Notifications.aspx" title="Notifications">
+                <a class="icon-btn" id="notifBtn" runat="server" href="/App/Notifications.aspx" title="Notifications">
                     <span class="ms">notifications</span><asp:Literal ID="notifCount" runat="server" />
                 </a>
                 <asp:PlaceHolder ID="userPh" runat="server" />

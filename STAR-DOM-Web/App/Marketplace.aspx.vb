@@ -16,7 +16,6 @@ Namespace STAR_DOM.Web
         Private ReadOnly _events As New EventService()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
-            Guard.RequireLogin()
             Try
                 RenderPage()
             Catch ex As Exception

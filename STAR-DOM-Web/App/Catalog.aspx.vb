@@ -15,7 +15,6 @@ Namespace STAR_DOM.Web
         Private ReadOnly _catalog As New CatalogService()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
-            Guard.RequireLogin()
             Try
                 RenderPage()
             Catch ex As Exception

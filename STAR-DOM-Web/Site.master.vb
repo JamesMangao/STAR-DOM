@@ -15,6 +15,8 @@ Namespace STAR_DOM.Web
         Protected navLiteral As Literal
         Protected cartCount As Literal
         Protected cartBtn As System.Web.UI.HtmlControls.HtmlAnchor
+        Protected notifBtn As System.Web.UI.HtmlControls.HtmlAnchor
+        Protected brandLink As System.Web.UI.HtmlControls.HtmlAnchor
         Protected notifCount As Literal
         Protected footerTourLinks As Literal
         Protected toastWrap As System.Web.UI.HtmlControls.HtmlGenericControl
@@ -73,12 +75,19 @@ Namespace STAR_DOM.Web
             RenderFooterLinks()
 
             If Not STAR_DOM.Helpers.Session.IsAuthenticated Then
+                ' Public visitor: the brand leads to the storefront landing page, and
+                ' the notifications bell is hidden (it points at an account page).
+                If brandLink IsNot Nothing Then brandLink.HRef = "/"
+                If notifBtn IsNot Nothing Then notifBtn.Visible = False
                 userPh.Controls.Add(New LiteralControl(WebUi.BtnHref("/Login.aspx", "Sign In", "ghost")))
                 notifCount.Text = ""
                 cartCount.Text = ""
                 RenderNav(Nothing)
                 Return
             End If
+
+            ' Signed in: the brand leads to the shopper/merchant home.
+            If brandLink IsNot Nothing Then brandLink.HRef = "/App/Marketplace.aspx"
 
             ' Header counts
             Dim cartN As Integer = 0

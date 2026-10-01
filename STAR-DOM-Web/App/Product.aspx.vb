@@ -18,7 +18,6 @@ Namespace STAR_DOM.Web
         Private ReadOnly _cart As New CartService()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
-            Guard.RequireLogin()
             Try
                 Dim id As Integer = 0
                 Integer.TryParse(Request.QueryString("id"), id)

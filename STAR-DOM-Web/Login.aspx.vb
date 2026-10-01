@@ -25,9 +25,15 @@ Namespace STAR_DOM.Web
 
         Public ReadOnly Property ReturnUrl As String
             Get
-                Dim r As String = Request.QueryString("r")
+                ' The value arrives in the query string on GET and in the form body
+                ' on POST, so check both.
+                Dim r As String = Convert.ToString(Request.QueryString("r"))
+                If String.IsNullOrEmpty(r) Then r = Convert.ToString(Request.Form("r"))
                 If String.IsNullOrEmpty(r) Then r = ""
+                ' Local paths only. "//evil.com" starts with "/" but browsers read it
+                ' as a protocol-relative host, so it is rejected explicitly.
                 If Not r.StartsWith("/", StringComparison.Ordinal) Then r = ""
+                If r.StartsWith("//", StringComparison.Ordinal) Then r = ""
                 Return r
             End Get
         End Property

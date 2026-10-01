@@ -49,8 +49,10 @@ cd /d D:\STARDOM\STAR-DOM-Web
 "C:\Program Files\IIS Express\iisexpress.exe" /path:"D:\STARDOM\STAR-DOM-Web" /port:8095 /clr:v4.0
 ```
 
-Then open **http://localhost:8095** — unauthenticated visitors are sent to the
-sign-in page. Close the IIS Express window to stop.
+Then open **http://localhost:8095** — the storefront landing page loads for
+anonymous visitors, who can browse the marketplace, catalog, and product pages
+freely. Sign-in is only required to add to cart, check out, or open any account
+page. Close the IIS Express window to stop.
 
 > Note: always browse via `http://localhost:8095` (not `127.0.0.1:8095` — IIS
 > Express only binds the `localhost` host name for this ad-hoc launch).

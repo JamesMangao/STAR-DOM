@@ -96,6 +96,7 @@
     <Compile Include="Code\WebUi.vb" />
     <Compile Include="Global.asax.vb" />
     <Compile Include="Site.master.vb" />
+    <Compile Include="Default.aspx.vb" />
     <Compile Include="Login.aspx.vb" />
     <Compile Include="Register.aspx.vb" />
     <Compile Include="Logout.aspx.vb" />
@@ -141,6 +142,7 @@
   <!-- Content delivered with the site -->
   <ItemGroup>
     <Content Include="css\site.css" />
+    <Content Include="Default.aspx" />
     <Content Include="Login.aspx" />
     <Content Include="Register.aspx" />
     <Content Include="Logout.aspx" />

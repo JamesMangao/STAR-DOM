@@ -102,6 +102,13 @@ STAR_DOM_Web
  correct number, so the toast needs no data of its own.
  </summary>
 </member>
+<member name="T:STAR_DOM.Web.DefaultPage">
+ <summary>
+ Public storefront landing page. Anonymous visitors may browse the catalog,
+ view products and read this page without signing in; the cart, checkout and
+ every account page stay behind Guard.RequireLogin().
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.PopupLocationsPage.CurrentHero(STAR_DOM.Models.PopUpEvent)">
  <summary>Split hero stage for the current active location (4.html).</summary>
 </member>
