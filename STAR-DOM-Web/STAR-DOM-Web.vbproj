@@ -11,7 +11,9 @@
     <OutputType>Library</OutputType>
     <RootNamespace></RootNamespace>
     <AssemblyName>STAR_DOM_Web</AssemblyName>
-    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
+    <!-- 4.8 (not 4.8.1): matches web.config, tools/refasm and the Mono/Docker
+         build, and lets VS2017/2019 open the project too (they cap at 4.8). -->
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <MyType>WebControl</MyType>
     <OptionStrict>On</OptionStrict>
     <OptionExplicit>On</OptionExplicit>
