@@ -25,13 +25,7 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Sub HandleActions()
-            Dim ret As String = Request.QueryString("ret")
-            ' Same-origin only: a leading "//" would be read as a protocol-relative
-            ' host by the browser, so it is rejected alongside anything that is not
-            ' a rooted path.
-            If ret = "" OrElse Not ret.StartsWith("/", StringComparison.Ordinal) OrElse ret.StartsWith("//", StringComparison.Ordinal) Then
-                ret = "/App/Cart.aspx"
-            End If
+            Dim ret As String = Guard.SafeReturnUrl(Request.QueryString("ret"), "/App/Cart.aspx")
 
             If Request.QueryString("add") <> "" Then
                 Dim pid As Integer = 0

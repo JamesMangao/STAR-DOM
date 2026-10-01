@@ -29,12 +29,14 @@ Namespace STAR_DOM.Web
                 ' on POST, so check both.
                 Dim r As String = Convert.ToString(Request.QueryString("r"))
                 If String.IsNullOrEmpty(r) Then r = Convert.ToString(Request.Form("r"))
-                If String.IsNullOrEmpty(r) Then r = ""
-                ' Local paths only. "//evil.com" starts with "/" but browsers read it
-                ' as a protocol-relative host, so it is rejected explicitly.
-                If Not r.StartsWith("/", StringComparison.Ordinal) Then r = ""
-                If r.StartsWith("//", StringComparison.Ordinal) Then r = ""
-                Return r
+                Return Guard.SafeReturnUrl(r, "")
+            End Get
+        End Property
+
+        ''' <summary>Query string that carries the return target on to Register.</summary>
+        Public ReadOnly Property ReturnQuery As String
+            Get
+                Return If(ReturnUrl <> "", "?r=" & HttpUtility.UrlEncode(ReturnUrl), "")
             End Get
         End Property
 

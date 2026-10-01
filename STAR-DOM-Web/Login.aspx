@@ -79,7 +79,7 @@
                         }
                     })();
                 </script>
-                <p style="font-size:13px;margin:16px 0 0">New to STAR:DOM? <a href="/Register.aspx" style="color:var(--primary);font-weight:700">Create an account</a></p>
+                <p style="font-size:13px;margin:16px 0 0">New to STAR:DOM? <a href="/Register.aspx<%= Me.ReturnQuery %>" style="color:var(--primary);font-weight:700">Create an account</a></p>
                 <script>
                     (function () {
                         document.addEventListener('click', function (e) {

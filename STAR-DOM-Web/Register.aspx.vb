@@ -21,6 +21,23 @@ Namespace STAR_DOM.Web
             Return Convert.ToString(Session("flash_" & key))
         End Function
 
+        Public ReadOnly Property ReturnUrl As String
+            Get
+                ' The value arrives in the query string on GET and in the form body
+                ' on POST, so check both.
+                Dim r As String = Convert.ToString(Request.QueryString("r"))
+                If String.IsNullOrEmpty(r) Then r = Convert.ToString(Request.Form("r"))
+                Return Guard.SafeReturnUrl(r, "")
+            End Get
+        End Property
+
+        ''' <summary>Query string that carries the return target to Login or the form.</summary>
+        Public ReadOnly Property ReturnQuery As String
+            Get
+                Return If(ReturnUrl <> "", "?r=" & HttpUtility.UrlEncode(ReturnUrl), "")
+            End Get
+        End Property
+
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             If STAR_DOM.Helpers.Session.IsAuthenticated Then
                 Response.Redirect(DefaultHome(), True)
@@ -39,14 +56,16 @@ Namespace STAR_DOM.Web
                     For Each k As String In {"fullName", "email", "username", "phone"}
                         Session("flash_" & k) = Nothing
                     Next
-                    Response.Redirect(DefaultHome(), True)
+                    ' Registration signs the customer in, so reissue the token like Login does.
+                    Csrf.Rotate()
+                    Response.Redirect(If(ReturnUrl <> "", ReturnUrl, DefaultHome()), True)
                 Else
                     Session("flash_msg") = result.Message
                     Session("flash_fullName") = fullName
                     Session("flash_email") = email
                     Session("flash_username") = username
                     Session("flash_phone") = phone
-                    Response.Redirect("/Register.aspx", True)
+                    Response.Redirect("/Register.aspx" & ReturnQuery, True)
                 End If
             End If
         End Sub

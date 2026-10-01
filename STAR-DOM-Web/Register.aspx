@@ -84,6 +84,7 @@
                         </div>
                     </div>
                     <input type="hidden" name="role" value="CUSTOMER" />
+                    <input type="hidden" name="r" value="<%= STAR_DOM.Web.WebUi.Attr(Me.ReturnUrl) %>" />
                     <button class="btn primary" type="submit" style="width:100%;margin-top:6px"><%= STAR_DOM.Web.WebUi.Ic("how_to_reg") %> Create Account</button>
                 </form>
                 <script>
@@ -108,7 +109,7 @@
                         bindToggle('pw2', 'pw2Toggle', 'pw2ToggleIcon');
                     })();
                 </script>
-                <p style="font-size:13px;margin:16px 0 0">Already have an account? <a href="/Login.aspx" style="color:var(--primary);font-weight:700">Sign in</a></p>
+                <p style="font-size:13px;margin:16px 0 0">Already have an account? <a href="/Login.aspx<%= Me.ReturnQuery %>" style="color:var(--primary);font-weight:700">Sign in</a></p>
                 <script>
                     (function () {
                         document.addEventListener('click', function (e) {

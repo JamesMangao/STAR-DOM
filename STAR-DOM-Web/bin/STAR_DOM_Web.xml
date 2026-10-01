@@ -43,6 +43,13 @@ STAR_DOM_Web
 <member name="T:STAR_DOM.Web.Guard">
  <summary>Role-based access guards used at the top of every protected page.</summary>
 </member>
+<member name="M:STAR_DOM.Web.Guard.SafeReturnUrl(System.String,System.String)">
+ <summary>Accepts a same-origin rooted path, otherwise returns the fallback.</summary>
+ <remarks>
+ A leading "//" starts with "/" but browsers read it as a protocol-relative
+ host, so it is rejected explicitly to prevent open redirects.
+ </remarks>
+</member>
 <member name="T:STAR_DOM.Web.WebUi">
  <summary>Shared server-side HTML helpers for the STAR:DOM web UI.</summary>
 </member>
@@ -108,6 +115,12 @@ STAR_DOM_Web
  view products and read this page without signing in; the cart, checkout and
  every account page stay behind Guard.RequireLogin().
  </summary>
+</member>
+<member name="P:STAR_DOM.Web.LoginPage.ReturnQuery">
+ <summary>Query string that carries the return target on to Register.</summary>
+</member>
+<member name="P:STAR_DOM.Web.RegisterPage.ReturnQuery">
+ <summary>Query string that carries the return target to Login or the form.</summary>
 </member>
 <member name="M:STAR_DOM.Web.PopupLocationsPage.CurrentHero(STAR_DOM.Models.PopUpEvent)">
  <summary>Split hero stage for the current active location (4.html).</summary>

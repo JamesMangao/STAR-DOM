@@ -37,6 +37,18 @@ Namespace STAR_DOM.Web
             Return String.Equals(HttpContext.Current.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)
         End Function
 
+        ''' <summary>Accepts a same-origin rooted path, otherwise returns the fallback.</summary>
+        ''' <remarks>
+        ''' A leading "//" starts with "/" but browsers read it as a protocol-relative
+        ''' host, so it is rejected explicitly to prevent open redirects.
+        ''' </remarks>
+        Public Function SafeReturnUrl(raw As String, fallback As String) As String
+            Dim r As String = If(raw, "")
+            If Not r.StartsWith("/", StringComparison.Ordinal) Then Return fallback
+            If r.StartsWith("//", StringComparison.Ordinal) Then Return fallback
+            Return r
+        End Function
+
     End Module
 
 End Namespace
