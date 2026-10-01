@@ -93,7 +93,7 @@ if errorlevel 1 (
         pause
         exit /b 1
     )
-    echo Database ready: stardom (28 tables, seeded).
+    echo Database ready: stardom - 28 tables, seeded.
 )
 exit /b 0
 

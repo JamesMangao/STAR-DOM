@@ -1,7 +1,8 @@
 @echo off
 rem ============================================================
 rem  STAR:DOM Website - share it publicly via a Cloudflare tunnel
-rem  Starts IIS Express on port 8095, then opens a free
+rem  Starts the local PostgreSQL database and IIS Express on port
+rem  8095, then opens a free
 rem  Cloudflare "quick tunnel" so anyone with the link can view
 rem  the site without installing anything on their side.
 rem  Close this window to stop sharing.
@@ -9,7 +10,11 @@ rem ============================================================
 setlocal
 title STAR:DOM - Share via Cloudflare
 
-set "SITE=%~dp0STAR-DOM-Web"
+rem This script lives INSIDE the STAR-DOM-Web site folder, so the site
+rem root is the folder this script sits in. %~dp0 ends with a backslash
+rem and IIS Express rejects a /path:"...\" that ends in one - strip it.
+set "SITE=%~dp0"
+if "%SITE:~-1%"=="\" set "SITE=%SITE:~0,-1%"
 
 rem --- locate IIS Express ---
 set "IISEXE=C:\Program Files\IIS Express\iisexpress.exe"
@@ -43,6 +48,14 @@ exit /b 1
 
 :cfd_found
 
+rem --- make sure the PostgreSQL database is running (starts it if needed) ---
+call "%~dp0..\start-db.bat"
+if errorlevel 1 (
+    echo The database did not start - see the messages above.
+    pause
+    exit /b 1
+)
+
 echo [1/3] Starting IIS Express on http://localhost:8095 ...
 start "STAR:DOM - IIS Express" /min "%IISEXE%" /path:"%SITE%" /port:8095 /clr:v4.0 /systray:false
 
@@ -58,7 +71,8 @@ if %tries% gtr 30 (
 )
 curl.exe -s -o NUL --max-time 2 http://localhost:8095/ >nul 2>nul
 if errorlevel 1 (
-    timeout /t 1 /nobreak >nul
+    rem ping-based delay: "timeout" misbehaves when stdin is redirected
+    ping -n 2 127.0.0.1 >nul
     goto waitloop
 )
 
