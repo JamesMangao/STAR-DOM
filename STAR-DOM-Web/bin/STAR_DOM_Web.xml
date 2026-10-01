@@ -151,6 +151,30 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.PopupLocationsPage.VenueImage(STAR_DOM.Models.PopUpEvent)">
  <summary>Background for a venue photo: the mall photo when one is on file, else the brand gradient.</summary>
 </member>
+<member name="T:STAR_DOM.Web.CheckoutPage.CheckoutDraft">
+ <summary>One POST's worth of checkout fields, kept so a validation failure can
+ redisplay what the buyer typed instead of making them retype six address
+ fields. Nothing is read back out of the session, so it needs no serialization.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.CheckoutPage.Posted(System.String)">
+ <summary>One posted value, trimmed, or "" when the field was not sent.</summary>
+ <remarks>
+ Convert.ToString hands back Nothing for a missing field, and a disabled
+ input (the whole address block while pick-up is selected) is never posted
+ at all — so the value has to be coalesced before it is trimmed, not after.
+ Named Posted rather than Form: Page already has a Form property, and
+ shadowing it would be a trap for anyone editing this page later.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Web.CheckoutPage.CheckDraft(STAR_DOM.Web.CheckoutPage.CheckoutDraft)">
+ <summary>Returns the first problem, or Nothing when the draft can be ordered.</summary>
+</member>
+<member name="M:STAR_DOM.Web.CheckoutPage.ComposeAddress(STAR_DOM.Web.CheckoutPage.CheckoutDraft)">
+ <summary>
+ Joins the split address inputs into the single line the orders table stores.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Web.CommissionHubPage">
  <summary>
  Single entry point for every commission flow: customers discover artists and open a
@@ -256,6 +280,9 @@ STAR_DOM_Web
 <member name="T:STAR_DOM.Helpers.Validators">
  <summary>Field validation helpers. Each returns Nothing when valid, else an error message.
  Web variant: no MessageBox — Alert/Info are no-ops (the page shows service messages).</summary>
+</member>
+<member name="M:STAR_DOM.Helpers.Validators.PostalCode(System.String)">
+ <summary>Philippine postal code: exactly four digits.</summary>
 </member>
 <member name="T:STAR_DOM.Helpers.CommissionSlotView">
  <summary>

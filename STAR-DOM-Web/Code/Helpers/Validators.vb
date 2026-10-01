@@ -26,6 +26,14 @@ Namespace STAR_DOM.Helpers
             Return Nothing
         End Function
 
+        ''' <summary>Philippine postal code: exactly four digits.</summary>
+        Public Function PostalCode(value As String) As String
+            If String.IsNullOrWhiteSpace(value) Then Return Nothing
+            Dim digits As String = New String(value.Where(Function(c) Char.IsDigit(c)).ToArray())
+            If digits.Length <> 4 Then Return "Please enter a 4-digit postal code."
+            Return Nothing
+        End Function
+
         Public Function Number(value As String, label As String, Optional min As Decimal = Decimal.MinValue, Optional max As Decimal = Decimal.MaxValue) As String
             If String.IsNullOrWhiteSpace(value) Then Return Nothing
             Dim d As Decimal
