@@ -12,6 +12,7 @@ D:\STARDOM
 └── STAR-DOM-Web\                 <- the website (everything lives here)
     ├── run-website.bat           <- ★ double-click this to run the site
     ├── share-website.bat         <- share the local site via a Cloudflare tunnel
+    │                                (cloudflared ships in tools\cloudflared\)
     ├── STAR-DOM-Web.vbproj
     ├── web.config                <- fallback connection string (localhost dev)
     ├── App\                      <- customer + merchant + admin pages

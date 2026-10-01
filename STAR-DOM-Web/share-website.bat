@@ -21,18 +21,27 @@ if not exist "%IISEXE%" (
     exit /b 1
 )
 
-rem --- locate cloudflared ---
+rem --- locate cloudflared: the repo's tools\ copy first, then PATH, then
+rem     Program Files. Sequential checks with goto (not nested parentheses):
+rem     %CFD% inside a (...) block expands at parse time, which once made the
+rem     Program Files check read the wrong value and always fail.
+set "CFD=%~dp0..\tools\cloudflared\cloudflared.exe"
+if exist "%CFD%" goto :cfd_found
+
 set "CFD=cloudflared"
 where cloudflared >nul 2>nul
-if errorlevel 1 (
-    set "CFD=C:\Program Files (x86)\cloudflared\cloudflared.exe"
-    if not exist "%CFD%" (
-        echo cloudflared was not found.
-        echo Install it with: winget install cloudflare.cloudflared
-        pause
-        exit /b 1
-    )
-)
+if not errorlevel 1 goto :cfd_found
+
+set "CFD=C:\Program Files (x86)\cloudflared\cloudflared.exe"
+if exist "%CFD%" goto :cfd_found
+
+echo cloudflared was not found.
+echo The repo ships a copy at tools\cloudflared\cloudflared.exe —
+echo run "git pull" if it is missing, or install with: winget install Cloudflare.cloudflared
+pause
+exit /b 1
+
+:cfd_found
 
 echo [1/3] Starting IIS Express on http://localhost:8095 ...
 start "STAR:DOM - IIS Express" /min "%IISEXE%" /path:"%SITE%" /port:8095 /clr:v4.0 /systray:false

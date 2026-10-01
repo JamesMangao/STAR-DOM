@@ -459,3 +459,15 @@ legacy alias, honoured everywhere by the guards.
   open Dashboard/Admin Users/CommissionRequest (200s); the role dropdown shows
   only CUSTOMER/ADMIN; a fresh bella order generated "New order" notifications
   landing on ADMIN users.
+
+## cloudflared vendored for share-website.bat (2026-10-01)
+The other machine hit "cloudflared was not found" — the tunnel binary was not
+in the repo and not installed there. Fixed by vendoring the official
+cloudflared-windows-amd64.exe 2026.9.3 (52.8 MB) at `tools\cloudflared\` and
+rewriting the share-website.bat locator: repo copy first, then PATH, then
+Program Files — with sequential `goto :cfd_found` checks instead of nested
+parentheses (the old block read %CFD% at parse time, a latent batch bug that
+made the Program Files fallback unreliable). 52.8 MB exceeds GitHub's 50 MB
+advisory but is well under the 100 MB hard limit (expect a push warning).
+Tunnel verified live: quick tunnel issued a trycloudflare.com URL against the
+local 8095 site.
