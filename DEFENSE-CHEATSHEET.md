@@ -228,7 +228,7 @@ Models (Shared\Models) are shared DTOs used by all layers.
 
 ## 7. Demo Flow (5–7 minutes)
 
-1. **Landing page (anonymous)** — open `http://localhost:8095`. Show the public storefront: hero, live stats, featured pieces — then browse the catalog with no account. Click **Add to cart** to show it bounce to the login gate, then **Login** as `bella / customer123` and point out it returns and completes the add.
+1. **Landing page (anonymous)** — open `http://localhost:8095`. Show the public storefront: hero, live stats, featured pieces — then browse the catalog and the pop-up tour schedule with no account. Click **Add to cart** to show the premium sign-in gate ("Sign in required", the product, and the CTAs) — then **Sign In** as `bella / customer123` and point out it returns and completes the add. Say the gate is only a courtesy layer: every account page still redirects server-side without it.
 2. **Catalog** — point at the bundle banner; open a sticker product ("any 4 for ₱100").
 3. **Add 4 stickers** → cart shows Subtotal ₱120, Bundle savings −₱20, Total ₱100.
 4. **Checkout** → choose **Pick-up**, select an upcoming stall (hours visible), GCash → place order.

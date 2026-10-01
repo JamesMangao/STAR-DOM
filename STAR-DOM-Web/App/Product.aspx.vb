@@ -104,11 +104,13 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""frow"">")
             If p.InStock Then
                 sb.Append(WebUi.BtnHref("/App/Cart.aspx?add=" & p.Id.ToString() & "&q=1&ret=" &
-                                        Server.UrlEncode("/App/Product.aspx?id=" & p.Id.ToString()), "Add to Cart", "primary", "add_shopping_cart"))
+                                        Server.UrlEncode("/App/Product.aspx?id=" & p.Id.ToString()), "Add to Cart", "primary", "add_shopping_cart",
+                                        WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice)))
             End If
             Dim wlText As String = If(_cart.InWishlist(p.Id), "Remove from Wishlist", "Add to Wishlist")
             sb.Append(WebUi.BtnHref("/App/Cart.aspx?wl=" & p.Id.ToString() & "&ret=" &
-                                    Server.UrlEncode("/App/Product.aspx?id=" & p.Id.ToString()), wlText, "ghost", "favorite"))
+                                    Server.UrlEncode("/App/Product.aspx?id=" & p.Id.ToString()), wlText, "ghost", "favorite",
+                                    WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice)))
             sb.Append("</div>")
             sb.Append("</div></div>")
 

@@ -50,12 +50,29 @@ cd /d D:\STARDOM\STAR-DOM-Web
 ```
 
 Then open **http://localhost:8095** — the storefront landing page loads for
-anonymous visitors, who can browse the marketplace, catalog, and product pages
-freely. Sign-in is only required to add to cart, check out, or open any account
-page. Close the IIS Express window to stop.
+anonymous visitors, who can browse the marketplace, catalog, product pages, and
+the pop-up tour schedule freely. Sign-in is only required to add to cart, check
+out, or open any account page. Close the IIS Express window to stop.
 
 > Note: always browse via `http://localhost:8095` (not `127.0.0.1:8095` — IIS
 > Express only binds the `localhost` host name for this ad-hoc launch).
+
+## The sign-in gate
+
+Pressing **Add to cart** (or any account-only link) while signed out opens a
+premium modal instead of a bare redirect — it shows the product, explains why an
+account is needed, and offers **Sign In** / **Create free account**. Both carry
+the clicked link as the return target, so the item lands in the cart the moment
+the visitor signs in (`?r=` is threaded through `Login.aspx` *and*
+`Register.aspx`).
+
+It is a courtesy layer, not the security boundary. Every account page still
+starts with `Guard.Require*`, so the gate is inert without JavaScript, when
+someone types the URL directly, and for signed-in visitors (the master only
+renders it when nobody is authenticated, which also makes the shell script a
+no-op). Product buttons are tagged server-side by `WebUi.AuthGateAttrs`; the
+remaining account-only links are matched by one `GATED` path list in the
+`Site.master` script.
 
 ## Demo accounts
 

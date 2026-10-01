@@ -17,6 +17,7 @@ Namespace STAR_DOM.Web
         Protected cartBtn As System.Web.UI.HtmlControls.HtmlAnchor
         Protected notifBtn As System.Web.UI.HtmlControls.HtmlAnchor
         Protected brandLink As System.Web.UI.HtmlControls.HtmlAnchor
+        Protected authGate As System.Web.UI.HtmlControls.HtmlGenericControl
         Protected notifCount As Literal
         Protected footerTourLinks As Literal
         Protected toastWrap As System.Web.UI.HtmlControls.HtmlGenericControl
@@ -79,6 +80,12 @@ Namespace STAR_DOM.Web
                 ' the notifications bell is hidden (it points at an account page).
                 If brandLink IsNot Nothing Then brandLink.HRef = "/"
                 If notifBtn IsNot Nothing Then notifBtn.Visible = False
+                ' The premium sign-in gate only exists for signed-out visitors; the
+                ' script in the shell is inert when this markup is absent.
+                If authGate IsNot Nothing Then authGate.Visible = True
+                ' Viewing the cart needs an account too, so the bag icon gets the
+                ' same gate instead of a silent redirect.
+                If cartBtn IsNot Nothing Then cartBtn.Attributes("data-auth-gate") = "1"
                 userPh.Controls.Add(New LiteralControl(WebUi.BtnHref("/Login.aspx", "Sign In", "ghost")))
                 notifCount.Text = ""
                 cartCount.Text = ""

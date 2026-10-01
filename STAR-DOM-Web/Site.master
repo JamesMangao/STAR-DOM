@@ -115,6 +115,34 @@
         </div>
     </div>
 
+    <!-- STAR:DOM premium sign-in gate. Rendered only for anonymous visitors
+         (Site.master.vb sets Visible); when it is absent the script below treats
+         the whole gate as inert, so signed-in users never see it. -->
+    <div class="modal-backdrop" id="authGate" runat="server" visible="false" aria-hidden="true">
+        <div class="modal-card auth-gate" role="dialog" aria-modal="true" aria-labelledby="authGateTitle" aria-describedby="authGateMsg">
+            <span class="ag-ribbon" aria-hidden="true"></span>
+            <button type="button" class="ag-x" id="authGateX" aria-label="Close"><span class="ms sm">close</span></button>
+            <span class="modal-ic ag-ic ms">lock</span>
+            <span class="ag-eyebrow">Sign in required</span>
+            <h3 id="authGateTitle">Almost there</h3>
+            <p class="modal-msg" id="authGateMsg">Browsing is open to everyone. Your cart, orders, and commission requests live inside your account.</p>
+            <div class="ag-product" id="authGateProduct" style="display:none">
+                <span class="ag-thumb" id="authGateThumb"></span>
+                <span class="ag-pmeta"><b id="authGateName"></b><span id="authGatePrice"></span></span>
+            </div>
+            <ul class="ag-benefits">
+                <li><span class="ms sm">check_circle</span> Check out in seconds with GCash, Maya, or COD</li>
+                <li><span class="ms sm">check_circle</span> Follow nationwide delivery with live J&amp;T status</li>
+                <li><span class="ms sm">check_circle</span> Keep your wishlist and commissions in one place</li>
+            </ul>
+            <div class="modal-actions ag-actions">
+                <a class="btn primary" id="authGateSignIn" href="/Login.aspx">Sign In</a>
+                <a class="btn ghost" id="authGateRegister" href="/Register.aspx">Create free account</a>
+            </div>
+            <button type="button" class="ag-skip" id="authGateSkip">Continue browsing</button>
+        </div>
+    </div>
+
     <!-- Page route progress indicator -->
     <div id="page-progress"></div>
 
@@ -125,12 +153,144 @@
 
     <script>
     (function () {
+        // ---------- Premium sign-in gate ----------
+        // Present only when the master rendered it, i.e. only for anonymous
+        // visitors. When it is null every function below is inert, so a signed-in
+        // shopper is never intercepted.
+        var gate = document.getElementById('authGate');
+        var gateCard = gate ? gate.querySelector('.auth-gate') : null;
+        var gateSignIn = document.getElementById('authGateSignIn');
+        var gateRegister = document.getElementById('authGateRegister');
+        var gateProduct = document.getElementById('authGateProduct');
+        var gateThumb = document.getElementById('authGateThumb');
+        var gateName = document.getElementById('authGateName');
+        var gatePrice = document.getElementById('authGatePrice');
+        var gateSkip = document.getElementById('authGateSkip');
+        var gateX = document.getElementById('authGateX');
+        var gateLastFocus = null;
+
+        // Mirrors the Guard.Require* set in the page code. Kept as a list so a new
+        // account-only page is one entry away from being covered.
+        var GATED = [
+            '/app/cart.aspx',
+            '/app/checkout.aspx',
+            '/app/orders.aspx',
+            '/app/orderdetail.aspx',
+            '/app/notifications.aspx',
+            '/app/profile.aspx',
+            '/app/receipt.aspx',
+            '/app/commissionhub.aspx',
+            '/app/commissionrequest.aspx',
+            '/app/commissiondetail.aspx',
+            '/app/merchant/',
+            '/app/admin/'
+        ];
+
+        function isGated(el) {
+            if (!gate) return false;
+            if (el.hasAttribute('data-auth-gate')) return true;
+            var path = (el.pathname || '').toLowerCase();
+            if (!path) return false;
+            for (var i = 0; i < GATED.length; i++) {
+                if (path.indexOf(GATED[i]) === 0) return true;
+            }
+            return false;
+        }
+
+        // Product images are stored as rooted, same-origin file paths, but they can
+        // contain spaces, so the guard only rejects what could break out of the
+        // quoted url() or reach off-origin.
+        function safeImg(v) {
+            if (!v) return '';
+            v = v.trim();
+            if (v.charAt(0) !== '/') return '';
+            if (/["'\\<>]/.test(v)) return '';
+            if (/^[/\\]{2}/.test(v)) return '';
+            return v;
+        }
+
+        function paintThumb(name, img, seed) {
+            gateThumb.style.backgroundImage = '';
+            var imgSafe = safeImg(img);
+            if (imgSafe) {
+                gateThumb.style.backgroundImage = "url('" + imgSafe + "')";
+                gateThumb.classList.add('has-img');
+                gateThumb.textContent = '';
+                return;
+            }
+            gateThumb.classList.remove('has-img');
+            var hue = (parseInt(seed, 10) || 0) * 47 % 360;
+            gateThumb.style.background = 'linear-gradient(135deg, hsl(' + hue + ',72%,93%), hsl(' +
+                ((hue + 40) % 360) + ',66%,85%))';
+            var parts = (name || '').trim().split(/\s+/);
+            var letters = '';
+            for (var i = 0; i < Math.min(parts.length, 2); i++) {
+                if (parts[i]) letters += parts[i].charAt(0);
+            }
+            gateThumb.textContent = letters.toUpperCase() || 'SD';
+        }
+
+        function openGate(link) {
+            var href = link.getAttribute('href') || '';
+            var r = encodeURIComponent(href);
+            // Both CTAs carry the clicked link as the return target, so signing in
+            // (or registering) completes exactly what the visitor asked for.
+            gateSignIn.href = '/Login.aspx?r=' + r;
+            gateRegister.href = '/Register.aspx?r=' + r;
+
+            var name = link.getAttribute('data-name');
+            if (name) {
+                gateName.textContent = name;
+                gatePrice.textContent = link.getAttribute('data-price') || '';
+                paintThumb(name, link.getAttribute('data-img'), link.getAttribute('data-seed'));
+                gateProduct.style.display = 'flex';
+            } else {
+                gateProduct.style.display = 'none';
+            }
+
+            gateLastFocus = link;
+            gate.classList.add('open');
+            gate.setAttribute('aria-hidden', 'false');
+            gateCard.classList.remove('pop');
+            void gateCard.offsetWidth;
+            gateCard.classList.add('pop');
+            gateSignIn.focus();
+        }
+
+        function closeGate() {
+            if (!gate) return;
+            if (!gate.classList.contains('open')) return;
+            gate.classList.remove('open');
+            gate.setAttribute('aria-hidden', 'true');
+            if (gateLastFocus) gateLastFocus.focus();
+        }
+
+        document.addEventListener('click', function (e) {
+            var link = e.target && e.target.closest ? e.target.closest('a') : null;
+            if (!link || !link.href || !isGated(link)) return;
+            e.preventDefault();
+            openGate(link);
+        });
+
+        if (gate) {
+            gateSkip.addEventListener('click', closeGate);
+            gateX.addEventListener('click', closeGate);
+            gate.addEventListener('click', function (e) {
+                if (e.target === gate) closeGate();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (!gate.classList.contains('open')) return;
+                if (e.key === 'Escape') closeGate();
+            });
+        }
+
         // Page transition exit animation & progress bar
         var bar = document.getElementById('page-progress');
         document.addEventListener('click', function (e) {
             var link = e.target && e.target.closest ? e.target.closest('a') : null;
             if (!link || !link.href) return;
             if (link.target === '_blank' || link.hasAttribute('download') || link.getAttribute('data-confirm')) return;
+            if (isGated(link)) return;
             if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
 
             var url;

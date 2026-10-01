@@ -15,7 +15,9 @@ Namespace STAR_DOM.Web
         Private ReadOnly _catalog As New CatalogService()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
-            Guard.RequireLogin()
+            ' Public: the tour schedule, venue details, map, and event-exclusive
+            ' inventory are marketing content like the storefront. Buying from here
+            ' still needs an account, handled by the gate popup on the add buttons.
             Try
                 Dim detailId As Integer = 0
                 Integer.TryParse(Request.QueryString("id"), detailId)
@@ -284,7 +286,9 @@ Namespace STAR_DOM.Web
                     sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name, "height:150px"))
                     sb.Append("<div class=""pbody""><b>" & WebUi.Esc(p.Name) & "</b>" & WebUi.Money(p.EffectivePrice) &
                               WebUi.BtnHref("/App/Cart.aspx?add=" & p.Id.ToString() & "&q=1&ret=" &
-                                            Server.UrlEncode("/App/PopupLocations.aspx?id=" & id.ToString()), "Add to bag", "primary", "add_shopping_cart") &
+                                            Server.UrlEncode("/App/PopupLocations.aspx?id=" & id.ToString()),
+                                            "Add to bag", "primary", "add_shopping_cart",
+                                            WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice)) &
                               "</div></div>")
                 Next
                 sb.Append("</div>")

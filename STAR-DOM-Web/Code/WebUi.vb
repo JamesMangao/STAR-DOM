@@ -94,6 +94,33 @@ Namespace STAR_DOM.Web
             Return "₱" & d.ToString("N2")
         End Function
 
+        ''' <summary>
+        ''' Marks a link as needing a signed-in account so the premium gate popup in
+        ''' Site.master intercepts it for anonymous visitors. Pass it as
+        ''' <see cref="BtnHref"/>'s <c>attrs</c> argument. Returns an empty string when the
+        ''' visitor is already signed in, so authenticated markup is unchanged.
+        ''' </summary>
+        ''' <remarks>
+        ''' The anchor keeps its real href, so the plain sign-in redirect still happens
+        ''' without JavaScript and if someone types the URL directly. The gate is a
+        ''' courtesy layer on top of <see cref="Guard"/>, never a replacement for it.
+        ''' </remarks>
+        Public Function AuthGateAttrs(productName As String,
+                                      Optional imageFile As Object = Nothing,
+                                      Optional seed As Integer = 0,
+                                      Optional price As Object = Nothing) As String
+            If STAR_DOM.Helpers.Session.IsAuthenticated Then Return ""
+            Dim sb As New StringBuilder()
+            sb.Append(" data-auth-gate=""1""")
+            If Not String.IsNullOrWhiteSpace(productName) Then
+                sb.Append(" data-name=""" & Attr(productName) & """")
+                sb.Append(" data-seed=""" & seed.ToString() & """")
+                sb.Append(" data-img=""" & Attr(Convert.ToString(imageFile)) & """")
+                sb.Append(" data-price=""" & Attr(Fmt_PHP(price)) & """")
+            End If
+            Return sb.ToString()
+        End Function
+
         ''' <summary>Status pill colored per state.</summary>
         Public Function Badge(status As String) As String
             Dim s As String = Convert.ToString(status).Trim().ToUpperInvariant()
@@ -139,13 +166,18 @@ Namespace STAR_DOM.Web
             Return "<a class=""chip""" & If(isOn, " on", "") & " href=""" & Attr(url) & """>" & Esc(text) & "</a>"
         End Function
 
-        Public Function BtnHref(url As String, text As String, Optional kind As String = "primary", Optional icon As String = "") As String
+        ''' <summary>
+        ''' Anchor styled as a button. Pass <paramref name="attrs"/> for extra markup that
+        ''' belongs inside the opening tag, e.g. <c>WebUi.AuthGateAttrs(...)</c> — appending
+        ''' to the result instead would land the attributes after the closing tag.
+        ''' </summary>
+        Public Function BtnHref(url As String, text As String, Optional kind As String = "primary", Optional icon As String = "", Optional attrs As String = "") As String
             Dim ic As String = ""
             If icon <> "" Then
                 Dim icCls As String = If(IsGlyph(icon), "ic", "ic ms")
                 ic = "<span class=""" & icCls & """>" & Esc(icon) & "</span>"
             End If
-            Return "<a class=""btn " & kind & """ href=""" & Attr(url) & """>" & ic & "<span>" & Esc(text) & "</span></a>"
+            Return "<a class=""btn " & kind & """ href=""" & Attr(url) & """" & attrs & ">" & ic & "<span>" & Esc(text) & "</span></a>"
         End Function
 
         ''' <summary>

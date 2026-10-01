@@ -69,11 +69,31 @@ STAR_DOM_Web
  straight to the request form).
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.WebUi.AuthGateAttrs(System.String,System.Object,System.Int32,System.Object)">
+ <summary>
+ Marks a link as needing a signed-in account so the premium gate popup in
+ Site.master intercepts it for anonymous visitors. Pass it as
+ <see cref="M:STAR_DOM.Web.WebUi.BtnHref(System.String,System.String,System.String,System.String,System.String)"/>'s <c>attrs</c> argument. Returns an empty string when the
+ visitor is already signed in, so authenticated markup is unchanged.
+ </summary>
+ <remarks>
+ The anchor keeps its real href, so the plain sign-in redirect still happens
+ without JavaScript and if someone types the URL directly. The gate is a
+ courtesy layer on top of <see cref="T:STAR_DOM.Web.Guard"/>, never a replacement for it.
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Web.WebUi.Badge(System.String)">
  <summary>Status pill colored per state.</summary>
 </member>
 <member name="M:STAR_DOM.Web.WebUi.OutLink(System.String,System.String,System.Boolean)">
  <summary>Category/filter chip link.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.BtnHref(System.String,System.String,System.String,System.String,System.String)">
+ <summary>
+ Anchor styled as a button. Pass <paramref name="attrs"/> for extra markup that
+ belongs inside the opening tag, e.g. <c>WebUi.AuthGateAttrs(...)</c> — appending
+ to the result instead would land the attributes after the closing tag.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Web.WebUi.Pager(System.Int32,System.Int32,System.Int32,System.String)">
  <summary>

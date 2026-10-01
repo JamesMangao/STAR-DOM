@@ -93,7 +93,8 @@ Namespace STAR_DOM.Web
             End If
             sb.Append("<div class=""pfoot"">")
             sb.Append(WebUi.Money(p.EffectivePrice))
-            sb.Append(WebUi.BtnHref("/App/Cart.aspx?add=" & p.Id.ToString() & "&q=1&ret=" & Server.UrlEncode(Request.RawUrl), "Add", "primary", "add_shopping_cart"))
+            sb.Append(WebUi.BtnHref("/App/Cart.aspx?add=" & p.Id.ToString() & "&q=1&ret=" & Server.UrlEncode(Request.RawUrl), "Add", "primary", "add_shopping_cart",
+                                   WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice)))
             sb.Append("</div>")
             sb.Append(If(p.StockQuantity > 0,
                          "<span class=""stockline"">" & p.StockQuantity.ToString() & " in booth stock</span>",
