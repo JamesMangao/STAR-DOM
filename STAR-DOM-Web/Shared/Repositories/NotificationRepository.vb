@@ -8,7 +8,7 @@ Namespace STAR_DOM.Repositories
         Public Sub Create(userId As Integer, title As String, message As String,
                           Optional ntype As String = "SYSTEM", Optional linkPath As String = "")
             Db.Exec("INSERT INTO Notifications (UserId, Title, Message, NotificationType, LinkPath, IsRead, CreatedAt) " &
-                    "VALUES (@u, @t, @m, @n, @l, 0, NOW())",
+                    "VALUES (@u, @t, @m, @n, @l, FALSE, NOW())",
                     Db.P("@u", userId), Db.P("@t", title), Db.P("@m", message),
                     Db.P("@n", ntype), Db.P("@l", linkPath))
         End Sub
@@ -17,7 +17,7 @@ Namespace STAR_DOM.Repositories
         Public Sub CreateForRole(roleName As String, title As String, message As String,
                                  Optional ntype As String = "SYSTEM", Optional linkPath As String = "")
             Db.Exec("INSERT INTO Notifications (UserId, Title, Message, NotificationType, LinkPath, IsRead, CreatedAt) " &
-                    "SELECT u.Id, @t, @m, @n, @l, 0, NOW() FROM Users u JOIN Roles r ON r.Id = u.RoleId WHERE r.Name = @r",
+                    "SELECT u.Id, @t, @m, @n, @l, FALSE, NOW() FROM Users u JOIN Roles r ON r.Id = u.RoleId WHERE r.Name = @r",
                     Db.P("@t", title), Db.P("@m", message), Db.P("@n", ntype),
                     Db.P("@l", linkPath), Db.P("@r", roleName))
         End Sub

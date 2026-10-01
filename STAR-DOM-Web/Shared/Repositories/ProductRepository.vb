@@ -20,7 +20,7 @@ Namespace STAR_DOM.Repositories
                 sql &= "AND p.CategoryId = @cat "
                 ps.Add(Db.P("@cat", categoryId))
             End If
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "AND (p.Name LIKE @s OR p.BrandName LIKE @s OR p.Sku LIKE @s OR p.Description LIKE @s) "
                 ps.Add(Db.P("@s", "%" & search & "%"))
             End If
@@ -36,7 +36,7 @@ Namespace STAR_DOM.Repositories
         Public Function ListByMerchant(merchantId As Integer, Optional search As String = "") As List(Of Product)
             Dim sql As String = BaseSelect & "WHERE p.MerchantId = @m "
             Dim ps As New List(Of NpgsqlParameter)() From {Db.P("@m", merchantId)}
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "AND (p.Name LIKE @s OR p.Sku LIKE @s) "
                 ps.Add(Db.P("@s", "%" & search & "%"))
             End If

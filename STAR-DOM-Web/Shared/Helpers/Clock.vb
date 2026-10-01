@@ -33,9 +33,16 @@ Namespace STAR_DOM.Helpers
             End Get
         End Property
 
-        ''' <summary>"2026-09-08 14:30:00" (yyyy-MM-dd HH:mm:ss) string safe to pass to a PostgreSQL TIMESTAMPTZ parameter.</summary>
-        Public Function SqlNow() As String
-            Return Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+        ''' <summary>
+        ''' "Now" as an absolute instant, bindable as a PostgreSQL TIMESTAMPTZ parameter.
+        ''' DateTimeOffset is the CLR type Npgsql maps to "timestamp with time zone", so
+        ''' comparisons like "EndDate >= @now" compare instant against instant and stay
+        ''' correct no matter which TimeZone the connection sets. It used to return a
+        ''' "yyyy-MM-dd HH:mm:ss" STRING: MySQL coerced that text to DATETIME implicitly,
+        ''' but PostgreSQL refuses "timestamptz >= text" with SQLSTATE 42883.
+        ''' </summary>
+        Public Function SqlNow() As DateTimeOffset
+            Return New DateTimeOffset(DateTime.UtcNow, TimeSpan.Zero)
         End Function
 
         ''' <summary>Parse "10:00 AM" style opening/closing times into a TimeOfDay. Returns Nothing if unparseable.</summary>

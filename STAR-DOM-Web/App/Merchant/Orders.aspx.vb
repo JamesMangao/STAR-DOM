@@ -16,12 +16,50 @@ Namespace STAR_DOM.Web
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireMerchant()
             Try
+                ' ----- POST actions ---------------------------------------------
+                ' Payment recording is password-gated: merchant/admin re-enters their
+                ' own password; GCash/Maya also require the reference number.
+                If Guard.IsPost() AndAlso Request.Form("payOrderId") <> "" Then
+                    Dim id As Integer = 0
+                    Integer.TryParse(Request.Form("payOrderId"), id)
+                    Dim o As Order = _orders.GetOrder(id)
+                    If o IsNot Nothing Then
+                        Dim r As ServiceResult = _orders.ConfirmPayment(o.OrderNumber, Request.Form("payRef"), Request.Form("payPassword"))
+                        Session("flash_msg") = r.Message
+                        Session("flash_ok") = r.Success
+                    End If
+                    Response.Redirect("/App/Merchant/Orders.aspx", True)
+                End If
+                ' Merchant side of the pick-up claim: "handed to the customer".
+                If Guard.IsPost() AndAlso Request.Form("pickupOrderId") <> "" Then
+                    Dim pid As Integer = 0
+                    Integer.TryParse(Request.Form("pickupOrderId"), pid)
+                    Dim r2 As ServiceResult = _orders.ConfirmPickup(pid, False)
+                    Session("flash_msg") = r2.Message
+                    Session("flash_ok") = r2.Success
+                    Response.Redirect("/App/Merchant/Orders.aspx", True)
+                End If
+                ' Book a delivery order with J&T — merchant enters the real tracking
+                ' number; when left blank a placeholder booking number is generated.
+                If Guard.IsPost() AndAlso Request.Form("shipOrderId") <> "" Then
+                    Dim sid As Integer = 0
+                    Integer.TryParse(Request.Form("shipOrderId"), sid)
+                    Dim tracking As String = Trim(Convert.ToString(Request.Form("tracking")))
+                    If tracking = "" Then tracking = "JT" & Date.Now.ToString("yyMMddHHmm")
+                    Dim r3 As ServiceResult = _orders.UpdateOrderState(sid, "SHIPPED", tracking)
+                    Session("flash_msg") = r3.Message
+                    Session("flash_ok") = r3.Success
+                    Response.Redirect("/App/Merchant/Orders.aspx", True)
+                End If
+
+                ' ----- GET actions ----------------------------------------------
                 If Request.QueryString("advance") <> "" Then
                     Dim id As Integer = 0
                     Integer.TryParse(Request.QueryString("advance"), id)
                     Dim o As Order = _orders.GetOrder(id)
                     If o IsNot Nothing Then
                         Dim nextState As String = MapNextState(o.Status)
+                        If o.IsPickup AndAlso (nextState = "SHIPPED" OrElse nextState = "DELIVERED") Then nextState = ""
                         If nextState <> "" Then
                             Dim tracking As String = ""
                             If nextState = "SHIPPED" Then tracking = "JT" & Date.Now.ToString("yyMMddHHmm")
@@ -29,17 +67,6 @@ Namespace STAR_DOM.Web
                             Session("flash_msg") = r.Message
                             Session("flash_ok") = r.Success
                         End If
-                    End If
-                    Response.Redirect("/App/Merchant/Orders.aspx", True)
-                End If
-                If Request.QueryString("pay") <> "" Then
-                    Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("pay"), id)
-                    Dim o As Order = _orders.GetOrder(id)
-                    If o IsNot Nothing Then
-                        Dim r As ServiceResult = _orders.ConfirmPayment(o.OrderNumber, "POS-" & Date.Now.ToString("yyMMddHHmmss"))
-                        Session("flash_msg") = r.Message
-                        Session("flash_ok") = r.Success
                     End If
                     Response.Redirect("/App/Merchant/Orders.aspx", True)
                 End If
@@ -62,6 +89,9 @@ Namespace STAR_DOM.Web
                     Response.Redirect("/App/Merchant/Orders.aspx", True)
                 End If
                 Render()
+            Catch aborted As System.Threading.ThreadAbortException
+                ' Response.Redirect(url, True) raises this by design once the redirect
+                ' is already committed. Let it re-raise — the redirect must stand.
             Catch ex As Exception
                 Out.Text = WebUi.AlertBox("Could not load orders: " & ex.Message)
             End Try
@@ -86,7 +116,7 @@ Namespace STAR_DOM.Web
             If flash <> "" Then sb.Append(WebUi.AlertBox(flash, If(ok, "ok", "err")))
 
             sb.Append(WebUi.Section("Orders & Payments", "MERCHANT STUDIO / FULFILMENT",
-                                    "Process orders end-to-end: confirm, prepare, ship, deliver, record payments."))
+                                    "Confirm orders, prepare them, then book J&T delivery or hand over at the stall. Recording a payment requires your password."))
 
             Dim statusFilter As String = Convert.ToString(Request.QueryString("st"))
             Dim page As Integer = 1
@@ -122,22 +152,14 @@ Namespace STAR_DOM.Web
                     sb.Append("<td>" & WebUi.Esc(o.CustomerName) & "</td>")
                     sb.Append("<td>" & o.ItemCount.ToString() & "</td>")
                     sb.Append("<td>" & WebUi.Money(o.TotalAmount) & "</td>")
-                    sb.Append("<td>" & WebUi.Esc(DisplayPay(o.PaymentMethod)) & "</td>")
+                    sb.Append("<td>" & WebUi.Esc(DisplayPay(o.PaymentMethod)) &
+                              If(o.IsPickup, "<br><span class=""sub"" style=""font-size:10.5px"">PICK-UP @ stall</span>", "") & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.PaymentStatus) & "</td>")
-                    sb.Append("<td>" & WebUi.Badge(o.Status) & "</td>")
+                    sb.Append("<td>" & WebUi.Badge(o.Status) &
+                              If(o.IsPickup AndAlso o.PickupEventName <> "",
+                                 "<br><span class=""sub"" style=""font-size:10.5px"">" & WebUi.Esc(o.PickupEventName) & "</span>", "") & "</td>")
                     sb.Append("<td class=""rowact"">")
-                    Dim nextState As String = MapNextState(o.Status)
-                    If nextState <> "" Then
-                        sb.Append("<a href=""/App/Merchant/Orders.aspx?advance=" & o.Id.ToString() & """>" &
-                                  If(nextState = "SHIPPED", "<span class=""ms sm"">local_shipping</span> Ship", "<span class=""ms sm"">arrow_forward</span> " & nextState) & "</a>")
-                    End If
-                    If o.PaymentStatus <> "PAID" AndAlso Not String.Equals(o.PaymentMethod, "COD", StringComparison.OrdinalIgnoreCase) Then
-                        sb.Append("<a href=""/App/Merchant/Orders.aspx?pay=" & o.Id.ToString() & """>Record payment</a>")
-                    End If
-                    If o.Status = "PENDING" Then
-                        sb.Append("<a href=""/App/Merchant/Orders.aspx?cancel=" & o.Id.ToString() & """ data-confirm=""Cancel this order?"" data-confirm-danger"">Cancel</a>")
-                    End If
-                    sb.Append("<a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View</a>")
+                    RenderActions(sb, o)
                     sb.Append("</td></tr>")
                 Next
                 sb.Append("</tbody></table></div>")
@@ -178,6 +200,56 @@ Namespace STAR_DOM.Web
                 sb.Append("</tbody></table></div>")
             End If
             Out.Text = sb.ToString()
+        End Sub
+
+        ''' <summary>Per-row actions: advance status, book J&amp;T, confirm hand-over, record payment.</summary>
+        Private Sub RenderActions(sb As StringBuilder, o As Order)
+            Dim nextState As String = MapNextState(o.Status)
+            If o.IsPickup AndAlso (nextState = "SHIPPED" OrElse nextState = "DELIVERED") Then nextState = ""
+
+            ' Delivery orders: confirm → prepare → book J&T (with tracking) → delivered.
+            If nextState <> "" AndAlso nextState <> "SHIPPED" Then
+                sb.Append("<a href=""/App/Merchant/Orders.aspx?advance=" & o.Id.ToString() & """>" &
+                          "<span class=""ms sm"">arrow_forward</span> " & nextState & "</a>")
+            ElseIf nextState = "SHIPPED" Then
+                sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap"">")
+                sb.Append("<input type=""hidden"" name=""shipOrderId"" value=""" & o.Id.ToString() & """>")
+                sb.Append("<input name=""tracking"" placeholder=""J&T tracking no."" style=""width:112px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+                sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Book with J&T Express""><span class=""ms sm"">local_shipping</span>Book J&T</button>")
+                sb.Append("</form>")
+            End If
+
+            ' Pick-up orders: the stall confirms the hand-over; the customer confirms
+            ' receipt. When both sides have confirmed, the order closes as DELIVERED.
+            If o.IsPickup AndAlso o.Status <> "CANCELLED" AndAlso o.Status <> "DELIVERED" Then
+                If Not o.PickupMerchantConfirmed Then
+                    sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:inline-flex;margin:2px 0"">")
+                    sb.Append("<input type=""hidden"" name=""pickupOrderId"" value=""" & o.Id.ToString() & """>")
+                    sb.Append("<button class=""btn ghost sm"" type=""submit"" data-confirm=""Confirm the customer has claimed this order at the stall?""><span class=""ms sm"">task_alt</span>Confirm hand-over</button>")
+                    sb.Append("</form>")
+                ElseIf Not o.PickupCustomerConfirmed Then
+                    sb.Append("<span class=""sub"" style=""font-size:10.5px"">waiting for customer…</span>")
+                End If
+            End If
+
+            ' Payment recording — password always; e-wallet reference for GCash/Maya.
+            ' COD / pay-on-claim payments are recorded the same way when the cash comes in.
+            If o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
+                Dim isEWallet As Boolean = o.PaymentMethod = "GCASH" OrElse o.PaymentMethod = "MAYA"
+                sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap"">")
+                sb.Append("<input type=""hidden"" name=""payOrderId"" value=""" & o.Id.ToString() & """>")
+                If isEWallet Then
+                    sb.Append("<input name=""payRef"" placeholder=""Ref no."" required style=""width:86px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+                End If
+                sb.Append("<input type=""password"" name=""payPassword"" placeholder=""Your password"" required autocomplete=""current-password"" style=""width:104px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+                sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Record this payment""><span class=""ms sm"">payments</span>Confirm pay</button>")
+                sb.Append("</form>")
+            End If
+
+            If o.Status = "PENDING" Then
+                sb.Append("<a href=""/App/Merchant/Orders.aspx?cancel=" & o.Id.ToString() & """ data-confirm=""Cancel this order?"" data-confirm-danger"">Cancel</a>")
+            End If
+            sb.Append("<a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View</a>")
         End Sub
 
         Private Function DisplayPay(pm As String) As String

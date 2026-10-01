@@ -13,25 +13,10 @@ Namespace STAR_DOM.Web
         Protected Out As Literal
         Private ReadOnly _events As New EventService()
         Private ReadOnly _catalog As New CatalogService()
-        Private ReadOnly _notif As New NotificationService()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
             Try
-                If Request.QueryString("remind") <> "" Then
-                    Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("remind"), id)
-                    Dim ev As PopUpEvent = _events.GetEvent(id)
-                    If ev IsNot Nothing Then
-                        _notif.Notify(STAR_DOM.Helpers.Session.CurrentUser.Id, "Event reminder — " & ev.Name,
-                                      "We'll remind you before " & ev.Name & " opens (" & ev.WindowText & ").",
-                                      "EVENT", "popup-locations")
-                        Session("flash_msg") = "Reminder set for " & ev.Name & ". Check your notifications."
-                        Session("flash_ok") = True
-                    End If
-                    Response.Redirect("/App/PopupLocations.aspx", True)
-                End If
-
                 Dim detailId As Integer = 0
                 Integer.TryParse(Request.QueryString("id"), detailId)
                 If detailId > 0 Then
@@ -119,7 +104,6 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""tagcloud"" style=""margin-top:7px"">")
             sb.Append("<span class=""tag"">" & WebUi.Ic("check_circle", "sm") & " Exclusive Physical Art Prints</span>")
             sb.Append("<span class=""tag"">" & WebUi.Ic("cards", "sm") & " Sticker Gacha Dispensers</span>")
-            sb.Append("<span class=""tag"">" & WebUi.Ic("draw", "sm") & " Live Sketch Requests</span>")
             sb.Append("<span class=""tag"">" & WebUi.Ic("qr_code_2", "sm") & " GCash / Maya QR Ready</span>")
             sb.Append("<span class=""tag yellow"">" & WebUi.Ic("shopping_bag", "sm") & " Limited Convention Bags</span>")
             sb.Append("</div></div>")
@@ -127,7 +111,6 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""btn-row"" style=""margin-top:16px"">")
             sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx?id=" & ev.Id.ToString(), "View Venue Floor Map & Directions", "primary", "map"))
             sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx?id=" & ev.Id.ToString(), "Browse Event Exclusive Inventory", "secondary", "package_2"))
-            sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx?remind=" & ev.Id.ToString(), "Get SMS / App Reminder", "ghost", "notifications_active"))
             sb.Append("</div></div></div>")
             ' mini stats (right column)
             sb.Append("<div class=""stat-grid"" style=""margin-top:14px"">")
@@ -151,8 +134,8 @@ Namespace STAR_DOM.Web
             sb.Append("<div style=""display:flex;align-items:center;gap:14px;flex-wrap:wrap"">")
             sb.Append("<span class=""ph-ic"" style=""width:44px;height:44px;font-size:24px;background:var(--yellow);color:var(--on-yellow)"">" & WebUi.Ic("diamond") & "</span>")
             sb.Append("<div style=""flex:1;min-width:240px""><div style=""display:flex;gap:8px;align-items:center;flex-wrap:wrap""><span class=""eyebrow"" style=""color:var(--primary);margin:0"">Pop-up Merchant Stamp Card</span><span class=""sys-rev"">PHILIPPINES TOUR 2026</span></div>")
-            sb.Append("<h3 style=""font-size:15px;font-weight:700;margin:4px 0 2px"">Collect 4 Foil Stamps &amp; Claim a Free Custom Headshot Sketch!</h3>")
-            sb.Append("<p class=""sub"" style=""margin:0;max-width:560px"">Spend ₱500 at any official physical STAR:DOM booth to receive an exclusive metallic foil badge stamp. Present your card at our live artist table or commission kiosk.</p></div>")
+            sb.Append("<h3 style=""font-size:15px;font-weight:700;margin:4px 0 2px"">Collect 4 Foil Stamps &amp; Claim a Free Art Print!</h3>")
+            sb.Append("<p class=""sub"" style=""margin:0;max-width:560px"">Spend ₱500 at any official physical STAR:DOM booth to receive an exclusive metallic foil badge stamp. Present your card at any STAR:DOM booth to redeem.</p></div>")
             ' stamps
             sb.Append("<div class=""stamp-row"" style=""background:var(--surface-low);padding:10px 14px;border-radius:9px"">")
             sb.Append("<div style=""display:flex;gap:8px""><span class=""stamp collected"">" & WebUi.Ic("star", "filled") & "</span><span class=""stamp collected"">" & WebUi.Ic("star", "filled") & "</span><span class=""stamp empty"">" & WebUi.Ic("star") & "</span><span class=""stamp empty"">" & WebUi.Ic("star") & "</span></div>")
@@ -168,12 +151,11 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""event-card""><div class=""ec-top""><span class=""ec-tag"">" & WebUi.Esc(ev.RegionLabel) & "</span><span class=""ec-days"">" & daysTxt & "</span></div>")
             sb.Append("<div class=""ec-img""><div class=""ph-img"" style=""background-image:" & VenueImage(ev) & """></div><span class=""ec-booth"">" & WebUi.Esc(ev.BoothNumber) & "</span></div>")
             sb.Append("<div class=""ec-body""><div><div class=""ec-title"">STAR:DOM @ " & WebUi.Esc(ev.Name) & "</div><div class=""ec-addr"">" & WebUi.Esc(ev.VenueDetail) & ", " & WebUi.Esc(ev.CityLabel) & "</div></div>")
+            ' No "Lineup" row: STAR:DOM is a single-owner brand (the admin is the
+            ' merchant), so multi-creator lineups do not apply to its booths.
             sb.Append("<div class=""ec-meta"">")
             sb.Append("<div class=""kv-row""><span>Dates:</span><b>" & WebUi.Esc(ev.WindowText) & "</b></div>")
             sb.Append("<div class=""kv-row""><span>Hours:</span><b>" & WebUi.Esc(ev.HoursText) & "</b></div>")
-            If ev.LineupText <> "" Then
-                sb.Append("<div class=""kv-row""><span>Lineup:</span><b style=""color:var(--primary)"">" & WebUi.Esc(ev.LineupText) & "</b></div>")
-            End If
             sb.Append("</div>")
             sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx?id=" & ev.Id.ToString(), "View Event Details", "ghost", "arrow_forward"))
             sb.Append("</div></div>")
@@ -235,7 +217,6 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""pin-live"" style=""display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:var(--ink)""><span class=""pulse""></span>Live Node: STAR:DOM @ " & WebUi.Esc(name) & "</div>")
             sb.Append("<p style=""margin:4px 0 8px;font-size:11.5px;color:var(--ink-soft);line-height:1.4"">" & WebUi.Esc(venue) & "<br/><b style=""color:var(--ink);font-weight:600"">" & WebUi.Esc(address) & "</b></p>")
             sb.Append("<div style=""display:flex;gap:6px;align-items:center;margin-top:6px"">")
-            sb.Append("<a class=""btn primary sm"" href=""https://www.google.com/maps/search/?api=1&query=" & Server.UrlEncode("STAR:DOM " & venue & " " & address) & """ target=""_blank"" style=""padding:4px 10px;font-size:11px"">" & WebUi.Ic("directions", "sm") & " Google Maps</a>")
             sb.Append("<a class=""btn ghost sm"" href=""/App/PopupLocations.aspx?id=" & currentId.ToString() & """ style=""padding:4px 10px;font-size:11px"">" & WebUi.Ic("info", "sm") & " Booth Details</a>")
             sb.Append("</div></div>")
 
@@ -262,8 +243,7 @@ Namespace STAR_DOM.Web
             sb.Append("<h3 style=""font-size:15px;font-weight:700""><span class=""ph-ic"" style=""width:28px;height:28px;font-size:14px;background:var(--surface-mid);color:var(--primary)"">" & WebUi.Ic("info", "sm") & "</span> Pop-up Guidelines</h3>")
             sb.Append("<p class=""sub"" style=""margin:0;font-size:12.5px"">Everything you need to know before visiting our on-site creator pavilions.</p>")
             sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("smartphone") & "</span><div><b>Cashless Preferred</b><span>All stalls accept GCash, Maya, and major Philippine bank QR Ph codes.</span></div></div>")
-            sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("draw") & "</span><div><b>Live Commissions</b><span>Queue tickets for on-the-spot ink sketches open at 11:00 AM daily.</span></div></div>")
-            sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("package_2") & "</span><div><b>Online Pickups</b><span>Pre-ordered online prints can be collected instantly at the booth with your order ID.</span></div></div>")
+            sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("package_2") & "</span><div><b>Stall Pick-ups</b><span>Online orders with pick-up fulfillment can be claimed at the booth — both you and the stall team confirm the hand-over.</span></div></div>")
             sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request a Commission", "ghost", "draw"))
             sb.Append("</div></div>")
             Return sb.ToString()
@@ -309,9 +289,6 @@ Namespace STAR_DOM.Web
                 Next
                 sb.Append("</div>")
             End If
-            sb.Append("<div class=""frow"">")
-            sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx?remind=" & id.ToString(), "Get SMS / App Reminder", "secondary"))
-            sb.Append("</div>")
             Out.Text = sb.ToString()
         End Sub
 

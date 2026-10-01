@@ -69,11 +69,12 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""pbody"">")
             sb.Append("<span class=""brand"">" & Esc(s.MerchantTagline) & "</span>")
             sb.Append("<b style=""font-size:16px"">" & Esc(s.MerchantName) & "</b>")
+            ' No starting price / deposit rows: commissions are quoted per request, and
+            ' finished commissioned products can only be claimed via delivery.
             sb.Append("<div class=""kv"" style=""grid-template-columns:110px 1fr"">")
-            sb.Append("<dt>" & Esc(startingLabel) & "</dt><dd>" & Money(s.StartingPrice) & "</dd>")
-            sb.Append("<dt>Deposit</dt><dd>" & Money(s.Deposit) & "</dd>")
             sb.Append("<dt>Turnaround</dt><dd>" & Esc(s.Turnaround) & "</dd>")
             sb.Append("<dt>Formats</dt><dd>" & Esc(s.Formats) & "</dd>")
+            sb.Append("<dt>Claim via</dt><dd>Delivery only</dd>")
             sb.Append("</div>")
             sb.Append(BtnHref(target, label, "primary", "draw"))
             sb.Append("</div></div>")

@@ -93,6 +93,15 @@ STAR_DOM_Web
  still Nothing in BeginRequest and every POST would look token-less.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.SiteMaster.RenderToast">
+ <summary>
+ Popup toast after add-to-cart. Cart.aspx redirects back with added=1 and
+ the fresh cart count; we render a small slide-in card here (master level,
+ so it shows over ANY page the add was made from) and let CSS animate it.
+ The count badge in the header is already re-rendered server-side with the
+ correct number, so the toast needs no data of its own.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.PopupLocationsPage.CurrentHero(STAR_DOM.Models.PopUpEvent)">
  <summary>Split hero stage for the current active location (4.html).</summary>
 </member>
@@ -117,6 +126,9 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderActions(System.Text.StringBuilder,STAR_DOM.Models.Order)">
+ <summary>Per-row actions: advance status, book J&amp;T, confirm hand-over, record payment.</summary>
 </member>
 <member name="T:STAR_DOM.Database.Db">
  <summary>Core PostgreSQL/Supabase access for the web app. All SQL flows through here with parameters only.</summary>
@@ -223,7 +235,14 @@ STAR_DOM_Web
  <summary>Current Asia/Manila wall-clock time.</summary>
 </member>
 <member name="M:STAR_DOM.Helpers.Clock.SqlNow">
- <summary>"2026-09-08 14:30:00" (yyyy-MM-dd HH:mm:ss) string safe to pass to a PostgreSQL TIMESTAMPTZ parameter.</summary>
+ <summary>
+ "Now" as an absolute instant, bindable as a PostgreSQL TIMESTAMPTZ parameter.
+ DateTimeOffset is the CLR type Npgsql maps to "timestamp with time zone", so
+ comparisons like "EndDate >= @now" compare instant against instant and stay
+ correct no matter which TimeZone the connection sets. It used to return a
+ "yyyy-MM-dd HH:mm:ss" STRING: MySQL coerced that text to DATETIME implicitly,
+ but PostgreSQL refuses "timestamptz >= text" with SQLSTATE 42883.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Helpers.Clock.ParseTimeOfDay(System.String)">
  <summary>Parse "10:00 AM" style opening/closing times into a TimeOfDay. Returns Nothing if unparseable.</summary>
@@ -243,6 +262,21 @@ STAR_DOM_Web
  Stored format: PBKDF2$10000$&lt;base64 salt&gt;$&lt;base64 hash&gt;
  </summary>
 </member>
+<member name="T:STAR_DOM.Models.BundleGroup">
+ <summary>
+ A resolved "N for ₱M" bundle rule used by cart/checkout pricing. Membership
+ comes from the BundleItems table; the group size and group price are parsed
+ from the bundle name itself, e.g. "Stickers Bundle (4 for 100)" -> any 4
+ member units ring up at ₱100 instead of list price.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Models.Order.TrackingNumber">
+ <summary>
+ Customer-facing courier sentence, J&amp;T only. Plain text: the page layer adds
+ the J&amp;T tracking hyperlink when a tracking number exists. The website never
+ plays courier - it just states where the parcel is in the courier journey.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Models.Commission">
  <summary>Commission request with the full merchant-atelier lifecycle.</summary>
 </member>
@@ -257,6 +291,17 @@ STAR_DOM_Web
 </member>
 <member name="T:STAR_DOM.Reports.KpiBlock">
  <summary>Aggregated KPI block rendered on the reports screen.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CartRepository.ListBundleGroups">
+ <summary>
+ Active "N for ₱M" bundle rules for cart pricing. The deal is parsed from the
+ bundle name — "(4 for 100)" — so merchandising can reprice a bundle by
+ renaming it; bundles without that pattern (plain percentage promos) are
+ skipped by the cart pricing engine.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CartRepository.ParseBundleDeal(System.String,System.Int32@,System.Decimal@)">
+ <summary>"Stickers Bundle (4 for 100)" -> size 4, group price 100.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.CommissionRepository.OpenSlotCounts">
  <summary>Open-slot counts for all merchants at once (single query instead of 1-per-merchant).</summary>
@@ -289,6 +334,12 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.OrderRepository.RestoreOrderStock(System.Int32)">
  <summary>Put sold units back on the shelf when an order is cancelled.</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.SetPickupConfirm(System.Int32,System.Boolean,System.Boolean)">
+ <summary>
+ Record one side of the pick-up claim. A pick-up order only completes when
+ BOTH flags are set — the service layer turns the pair into DELIVERED.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.PurchaseOrderId(System.Int32,System.Int32)">
  <summary>
  Id of the user's most recent non-cancelled order containing the product.
@@ -316,6 +367,27 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.UserRepository.ListMerchants">
  <summary>Commission creators/artists (Admin or Merchant).</summary>
 </member>
+<member name="M:STAR_DOM.Services.CartService.BundleDiscount(System.Collections.Generic.List{STAR_DOM.Models.CartItem})">
+ <summary>
+ Total savings from complete "N for ₱M" bundle groups in the cart, e.g. any
+ 4 stickers ring up at ₱100 instead of 4 × ₱30. Leftover units outside a
+ full group stay at their regular price. Each complete group saves the gap
+ between the members' cart value and the bundle price (sale prices honoured).
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CartService.BundleLabelForProduct(System.Int32)">
+ <summary>
+ Human label of the first active bundle containing the product, e.g.
+ "any 4 for ₱100" — shown on the product page so shoppers see the deal
+ before adding to cart. Empty when the product is not in an active bundle.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CartService.BundleNote">
+ <summary>
+ Shopper-facing bundle legend, e.g. "Stickers Bundle — 4 for ₱100 ·
+ Button pins Bundle — 3 for ₱100". Empty when no deal-style bundle is active.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Services.CatalogService.CommissionSlots">
  <summary>Open commission slot cards for merchants with capacity (drives the hub + marketplace sections).</summary>
 </member>
@@ -326,18 +398,27 @@ STAR_DOM_Web
  (items inserted, stock taken, cart not cleared) is worse than no order.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.OrderService.Checkout(System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.String)">
+<member name="M:STAR_DOM.Services.OrderService.Checkout(System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.String,System.String,System.Nullable{System.Int32})">
  <summary>
  Full checkout: validate stock, create order + items + payment/shipping records,
  decrement stock, clear the cart. The order number is derived from the auto-increment
  id so it can never collide under concurrent checkouts.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.OrderService.ConfirmPayment(System.String,System.String)">
+<member name="M:STAR_DOM.Services.OrderService.ConfirmPayment(System.String,System.String,System.String)">
  <summary>
- Simulate an electronic payment confirmation (GCash/Maya/Card) for a demo order.
- Only the buyer who placed the order, or a store operator (merchant/admin), may
- confirm payment on it — never an arbitrary logged-in user who knows the number.
+ Payment confirmation is password-gated for whoever records it — the buyer
+ confirming their own e-wallet payment, or a merchant/admin recording one.
+ GCash/Maya (the only accepted e-payments) must carry the reference number
+ from the e-wallet receipt; COD / pay-on-pick-up need only the password.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.ConfirmPickup(System.Int32,System.Boolean)">
+ <summary>
+ Pick-up orders are only closed when BOTH sides confirm the claim: the
+ customer taps "order received" and the merchant/stall team taps "handed
+ over". When the second confirmation lands, the order becomes DELIVERED
+ (and PAID, for pay-on-claim methods) with an official receipt.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.UpdateOrderState(System.Int32,System.String,System.String)">

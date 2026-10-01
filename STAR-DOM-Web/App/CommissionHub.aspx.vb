@@ -33,8 +33,9 @@ Namespace STAR_DOM.Web
             Dim slots As List(Of CommissionSlotView) = _catalog.CommissionSlots()
 
             sb.Append(HubHeader(slots.Count))
-            sb.Append(WebUi.Section("Open Commission Slots", "BESPOKE ART & ON-SITE SKETCHES",
-                                    "Commission bespoke digital art, original characters, portraits, or live event sketches directly from the STAR:DOM artist."))
+            sb.Append(WebUi.Section("Open Commission Slots", "BESPOKE ART, DELIVERED TO YOU",
+                                    "Commission bespoke digital art, original characters, or portraits directly from the STAR:DOM artist. " &
+                                    "Commissioned products can only be claimed via delivery."))
 
             If slots.Count > 0 Then
                 sb.Append("<div class=""grid cards"">")
@@ -89,7 +90,7 @@ Namespace STAR_DOM.Web
             sb.Append("<p class=""sub"" style=""max-width:640px"">One place to browse open artist slots, submit a bespoke request, and track every commission you have in flight.</p>")
             sb.Append("<div class=""frow"">")
             sb.Append(WebUi.BtnHref("/App/CommissionRequest.aspx", "Request a Commission", "primary", "draw"))
-            sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx", "See Live Sketch Kiosks", "ghost", "storefront"))
+            sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx", "View Pop-up Locations", "ghost", "storefront"))
             sb.Append("</div>")
             sb.Append("<p class=""sub"" style=""margin-top:12px"">" & WebUi.Ic("account_tree", "sm") & " " &
                       openSlots.ToString() & " artist(s) currently accepting commission slots</p>")

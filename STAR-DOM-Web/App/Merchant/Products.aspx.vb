@@ -76,7 +76,7 @@ Namespace STAR_DOM.Web
             Session("flash_ok") = Nothing
             If flash <> "" Then sb.Append(WebUi.AlertBox(flash, If(ok, "ok", "err")))
 
-            sb.Append(WebUi.Section("Product & Stock POS", "MERCHANT STUDIO / PRODUCTS",
+            sb.Append(WebUi.Section("Products & Stock", "MERCHANT STUDIO / PRODUCTS",
                                     "Manage your catalog, categories, stock levels and sale flags."))
 
             Dim mine As List(Of Product) = _products.ListByMerchant(STAR_DOM.Helpers.Session.CurrentUser.Id)

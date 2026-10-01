@@ -55,7 +55,7 @@ Namespace STAR_DOM.Web
             ctx.Response.ContentType = "text/html; charset=utf-8"
             ctx.Response.Write(
                 "<!DOCTYPE html><html lang=""en""><head><meta charset=""utf-8"">" &
-                "<title>403 - Request blocked</title><link rel=""stylesheet"" href=""/css/site.css""></head>" &
+                "<title>403 - Request blocked</title><link rel=""stylesheet"" href=""/css/site.css?v=20261001""></head>" &
                 "<body><div class=""layout"" style=""display:block;max-width:640px;margin:80px auto;padding:0 20px"">" &
                 "<div class=""card"" style=""padding:28px"">" &
                 "<h1 style=""font-size:22px;margin:0 0 8px"">403 &mdash; Request blocked</h1>" &

@@ -35,6 +35,17 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.Section("Handcrafted Products & Art", "CATALOG DISCOVERY",
                                     "Browse every SKU in the atelier — search, filter by category, and add to your cart."))
 
+            ' Bundle deals banner — pricing is applied automatically in the cart and
+            ' at checkout whenever a complete group is present.
+            Dim bundleNote As String = New CartService().BundleNote()
+            If bundleNote <> "" Then
+                sb.Append("<div class=""card mb"" style=""background:var(--surface-low);border-left:4px solid var(--primary);display:flex;gap:10px;align-items:center"">")
+                sb.Append("<span class=""ms"" style=""color:var(--primary)"">sell</span>")
+                sb.Append("<div class=""sub"" style=""margin:0""><b style=""color:var(--ink)"">Bundle deals — applied automatically:</b> " &
+                          WebUi.Esc(bundleNote) & "</div>")
+                sb.Append("</div>")
+            End If
+
             sb.Append("<div class=""row space-between mb"">")
             If q <> "" Then
                 sb.Append("<div class=""sub"">Results for <b>" & WebUi.Esc(q) & "</b> — <a href=""/App/Catalog.aspx"" style=""color:var(--primary)"">clear</a></div>")

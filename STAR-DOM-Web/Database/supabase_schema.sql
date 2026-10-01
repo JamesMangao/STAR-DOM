@@ -244,10 +244,17 @@ CREATE TABLE IF NOT EXISTS Orders (
     ShippingAddress VARCHAR(255) NOT NULL DEFAULT '',
     ContactPhone VARCHAR(30) NOT NULL DEFAULT '',
     Notes VARCHAR(500) NOT NULL DEFAULT '',
+    -- Fulfilment: DELIVERY (J&T) or PICKUP (claim at an active/upcoming stall).
+    Fulfillment VARCHAR(10) NOT NULL DEFAULT 'DELIVERY',
+    PickupEventId INT NULL,
+    -- A pick-up order is complete only when BOTH sides confirm the handover.
+    PickupCustomerConfirmed BOOLEAN NOT NULL DEFAULT FALSE,
+    PickupMerchantConfirmed BOOLEAN NOT NULL DEFAULT FALSE,
     CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP ,
     CONSTRAINT FK_Orders_User FOREIGN KEY (UserId) REFERENCES Users(Id),
-    CONSTRAINT FK_Orders_Event FOREIGN KEY (EventId) REFERENCES PopUpEvents(Id)
+    CONSTRAINT FK_Orders_Event FOREIGN KEY (EventId) REFERENCES PopUpEvents(Id),
+    CONSTRAINT FK_Orders_PickupEvent FOREIGN KEY (PickupEventId) REFERENCES PopUpEvents(Id)
 );
 
 CREATE TABLE IF NOT EXISTS EventSales (

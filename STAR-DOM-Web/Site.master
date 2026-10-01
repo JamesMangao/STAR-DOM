@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500..700,0..1,-50..200&amp;display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/site.css" />
+    <link rel="stylesheet" href="/css/site.css?v=20261001" />
     <link rel="icon" type="image/webp" href="/Assets/stardom-logo.webp" />
     <link rel="apple-touch-icon" href="/Assets/stardom-logo.webp" />
 </head>
@@ -34,7 +34,7 @@
             <div class="top-right">
                 <asp:PlaceHolder ID="livePillPh" runat="server" />
                 <span class="currency-chip">PHP (₱)</span>
-                <a class="icon-btn" href="/App/Cart.aspx" title="Cart">
+                <a class="icon-btn" id="cartBtn" runat="server" href="/App/Cart.aspx" title="Cart">
                     <span class="ms">shopping_bag</span><asp:Literal ID="cartCount" runat="server" />
                 </a>
                 <a class="icon-btn" href="/App/Notifications.aspx" title="Notifications">
@@ -64,7 +64,7 @@
                     <div class="brand-logo" style="font-size:17px">STAR:DOM<span class="brand-dot"></span></div>
                 </div>
                 <span class="pill small yellow" style="margin-top:6px">PH MARKETPLACE</span>
-                <p>The premier Filipino artisan hub connecting independent creators with art lovers through physical convention pop-ups and live commerce.</p>
+                <p>The premier Filipino artisan hub connecting independent creators with art lovers through online ordering and nationwide delivery.</p>
                 <span style="font-size:11px;letter-spacing:.1em;font-weight:800;color:var(--ink-soft)">MERCHANT INQUIRY HOTLINE</span><br />
                 <b style="font-family:var(--font-mono);color:var(--primary);font-size:14px">+63 (02) 8839-4421</b>
             </div>
@@ -81,7 +81,6 @@
                     <span class="pay-chip">GCash</span>
                     <span class="pay-chip">Maya</span>
                     <span class="pay-chip">J&amp;T Express</span>
-                    <span class="pay-chip">LBC Express</span>
                 </div>
                 <ul style="margin-top:14px">
                     <li><a href="/App/Catalog.aspx">Products Catalog</a></li>
@@ -118,6 +117,11 @@
 
     <!-- Page route progress indicator -->
     <div id="page-progress"></div>
+
+    <!-- Toast popup: rendered by Site.master.vb when a page signals a flash
+         event via ?added=1&cartN=<n> (Cart.aspx add-to-cart redirect). Pure
+         CSS animation; the inline script only removes it and cleans the URL. -->
+    <div class="toast-wrap" id="toastWrap" runat="server"></div>
 
     <script>
     (function () {

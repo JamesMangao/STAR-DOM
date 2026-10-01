@@ -57,11 +57,11 @@ Namespace STAR_DOM.Repositories
         Public Function ListEvents(Optional status As String = "", Optional search As String = "") As List(Of PopUpEvent)
             Dim sql As String = EventSelect & "WHERE 1=1 "
             Dim ps As New List(Of NpgsqlParameter)()
-            If status.Length > 0 Then
+            If Not String.IsNullOrEmpty(status) Then
                 sql &= "AND e.Status = @s "
                 ps.Add(Db.P("@s", status))
             End If
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "AND (e.Name LIKE @q OR l.Name LIKE @q) "
                 ps.Add(Db.P("@q", "%" & search & "%"))
             End If
@@ -283,7 +283,7 @@ Namespace STAR_DOM.Repositories
                 "SELECT s.*, p.Name AS ProductName, e.Name AS EventName FROM EventSales s " &
                 "LEFT JOIN Products p ON p.Id = s.ProductId LEFT JOIN PopUpEvents e ON e.Id = s.EventId "
             Dim ps As New List(Of NpgsqlParameter)()
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "WHERE p.Name LIKE @q OR e.Name LIKE @q "
                 ps.Add(Db.P("@q", "%" & search & "%"))
             End If

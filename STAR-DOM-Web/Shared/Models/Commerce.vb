@@ -30,6 +30,20 @@ Namespace STAR_DOM.Models
         End Property
     End Class
 
+    ''' <summary>
+    ''' A resolved "N for ₱M" bundle rule used by cart/checkout pricing. Membership
+    ''' comes from the BundleItems table; the group size and group price are parsed
+    ''' from the bundle name itself, e.g. "Stickers Bundle (4 for 100)" -> any 4
+    ''' member units ring up at ₱100 instead of list price.
+    ''' </summary>
+    Public Class BundleGroup
+        Public Property BundleId As Integer
+        Public Property Name As String
+        Public Property GroupSize As Integer
+        Public Property GroupPrice As Decimal
+        Public Property ProductIds As List(Of Integer)
+    End Class
+
     Public Class WishlistItem
         Public Property Id As Integer
         Public Property UserId As Integer
@@ -59,9 +73,61 @@ Namespace STAR_DOM.Models
         Public Property CreatedAt As Date
         Public Property UpdatedAt As Date
 
+        ' Fulfilment: DELIVERY (J&T) or PICKUP (claim at a stall, both sides confirm)
+        Public Property Fulfillment As String
+        Public Property PickupEventId As Integer?
+        Public Property PickupCustomerConfirmed As Boolean
+        Public Property PickupMerchantConfirmed As Boolean
+
+        ' Joined display fields
         Public Property CustomerName As String
         Public Property CustomerEmail As String
         Public Property ItemCount As Integer
+        Public Property PickupEventName As String
+        Public Property PickupHoursText As String
+
+        Public ReadOnly Property IsPickup As Boolean
+            Get
+                Return String.Equals(Fulfillment, "PICKUP", StringComparison.OrdinalIgnoreCase)
+            End Get
+        End Property
+
+        ''' <summary>
+        ''' Customer-facing courier sentence, J&amp;T only. Plain text: the page layer adds
+        ''' the J&amp;T tracking hyperlink when a tracking number exists. The website never
+        ''' plays courier - it just states where the parcel is in the courier journey.
+        ''' </summary>
+        Public Property TrackingNumber As String
+
+        Public ReadOnly Property TrackingUrl As String
+            Get
+                If String.IsNullOrWhiteSpace(TrackingNumber) Then Return ""
+                Return "https://www.jtexpress.ph/trajectoryQuery?billcode=" & Uri.EscapeDataString(TrackingNumber)
+            End Get
+        End Property
+
+        Public ReadOnly Property DeliveryStatusLine As String
+            Get
+                Dim s As String = If(Status, "").ToUpperInvariant()
+                Select Case s
+                    Case "SHIPPED"
+                        If Not String.IsNullOrWhiteSpace(TrackingNumber) Then
+                            Return "Order booked with J&T Express — tracking number " & TrackingNumber & ". Track it on the J&T website."
+                        End If
+                        Return "Order is being scheduled for booking with J&T Express."
+                    Case "DELIVERED"
+                        Return "Order delivered successfully."
+                    Case "CANCELLED"
+                        Return "Order cancelled."
+                    Case "PENDING"
+                        Return If(IsPickup, "Order placed — preparing for pick-up at the stall.",
+                                  "Order is currently scheduled for booking.")
+                    Case Else
+                        Return If(IsPickup, "Being prepared for pick-up at the stall.",
+                                  "Order is currently scheduled for booking.")
+                End Select
+            End Get
+        End Property
 
         Public ReadOnly Property StatusTimeline As String()()
             Get
@@ -75,7 +141,7 @@ Namespace STAR_DOM.Models
                 New String() {"PENDING", "Order placed"},
                 New String() {"CONFIRMED", "Order confirmed"},
                 New String() {"PROCESSING", "Preparing at the studio"},
-                New String() {"SHIPPED", "Handed to courier"},
+                New String() {"SHIPPED", "Handed to J&T Express"},
                 New String() {"DELIVERED", "Delivered"}
             }
             Dim reached As Integer

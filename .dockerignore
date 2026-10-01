@@ -9,3 +9,8 @@ obj/
 *.user
 *.suo
 ~$*
+
+# Local-only tooling and data: the portable PostgreSQL used for development
+# (the deployed app talks to Supabase, never to this instance) and its data dir.
+tools/pgsql
+tools/pgdata

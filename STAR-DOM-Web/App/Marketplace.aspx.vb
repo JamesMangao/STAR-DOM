@@ -103,14 +103,14 @@ Namespace STAR_DOM.Web
             If slots.Count > 0 Then
                 sb.Append("<div class=""sec-head"" style=""margin-top:30px"">")
                 sb.Append("<div>")
-                sb.Append("<div class=""eyebrow"">CUSTOM CREATIONS &amp; ON-SITE SKETCHES</div>")
+                sb.Append("<div class=""eyebrow"">CUSTOM CREATIONS, DELIVERED TO YOU</div>")
                 sb.Append("<h2>Open Commission Slots</h2>")
                 sb.Append("</div>")
                 sb.Append("<div class=""sub"">Queue status: Fast turnaround (3–5 days)</div>")
                 sb.Append("</div>")
                 sb.Append("<div class=""grid cards"">")
                 For Each s As CommissionSlotView In slots
-                    sb.Append(WebUi.CommissionSlotCard(s, "Starting Price", "/App/CommissionHub.aspx", "View on Commission Hub"))
+                    sb.Append(WebUi.CommissionSlotCard(s, "", "/App/CommissionHub.aspx", "View on Commission Hub"))
                 Next
                 sb.Append("</div>")
             End If

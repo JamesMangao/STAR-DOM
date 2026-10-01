@@ -42,10 +42,6 @@ Namespace STAR_DOM.Web
                 End If
 
                 If Guard.IsPost() Then
-                    If Request.Form("posSale") IsNot Nothing Then
-                        RecordSale()
-                        Return
-                    End If
                     SaveEvent()
                     Return
                 End If
@@ -73,7 +69,8 @@ Namespace STAR_DOM.Web
             ev.OpenTime = Convert.ToString(Request.Form("open"))
             ev.CloseTime = Convert.ToString(Request.Form("close"))
             ev.FeaturedGuest = Convert.ToString(Request.Form("guest"))
-            ev.LineupText = Convert.ToString(Request.Form("lineup"))
+            ' "lineup" removed from the form: single-owner brand, no creator lineups.
+            ev.LineupText = ""
             ev.Description = Convert.ToString(Request.Form("description"))
 
             Dim locId As Integer = 0
@@ -94,23 +91,6 @@ Namespace STAR_DOM.Web
             Else
                 RenderForm(r.Message)
             End If
-        End Sub
-
-        Private Sub RecordSale()
-            Dim evId As Integer = 0
-            Integer.TryParse(Request.Form("evid"), evId)
-            Dim pid As Integer = 0
-            Integer.TryParse(Request.Form("posProduct"), pid)
-            Dim qty As Integer = 1
-            Integer.TryParse(Request.Form("posQty"), qty)
-            Dim pm As String = Convert.ToString(Request.Form("posPm"))
-            Dim st As String = Convert.ToString(Request.Form("posType"))
-            If evId > 0 Then
-                Dim r As ServiceResult = _events.RecordInPersonSale(evId, pid, qty, pm, st, "Logged from web POS")
-                Session("flash_msg") = r.Message
-                Session("flash_ok") = r.Success
-            End If
-            Response.Redirect("/App/Merchant/EventEdit.aspx?id=" & evId.ToString(), True)
         End Sub
 
         Private Sub RenderForm(errorMsg As String)
@@ -150,7 +130,6 @@ Namespace STAR_DOM.Web
             Next
             sb.Append("</select></div>")
             sb.Append(Field("guest", "Featured guest / artist", If(ev IsNot Nothing, ev.FeaturedGuest, "")))
-            sb.Append(Field("lineup", "Lineup / creators (short)", If(ev IsNot Nothing, ev.LineupText, "")))
             sb.Append("<div class=""field""><label>Description</label><textarea name=""description"" style=""min-height:70px"">" &
                       WebUi.Esc(If(ev IsNot Nothing, ev.Description, "")) & "</textarea></div>")
             sb.Append("<div class=""frow"">")
@@ -193,31 +172,6 @@ Namespace STAR_DOM.Web
                     sb.Append("</tbody></table></div>")
                 End If
                 sb.Append("</div>")
-
-                ' POS sale logging
-                sb.Append("<div class=""card"">")
-                sb.Append("<h3 style=""margin-bottom:6px"">Log in-person / QR sale</h3>")
-                sb.Append("<form method=""post"" action=""/App/Merchant/EventEdit.aspx?id=" & _editingId.ToString() & """>")
-                sb.Append("<input type=""hidden"" name=""posSale"" value=""1"">")
-                sb.Append("<input type=""hidden"" name=""evid"" value=""" & _editingId.ToString() & """>")
-                sb.Append("<div class=""field""><label>Product</label><select name=""posProduct"">")
-                For Each it As EventInventory In inv
-                    sb.Append("<option value=""" & it.ProductId.ToString() & """>" & WebUi.Esc(it.ProductName) & "</option>")
-                Next
-                sb.Append("</select></div>")
-                sb.Append("<div class=""field""><label>Qty</label><input name=""posQty"" type=""number"" min=""1"" value=""1"" style=""width:90px""></div>")
-                sb.Append("<div class=""field""><label>Payment</label><select name=""posPm"">")
-                For Each pm As String In {"GCASH", "MAYA", "CARD", "CASH"}
-                    sb.Append("<option>" & pm & "</option>")
-                Next
-                sb.Append("</select></div>")
-                sb.Append("<div class=""field""><label>Sale type</label><select name=""posType"">")
-                For Each st As String In {"IN_PERSON", "QR", "PREORDER"}
-                    sb.Append("<option>" & st & "</option>")
-                Next
-                sb.Append("</select></div>")
-                sb.Append("<button class=""btn secondary"" type=""submit""><span class=""ic ms"">point_of_sale</span><span>Record Sale</span></button>")
-                sb.Append("</form></div>")
             End If
             sb.Append("</div>")
             sb.Append("</div>")

@@ -9,13 +9,15 @@ Namespace STAR_DOM.Repositories
         Public Function CreateOrderRow(o As Order) As Integer
             Return Db.ExecIdentity(
                 "INSERT INTO Orders (OrderNumber, UserId, EventId, Status, Subtotal, DiscountAmount, ShippingFee, " &
-                "TotalAmount, PaymentMethod, PaymentStatus, ShippingAddress, ContactPhone, Notes, CreatedAt, UpdatedAt) " &
-                "VALUES (@num, @u, @e, @s, @sub, @d, @sf, @tot, @pm, 'PENDING', @addr, @ph, @notes, NOW(), NOW())",
+                "TotalAmount, PaymentMethod, PaymentStatus, ShippingAddress, ContactPhone, Notes, Fulfillment, PickupEventId, CreatedAt, UpdatedAt) " &
+                "VALUES (@num, @u, @e, @s, @sub, @d, @sf, @tot, @pm, 'PENDING', @addr, @ph, @notes, @ful, @pk, NOW(), NOW())",
                 Db.P("@num", o.OrderNumber), Db.P("@u", o.UserId),
                 Db.P("@e", If(o.EventId.HasValue, CObj(o.EventId.Value), DBNull.Value)),
                 Db.P("@s", o.Status), Db.P("@sub", o.Subtotal), Db.P("@d", o.DiscountAmount),
                 Db.P("@sf", o.ShippingFee), Db.P("@tot", o.TotalAmount), Db.P("@pm", o.PaymentMethod),
-                Db.P("@addr", o.ShippingAddress), Db.P("@ph", o.ContactPhone), Db.P("@notes", o.Notes))
+                Db.P("@addr", o.ShippingAddress), Db.P("@ph", o.ContactPhone), Db.P("@notes", o.Notes),
+                Db.P("@ful", If(String.IsNullOrEmpty(o.Fulfillment), "DELIVERY", o.Fulfillment)),
+                Db.P("@pk", If(o.PickupEventId.HasValue, CObj(o.PickupEventId.Value), DBNull.Value)))
         End Function
 
         Public Sub AddOrderItem(orderId As Integer, item As OrderItem)
@@ -29,8 +31,12 @@ Namespace STAR_DOM.Repositories
 
         Private Const OrderSelect As String =
             "SELECT o.*, u.FullName AS CustomerName, u.Email AS CustomerEmail, " &
+            "s.TrackingNumber AS TrackingNumber, pe.Name AS PickupEventName, " &
+            "(pe.OpenTime || ' - ' || pe.CloseTime) AS PickupHoursText, " &
             "(SELECT COALESCE(SUM(oi.Quantity),0) FROM OrderItems oi WHERE oi.OrderId = o.Id) AS ItemCount " &
-            "FROM Orders o LEFT JOIN Users u ON u.Id = o.UserId "
+            "FROM Orders o LEFT JOIN Users u ON u.Id = o.UserId " &
+            "LEFT JOIN Shipping s ON s.OrderId = o.Id " &
+            "LEFT JOIN PopUpEvents pe ON pe.Id = o.PickupEventId "
 
         Public Function GetById(id As Integer) As Order
             Dim rows As List(Of DataRow) = Db.Rows(OrderSelect & "WHERE o.Id = @id", Db.P("@id", id))
@@ -47,7 +53,7 @@ Namespace STAR_DOM.Repositories
         Public Function ListByUser(userId As Integer, Optional status As String = "", Optional page As Integer = 1, Optional pageSize As Integer = 0) As List(Of Order)
             Dim sql As String = OrderSelect & "WHERE o.UserId = @u "
             Dim ps As New List(Of NpgsqlParameter)() From {Db.P("@u", userId)}
-            If status.Length > 0 Then
+            If Not String.IsNullOrEmpty(status) Then
                 sql &= "AND o.Status = @s "
                 ps.Add(Db.P("@s", status))
             End If
@@ -63,11 +69,11 @@ Namespace STAR_DOM.Repositories
         Public Function ListAll(Optional search As String = "", Optional status As String = "", Optional page As Integer = 1, Optional pageSize As Integer = 0) As List(Of Order)
             Dim sql As String = OrderSelect & "WHERE 1=1 "
             Dim ps As New List(Of NpgsqlParameter)()
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "AND (o.OrderNumber LIKE @s OR u.FullName LIKE @s OR u.Email LIKE @s) "
                 ps.Add(Db.P("@s", "%" & search & "%"))
             End If
-            If status.Length > 0 Then
+            If Not String.IsNullOrEmpty(status) Then
                 sql &= "AND o.Status = @st "
                 ps.Add(Db.P("@st", status))
             End If
@@ -90,11 +96,11 @@ Namespace STAR_DOM.Repositories
             Dim sql As String =
                 "SELECT COUNT(*) FROM Orders o LEFT JOIN Users u ON u.Id = o.UserId WHERE 1=1 "
             Dim ps As New List(Of NpgsqlParameter)()
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "AND (o.OrderNumber LIKE @s OR u.FullName LIKE @s OR u.Email LIKE @s) "
                 ps.Add(Db.P("@s", "%" & search & "%"))
             End If
-            If status.Length > 0 Then
+            If Not String.IsNullOrEmpty(status) Then
                 sql &= "AND o.Status = @st "
                 ps.Add(Db.P("@st", status))
             End If
@@ -104,7 +110,7 @@ Namespace STAR_DOM.Repositories
         Public Function CountByUser(userId As Integer, Optional status As String = "") As Integer
             Dim sql As String = "SELECT COUNT(*) FROM Orders WHERE UserId = @u "
             Dim ps As New List(Of NpgsqlParameter)() From {Db.P("@u", userId)}
-            If status.Length > 0 Then
+            If Not String.IsNullOrEmpty(status) Then
                 sql &= "AND Status = @s "
                 ps.Add(Db.P("@s", status))
             End If
@@ -146,6 +152,20 @@ Namespace STAR_DOM.Repositories
                     Db.P("@s", paymentStatus), Db.P("@id", orderId))
         End Sub
 
+        ''' <summary>
+        ''' Record one side of the pick-up claim. A pick-up order only completes when
+        ''' BOTH flags are set — the service layer turns the pair into DELIVERED.
+        ''' </summary>
+        Public Sub SetPickupConfirm(orderId As Integer, customerSide As Boolean, confirmed As Boolean)
+            If customerSide Then
+                Db.Exec("UPDATE Orders SET PickupCustomerConfirmed = @c, UpdatedAt = NOW() WHERE Id = @id",
+                        Db.P("@c", confirmed), Db.P("@id", orderId))
+            Else
+                Db.Exec("UPDATE Orders SET PickupMerchantConfirmed = @c, UpdatedAt = NOW() WHERE Id = @id",
+                        Db.P("@c", confirmed), Db.P("@id", orderId))
+            End If
+        End Sub
+
         ' ----- Payments ---------------------------------------------------------
 
         Public Function CreatePayment(p As Payment) As Integer
@@ -162,7 +182,7 @@ Namespace STAR_DOM.Repositories
             Dim sql As String =
                 "SELECT p.*, o.OrderNumber FROM Payments p JOIN Orders o ON o.Id = p.OrderId "
             Dim ps As New List(Of NpgsqlParameter)()
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "WHERE o.OrderNumber LIKE @s OR p.ReferenceNumber LIKE @s "
                 ps.Add(Db.P("@s", "%" & search & "%"))
             End If
@@ -225,10 +245,13 @@ Namespace STAR_DOM.Repositories
         End Function
 
         Public Sub UpdateShipping(orderId As Integer, courier As String, tracking As String, status As String)
-            Db.Exec("UPDATE Shipping SET Courier = @c, TrackingNumber = @t, Status = @s, " &
+            ' A later transition (e.g. SHIPPED -> DELIVERED) passes no tracking number;
+            ' the empty value must never clobber the number booked at ship time.
+            Db.Exec("UPDATE Shipping SET Courier = @c, " &
+                    "TrackingNumber = CASE WHEN @t = '' THEN TrackingNumber ELSE @t END, Status = @s, " &
                     "ShippedAt = CASE WHEN @s = 'SHIPPED' AND ShippedAt IS NULL THEN NOW() ELSE ShippedAt END, " &
                     "DeliveredAt = CASE WHEN @s = 'DELIVERED' THEN NOW() ELSE DeliveredAt END WHERE OrderId = @o",
-                    Db.P("@c", courier), Db.P("@t", tracking), Db.P("@s", status), Db.P("@o", orderId))
+                    Db.P("@c", courier), Db.P("@t", If(tracking, "")), Db.P("@s", status), Db.P("@o", orderId))
         End Sub
 
         ' ----- Reviews ----------------------------------------------------------
@@ -277,7 +300,7 @@ Namespace STAR_DOM.Repositories
                 "SELECT r.*, u.FullName AS CustomerName, p.Name AS ProductName FROM Reviews r " &
                 "JOIN Users u ON u.Id = r.UserId LEFT JOIN Products p ON p.Id = r.ProductId "
             Dim ps As New List(Of NpgsqlParameter)()
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "WHERE p.Name LIKE @s OR u.FullName LIKE @s "
                 ps.Add(Db.P("@s", "%" & search & "%"))
             End If
@@ -317,7 +340,14 @@ Namespace STAR_DOM.Repositories
                 .ContactPhone = RowReader.AsStr(r, "ContactPhone"), .Notes = RowReader.AsStr(r, "Notes"),
                 .CreatedAt = RowReader.AsDate(r, "CreatedAt"), .UpdatedAt = RowReader.AsDate(r, "UpdatedAt"),
                 .CustomerName = RowReader.AsStr(r, "CustomerName"), .CustomerEmail = RowReader.AsStr(r, "CustomerEmail"),
-                .ItemCount = RowReader.AsInt(r, "ItemCount")
+                .ItemCount = RowReader.AsInt(r, "ItemCount"),
+                .Fulfillment = RowReader.AsStr(r, "Fulfillment", "DELIVERY"),
+                .PickupEventId = RowReader.AsNullableInt(r, "PickupEventId"),
+                .PickupCustomerConfirmed = RowReader.AsBool(r, "PickupCustomerConfirmed"),
+                .PickupMerchantConfirmed = RowReader.AsBool(r, "PickupMerchantConfirmed"),
+                .TrackingNumber = RowReader.AsStr(r, "TrackingNumber"),
+                .PickupEventName = RowReader.AsStr(r, "PickupEventName"),
+                .PickupHoursText = RowReader.AsStr(r, "PickupHoursText")
             }
         End Function
 

@@ -14,8 +14,10 @@ Namespace STAR_DOM.Web
         Protected userPh As PlaceHolder
         Protected navLiteral As Literal
         Protected cartCount As Literal
+        Protected cartBtn As System.Web.UI.HtmlControls.HtmlAnchor
         Protected notifCount As Literal
         Protected footerTourLinks As Literal
+        Protected toastWrap As System.Web.UI.HtmlControls.HtmlGenericControl
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             If Not IsPostBack Then
@@ -25,6 +27,46 @@ Namespace STAR_DOM.Web
                     navLiteral.Text = WebUi.AlertBox("Could not load navigation: " & ex.Message)
                 End Try
             End If
+            RenderToast()
+        End Sub
+
+        ''' <summary>
+        ''' Popup toast after add-to-cart. Cart.aspx redirects back with added=1 and
+        ''' the fresh cart count; we render a small slide-in card here (master level,
+        ''' so it shows over ANY page the add was made from) and let CSS animate it.
+        ''' The count badge in the header is already re-rendered server-side with the
+        ''' correct number, so the toast needs no data of its own.
+        ''' </summary>
+        Private Sub RenderToast()
+            If toastWrap Is Nothing Then Return
+            If Not String.Equals(Request.QueryString("added"), "1", StringComparison.Ordinal) Then Return
+
+            Dim msg As String = Request.QueryString("msg")
+            If msg Is Nothing OrElse msg.Length > 120 OrElse Not msg.StartsWith("Added ", StringComparison.Ordinal) Then
+                msg = "Added to your cart!"
+            End If
+
+            Dim n As Integer = 0
+            Integer.TryParse(Request.QueryString("cartN"), n)
+            Dim countNote As String = If(n > 0, " · " & n.ToString() & If(n = 1, " item", " items") & " in cart", "")
+
+            Dim sb As New StringBuilder()
+            sb.Append("<div class=""toast"" id=""cartToast"" role=""status"" aria-live=""polite"">")
+            sb.Append("<span class=""ms"">check_circle</span>")
+            sb.Append("<div class=""toast-body""><b>" & WebUi.Esc(msg) & "</b><span class=""sub"">" &
+                      countNote.TrimStart(" ·".ToCharArray()) & "</span></div>")
+            sb.Append("<a class=""btn ghost sm"" href=""/App/Cart.aspx"">View cart</a>")
+            sb.Append("<button type=""button"" class=""toast-x"" aria-label=""Dismiss"" onclick=""this.parentNode.parentNode.classList.add('hide')""><span class=""ms sm"">close</span></button>")
+            sb.Append("</div>")
+            sb.Append("<script>")
+            sb.Append("(function(){var t=document.getElementById('cartToast');if(!t)return;" &
+                      "requestAnimationFrame(function(){t.classList.add('show');});" &
+                      "setTimeout(function(){t.classList.add('hide');},3800);" &
+                      "var u=new URL(window.location.href);u.searchParams.delete('added');" &
+                      "u.searchParams.delete('msg');u.searchParams.delete('cartN');" &
+                      "window.history.replaceState({},'',u);})();")
+            sb.Append("</" & "script>")
+            toastWrap.Controls.Add(New LiteralControl(sb.ToString()))
         End Sub
 
         Private Sub RenderShell()
@@ -49,6 +91,10 @@ Namespace STAR_DOM.Web
 
             cartCount.Text = If(cartN > 0, "<span class=""count"">" & cartN.ToString() & "</span>", "")
             notifCount.Text = If(notifN > 0, "<span class=""count"">" & notifN.ToString() & "</span>", "")
+
+            ' Merchant/admin accounts never place customer orders — hide the cart
+            ' button from the header entirely for them.
+            If cartBtn IsNot Nothing Then cartBtn.Visible = Not STAR_DOM.Helpers.Session.CanManageStore
 
             ' Current user chip
             Dim chip As New StringBuilder()
@@ -172,19 +218,24 @@ Namespace STAR_DOM.Web
 
         Private Sub RenderNav(roleName As String)
             Dim sb As New StringBuilder()
-            sb.Append("<div class=""nav-group"">")
-            sb.Append("<div class=""nav-head"">MARKETPLACE<span class=""pill small yellow"">DISCOVERY</span></div>")
-            Dim marketplace As NavItem() = {
-                New NavItem("Marketplace (Home)", "/App/Marketplace.aspx", "", "", "storefront"),
-                New NavItem("Pop-up Locations", "/App/PopupLocations.aspx", "LIVE", "red", "pin_drop"),
-                New NavItem("Products Catalog", "/App/Catalog.aspx", "", "", "inventory_2"),
-                New NavItem("Commission Hub", "/App/CommissionHub.aspx", "", "", "brush"),
-                New NavItem("My Orders / Wishlist", "/App/Orders.aspx", "", "", "receipt_long")
-            }
-            For Each it As NavItem In marketplace
-                sb.Append(NavLink(it))
-            Next
-            sb.Append("</div>")
+
+            ' The marketplace is the customer's shopfront. Merchant/admin accounts do
+            ' not place orders, so they get straight to the studio — no discovery nav.
+            If Not STAR_DOM.Helpers.Session.CanManageStore Then
+                sb.Append("<div class=""nav-group"">")
+                sb.Append("<div class=""nav-head"">MARKETPLACE<span class=""pill small yellow"">DISCOVERY</span></div>")
+                Dim marketplace As NavItem() = {
+                    New NavItem("Marketplace (Home)", "/App/Marketplace.aspx", "", "", "storefront"),
+                    New NavItem("Pop-up Locations", "/App/PopupLocations.aspx", "LIVE", "red", "pin_drop"),
+                    New NavItem("Products Catalog", "/App/Catalog.aspx", "", "", "inventory_2"),
+                    New NavItem("Commission Hub", "/App/CommissionHub.aspx", "", "", "brush"),
+                    New NavItem("My Orders / Wishlist", "/App/Orders.aspx", "", "", "receipt_long")
+                }
+                For Each it As NavItem In marketplace
+                    sb.Append(NavLink(it))
+                Next
+                sb.Append("</div>")
+            End If
 
             ' MERCHANT STUDIO is gated on CanManageStore (IsMerchant OrElse IsAdmin) to match
             ' Guard.RequireMerchant() on the pages themselves — gating on IsAdmin alone hid
@@ -195,7 +246,7 @@ Namespace STAR_DOM.Web
                 Dim studio As NavItem() = {
                     New NavItem("Merchant Dashboard", "/App/Merchant/Dashboard.aspx", "LIVE", "red", "space_dashboard"),
                     New NavItem("Event & Booth Manager", "/App/Merchant/Events.aspx", "", "", "event"),
-                    New NavItem("Product & Stock POS", "/App/Merchant/Products.aspx", "", "", "point_of_sale"),
+                    New NavItem("Products & Stock", "/App/Merchant/Products.aspx", "", "", "inventory_2"),
                     New NavItem("Commission Pipeline", "/App/Merchant/Pipeline.aspx", "", "", "account_tree"),
                     New NavItem("Event Sales Reports", "/App/Merchant/Reports.aspx", "", "", "bar_chart"),
                     New NavItem("Orders & Payments", "/App/Merchant/Orders.aspx", "", "", "payments"),

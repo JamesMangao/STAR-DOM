@@ -65,32 +65,40 @@ INSERT INTO Promotions (Name, Description, DiscountType, DiscountValue, StartsAt
 ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name;
 
 -- ---------- Store locations ----------
+-- Names are stored WITHOUT the "STAR:DOM @ " prefix: every renderer that shows an
+-- event/location title prepends the brand itself ("STAR:DOM @ " & Name), so keeping
+-- the prefix here made the UI print "STAR:DOM @ STAR:DOM @ ...".
 INSERT INTO StoreLocations (Id, Name, Venue, Address, City, Region, IsActive) VALUES
-(1, 'STAR:DOM @ Robinson''s Galleria South', 'Ground Floor Activity Center', 'KM 31 National Highway, Near Main Atrium', 'San Pedro', 'Laguna / South Luzon', TRUE),
-(2, 'STAR:DOM @ SM City Santa Rosa',         'Mall Expansion Wing, 2nd Floor', 'Santa Rosa-Tagaytay Road', 'Santa Rosa', 'Laguna / South Luzon', TRUE),
-(3, 'STAR:DOM @ Festival Mall Alabang',      'Water Garden Hallway, Upper Ground', 'Filinvest City', 'Muntinlupa', 'Metro Manila South', TRUE),
-(4, 'STAR:DOM @ Ayala Malls South Park',     'Level 3 Main Cinema Foyer', 'Alabang-Zapote Road', 'Muntinlupa', 'Metro Manila South', TRUE),
-(5, 'STAR:DOM @ Robinsons Place Manila',     'Midtown Atrium Stage', 'Adriatico Street, Ermita', 'Manila', 'Metro Manila Central', TRUE)
+(1, 'Robinson''s Galleria South', 'Ground Floor Activity Center', 'KM 31 National Highway, Near Main Atrium', 'San Pedro', 'Laguna / South Luzon', TRUE),
+(2, 'SM City Santa Rosa',         'Mall Expansion Wing, 2nd Floor', 'Santa Rosa-Tagaytay Road', 'Santa Rosa', 'Laguna / South Luzon', TRUE),
+(3, 'Festival Mall Alabang',      'Water Garden Hallway, Upper Ground', 'Filinvest City', 'Muntinlupa', 'Metro Manila South', TRUE),
+(4, 'Ayala Malls South Park',     'Level 3 Main Cinema Foyer', 'Alabang-Zapote Road', 'Muntinlupa', 'Metro Manila South', TRUE),
+(5, 'Robinsons Place Manila',     'Midtown Atrium Stage', 'Adriatico Street, Ermita', 'Manila', 'Metro Manila Central', TRUE)
 ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name;
 
 -- ---------- Pop-up events ----------
+-- STAR:DOM is a single-owner brand (the admin IS the merchant): no guest-creator
+-- lineups. FeaturedGuest/LineupText stay as schema columns for compatibility but
+-- are seeded empty and no longer rendered. Event photos come from Assets\Malls
+-- when one exists for the venue; empty ImageFile falls back to the brand gradient.
 INSERT INTO PopUpEvents (Id, LocationId, Name, Description, StartDate, EndDate, OpenTime, CloseTime, BoothNumber,
-                         VenueDetail, Status, FeaturedGuest, IsCurrent, LineupText) VALUES
-(1, 1, 'STAR:DOM @ Robinson''s Galleria South', 'Touch prints, inspect merchandise, watch live sketching, and pay instantly via local Philippine payment rails. Convention sticker sheets and on-site custom sketch slots available.',
- '2026-09-04 10:00:00', '2026-09-07 21:00:00', '10:00 AM', '9:00 PM', 'Stall A-12', 'Ground Atrium Activity Center', 'NOW OPEN', 'Mika S. & Guild', TRUE, '15 Guest Creators'),
-(2, 2, 'STAR:DOM @ SM City Santa Rosa', 'South Luzon Artisan Weekend Expo. Over 30 creators joining our combined pavilion with print swaps, sticker rallies, and live tablet painting demo sessions.',
- '2026-09-12 10:00:00', '2026-09-14 21:00:00', '10:00 AM', '9:00 PM', 'Booth D-04', 'Ground Atrium (Booth D-04)', 'UPCOMING', '@Kira_Illustration & Guild', FALSE, '12 Guest Creators'),
-(3, 3, 'STAR:DOM @ Festival Mall Alabang', 'Metro Manila south bazaar with watercolor demos and gacha sticker dispensers.',
- '2026-09-19 10:00:00', '2026-09-21 21:00:00', '10:00 AM', '9:00 PM', 'Island F', 'Carousel Court (Island F)', 'UPCOMING', 'Renzo Cruz', FALSE, '18 Guest Creators'),
-(4, 4, 'STAR:DOM @ Ayala Malls South Park', 'Indie comic & print exhibition, live ink sketches open at 11:00 AM daily.',
- '2026-10-02 10:00:00', '2026-10-04 21:00:00', '10:00 AM', '9:00 PM', 'Central Pod', 'Level 2 Activity Area', 'UPCOMING', 'Puffu Studio', FALSE, '10 Guest Creators'),
-(5, 5, 'STAR:DOM @ Robinsons Place Manila', 'Midtown art fair with enamel pin rallies and convention merch.',
- '2026-10-16 10:00:00', '2026-10-18 21:00:00', '10:00 AM', '9:00 PM', 'Midtown Wing', 'Midtown Atrium Stage', 'UPCOMING', 'Guild Collective', FALSE, '25 Guest Creators'),
+                         VenueDetail, Status, FeaturedGuest, IsCurrent, LineupText, ImageFile) VALUES
+(1, 1, 'Robinson''s Galleria South', 'Touch prints, inspect merchandise, watch live sketching, and pay instantly via local Philippine payment rails. Convention sticker sheets and on-site custom sketch slots available.',
+ '2026-09-04 10:00:00', '2026-09-07 21:00:00', '10:00 AM', '9:00 PM', 'Stall A-12', 'Ground Atrium Activity Center', 'NOW OPEN', '', TRUE, '', ''),
+(2, 2, 'SM City Santa Rosa', 'South Luzon Artisan Weekend Expo. Print swaps, sticker rallies, and live tablet painting demo sessions at the pavilion.',
+ '2026-09-12 10:00:00', '2026-09-14 21:00:00', '10:00 AM', '9:00 PM', 'Booth D-04', 'Ground Atrium (Booth D-04)', 'UPCOMING', '', FALSE, '', ''),
+(3, 3, 'Festival Mall Alabang', 'Metro Manila south bazaar with watercolor demos and gacha sticker dispensers.',
+ '2026-09-19 10:00:00', '2026-09-21 21:00:00', '10:00 AM', '9:00 PM', 'Island F', 'Carousel Court (Island F)', 'UPCOMING', '', FALSE, '', ''),
+(4, 4, 'Ayala Malls South Park', 'Indie comic & print exhibition, live ink sketches open at 11:00 AM daily.',
+ '2026-10-02 10:00:00', '2026-10-04 21:00:00', '10:00 AM', '9:00 PM', 'Central Pod', 'Level 2 Activity Area', 'UPCOMING', '', FALSE, '', '/Assets/Malls/ayala-south-park.webp'),
+(5, 5, 'Robinsons Place Manila', 'Midtown art fair with enamel pin rallies and convention merch.',
+ '2026-10-16 10:00:00', '2026-10-18 21:00:00', '10:00 AM', '9:00 PM', 'Midtown Wing', 'Midtown Atrium Stage', 'UPCOMING', '', FALSE, '', '/Assets/Malls/robinsons-place-manila.webp'),
 (6, 1, 'SM Southmall Artisan Fair', 'Historical tour run — August artisan fair.',
- '2026-08-21 10:00:00', '2026-08-24 21:00:00', '10:00 AM', '9:00 PM', 'Stall K-02', 'Activity Center', 'ENDED', '', FALSE, ''),
+ '2026-08-21 10:00:00', '2026-08-24 21:00:00', '10:00 AM', '9:00 PM', 'Stall K-02', 'Activity Center', 'ENDED', '', FALSE, '', ''),
 (7, 2, 'U.P. Town Center Art Bazaar', 'Historical tour run — university town bazaar.',
- '2026-08-08 10:00:00', '2026-08-10 21:00:00', '10:00 AM', '8:00 PM', 'Block 3', 'Open Plaza', 'ENDED', '', FALSE, '')
-ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name;
+ '2026-08-08 10:00:00', '2026-08-10 21:00:00', '10:00 AM', '8:00 PM', 'Block 3', 'Open Plaza', 'ENDED', '', FALSE, '', '')
+ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name, Description = EXCLUDED.Description, VenueDetail = EXCLUDED.VenueDetail,
+    Status = EXCLUDED.Status, FeaturedGuest = EXCLUDED.FeaturedGuest, LineupText = EXCLUDED.LineupText, ImageFile = EXCLUDED.ImageFile;
 
 -- ---------- Commissions ----------
 INSERT INTO Commissions (Id, CommissionNumber, CustomerId, MerchantId, CategoryId, Title, Description, Quantity,

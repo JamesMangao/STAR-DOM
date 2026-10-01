@@ -50,7 +50,7 @@ Namespace STAR_DOM.Repositories
         Public Function ListByCustomer(userId As Integer, Optional status As String = "") As List(Of Commission)
             Dim sql As String = SelectSql & "WHERE cm.CustomerId = @u "
             Dim ps As New List(Of NpgsqlParameter)() From {Db.P("@u", userId)}
-            If status.Length > 0 Then
+            If Not String.IsNullOrEmpty(status) Then
                 sql &= "AND cm.Status = @s "
                 ps.Add(Db.P("@s", status))
             End If
@@ -61,11 +61,11 @@ Namespace STAR_DOM.Repositories
         Public Function ListByMerchant(merchantId As Integer, Optional status As String = "", Optional search As String = "") As List(Of Commission)
             Dim sql As String = SelectSql & "WHERE cm.MerchantId = @m "
             Dim ps As New List(Of NpgsqlParameter)() From {Db.P("@m", merchantId)}
-            If status.Length > 0 Then
+            If Not String.IsNullOrEmpty(status) Then
                 sql &= "AND cm.Status = @s "
                 ps.Add(Db.P("@s", status))
             End If
-            If search.Length > 0 Then
+            If Not String.IsNullOrEmpty(search) Then
                 sql &= "AND (cm.CommissionNumber LIKE @q OR cu.FullName LIKE @q OR cm.Title LIKE @q) "
                 ps.Add(Db.P("@q", "%" & search & "%"))
             End If

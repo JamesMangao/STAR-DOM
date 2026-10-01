@@ -24,3 +24,18 @@
 packages/
 !STAR-DOM-Web/packages/
 !STAR-DOM-Web/bin/
+
+# The portable PostgreSQL SERVER runtime is committed (tools/pgsql/bin, lib,
+# share ~ 119 MB) so a fresh clone can run the site with zero downloads.
+# Excluded: pgAdmin 4 / include / symbols (not needed to run the DB), and the
+# data directory (tools/pgdata) which start-db.bat initialises on first run.
+# Original source if ever needed again:
+# https://www.enterprisedb.com/download-postgresql-binaries
+tools/pgsql/*
+!tools/pgsql/bin/
+!tools/pgsql/lib/
+!tools/pgsql/share/
+tools/pgdata/
+
+# AI tool workspaces
+.freebuff/

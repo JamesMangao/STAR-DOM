@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500..700,0..1,-50..200&amp;display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/site.css" />
+    <link rel="stylesheet" href="/css/site.css?v=20261001" />
     <link rel="icon" type="image/webp" href="/Assets/stardom-logo.webp" />
     <link rel="apple-touch-icon" href="/Assets/stardom-logo.webp" />
 </head>
@@ -29,7 +29,7 @@
             <div class="auth-features">
                 <div class="auth-feature"><%= STAR_DOM.Web.WebUi.Ic("inventory_2") %> Browse the full handcrafted product catalog</div>
                 <div class="auth-feature"><%= STAR_DOM.Web.WebUi.Ic("brush") %> Request custom commissions directly from the artist</div>
-                <div class="auth-feature"><%= STAR_DOM.Web.WebUi.Ic("local_shipping") %> Nationwide delivery via J&amp;T and LBC Express</div>
+                <div class="auth-feature"><%= STAR_DOM.Web.WebUi.Ic("local_shipping") %> Nationwide delivery via J&amp;T Express</div>
             </div>
         </div>
         <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.6)">Tour 2026 · South Luzon &amp; Metro Manila</div>

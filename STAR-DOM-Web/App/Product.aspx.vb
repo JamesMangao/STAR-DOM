@@ -81,6 +81,17 @@ Namespace STAR_DOM.Web
                           "<span class=""sub"">" & WebUi.Esc(p.MaterialDetails) & "</span></div>")
             End If
 
+            ' Bundle callout: shoppers see the deal on the product itself; the
+            ' discount still applies automatically once a complete group is in the cart.
+            Dim bLabel As String = New CartService().BundleLabelForProduct(p.Id)
+            If bLabel <> "" Then
+                sb.Append("<div class=""card"" style=""background:var(--surface-low);border-left:4px solid var(--primary);margin-top:12px;display:flex;gap:10px;align-items:center"">")
+                sb.Append("<span class=""ms"" style=""color:var(--primary)"">sell</span>")
+                sb.Append("<div class=""sub"" style=""margin:0""><b style=""color:var(--ink)"">Bundle deal:</b> " &
+                          WebUi.Esc(bLabel) & " — applied automatically in your cart.</div>")
+                sb.Append("</div>")
+            End If
+
             Dim stockText As String = If(p.StockQuantity > 0,
                                          If(p.StockQuantity <= p.LowStockThreshold,
                                             "<span style=""color:var(--primary);font-weight:700"">Only " & p.StockQuantity.ToString() & " remaining!</span>",

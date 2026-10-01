@@ -106,7 +106,8 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.Section("Custom Commercial Commission Request",
                                     "STAR:DOM ATELIER · BESPOKE COMMISSIONS",
                                     "Request custom physical merchandise, illustrations, or bespoke digital artwork directly from the STAR:DOM artist. " &
-                                    "No rigid packages — describe what you envision and we will review and quote your project."))
+                                    "No rigid packages — describe what you envision and we will review and quote your project. " &
+                                    "Commissioned products can only be claimed via delivery."))
 
             ' step rail
             sb.Append("<div class=""steps"">")
