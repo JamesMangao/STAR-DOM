@@ -215,7 +215,19 @@ Namespace STAR_DOM.Web
             If target = "app/catalog.aspx" AndAlso (cur = "app/product.aspx" OrElse cur = "app/product") Then
                 Return True
             End If
-            If target = "app/orders.aspx" AndAlso (cur = "app/orderdetail.aspx" OrElse cur = "app/orderdetail") Then
+            ' The landing page is the storefront's front door, so Home lights up for it.
+            If target = "app/marketplace.aspx" AndAlso (cur = "default.aspx" OrElse cur = "default") Then
+                Return True
+            End If
+            ' The order list is the hub for the whole account area, so it stays lit for
+            ' order detail, the rest of the purchase journey (cart and checkout), and the
+            ' remaining account pages. Receipt.aspx is not listed: it is a standalone
+            ' print page with no sidebar.
+            If target = "app/orders.aspx" AndAlso (cur = "app/orderdetail.aspx" OrElse cur = "app/orderdetail" OrElse
+               cur = "app/cart.aspx" OrElse cur = "app/cart" OrElse
+               cur = "app/checkout.aspx" OrElse cur = "app/checkout" OrElse
+               cur = "app/notifications.aspx" OrElse cur = "app/notifications" OrElse
+               cur = "app/profile.aspx" OrElse cur = "app/profile") Then
                 Return True
             End If
             ' Commission request/detail live behind the Commission Hub in the nav
@@ -224,8 +236,22 @@ Namespace STAR_DOM.Web
                 cur = "app/commissiondetail.aspx" OrElse cur = "app/commissiondetail") Then
                 Return True
             End If
+            ' The merchant editors are sub-pages of their list views, but their names are
+            ' singular+edit, so the directory prefix rule above cannot catch them.
+            If target = "app/merchant/events.aspx" AndAlso
+               (cur = "app/merchant/eventedit.aspx" OrElse cur = "app/merchant/eventedit") Then
+                Return True
+            End If
+            If target = "app/merchant/products.aspx" AndAlso
+               (cur = "app/merchant/productedit.aspx" OrElse cur = "app/merchant/productedit") Then
+                Return True
+            End If
+            ' Customers see the Commission Hub in their marketplace nav, but merchant and
+            ' admin accounts only get the studio, where the pipeline is the same feature.
             If target = "app/merchant/pipeline.aspx" AndAlso
-               (cur = "app/commissiondetail.aspx" OrElse cur = "app/commissiondetail") Then
+               (cur = "app/commissionhub.aspx" OrElse cur = "app/commissionhub" OrElse
+                cur = "app/commissionrequest.aspx" OrElse cur = "app/commissionrequest" OrElse
+                cur = "app/commissiondetail.aspx" OrElse cur = "app/commissiondetail") Then
                 Return True
             End If
             
