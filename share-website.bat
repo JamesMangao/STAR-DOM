@@ -10,10 +10,11 @@ rem ============================================================
 setlocal
 title STAR:DOM - Share via Cloudflare
 
-rem This script lives INSIDE the STAR-DOM-Web site folder, so the site
-rem root is the folder this script sits in. %~dp0 ends with a backslash
-rem and IIS Express rejects a /path:"...\" that ends in one - strip it.
-set "SITE=%~dp0"
+rem This script sits in the REPOSITORY ROOT, one level above the site folder,
+rem so the site root is the STAR-DOM-Web folder next to it. %~dp0 ends with
+rem a backslash and IIS Express rejects a /path:"...\" that ends in one -
+rem strip it.
+set "SITE=%~dp0STAR-DOM-Web"
 if "%SITE:~-1%"=="\" set "SITE=%SITE:~0,-1%"
 
 rem --- locate IIS Express ---
@@ -30,7 +31,7 @@ rem --- locate cloudflared: the repo's tools\ copy first, then PATH, then
 rem     Program Files. Sequential checks with goto (not nested parentheses):
 rem     %CFD% inside a (...) block expands at parse time, which once made the
 rem     Program Files check read the wrong value and always fail.
-set "CFD=%~dp0..\tools\cloudflared\cloudflared.exe"
+set "CFD=%~dp0tools\cloudflared\cloudflared.exe"
 if exist "%CFD%" goto :cfd_found
 
 set "CFD=cloudflared"
@@ -49,7 +50,7 @@ exit /b 1
 :cfd_found
 
 rem --- make sure the PostgreSQL database is running (starts it if needed) ---
-call "%~dp0..\start-db.bat"
+call "%~dp0start-db.bat"
 if errorlevel 1 (
     echo The database did not start - see the messages above.
     pause

@@ -2,11 +2,12 @@
 rem ============================================================
 rem  STAR:DOM local PostgreSQL - start / stop helper
 rem
-rem  The website talks PostgreSQL via Npgsql. This helper runs a
-rem  portable PostgreSQL (tools\pgsql, committed to the repo) with
-rem  its data directory in tools\pgdata, listening on localhost:5432
-rem  - exactly what STAR-DOM-Web\web.config's fallback connection
-rem  string expects:
+rem  Lives in the REPOSITORY ROOT and is called by run-website.bat and
+rem  share-website.bat, which sit next to it. The website talks
+rem  PostgreSQL via Npgsql. This helper runs a portable PostgreSQL
+rem  (tools\pgsql, committed to the repo) with its data directory in
+rem  tools\pgdata, listening on localhost:5432 - exactly what
+rem  STAR-DOM-Web\web.config's fallback connection string expects:
 rem      Host=localhost;Port=5432;Database=stardom;Username=postgres;Password=postgres
 rem
 rem  One-time bootstrap (fully automatic on a fresh clone):

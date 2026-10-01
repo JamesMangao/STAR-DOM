@@ -7,11 +7,11 @@ rem ============================================================
 setlocal
 title STAR:DOM Website
 
-rem This script lives INSIDE the STAR-DOM-Web site folder, so the
-rem site root is simply the folder this script sits in. %~dp0 ends
-rem with a backslash and IIS Express rejects a /path:"...\" that
-rem ends in one, so strip the trailing backslash.
-set "SITE=%~dp0"
+rem This script sits in the REPOSITORY ROOT, one level above the site folder,
+rem so the site root is the STAR-DOM-Web folder next to it. %~dp0 ends with
+rem a backslash and IIS Express rejects a /path:"...\" that ends in one, so
+rem strip the trailing backslash.
+set "SITE=%~dp0STAR-DOM-Web"
 if "%SITE:~-1%"=="\" set "SITE=%SITE:~0,-1%"
 
 set "IISEXE=C:\Program Files\IIS Express\iisexpress.exe"
@@ -25,7 +25,7 @@ if not exist "%IISEXE%" (
 )
 
 echo [1/3] Starting the STAR:DOM database on localhost:5432 ...
-call "%~dp0..\start-db.bat"
+call "%~dp0start-db.bat"
 if errorlevel 1 (
     echo The database did not start - see the messages above.
     pause

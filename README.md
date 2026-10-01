@@ -5,14 +5,14 @@ VB.NET **ASP.NET Web Forms (.NET Framework 4.8)** website on **PostgreSQL**
 
 ```
 D:\STARDOM
+├── run-website.bat               <- ★ double-click this to run the site
+├── share-website.bat             <- share the local site via a Cloudflare tunnel
+│                                    (cloudflared ships in tools\cloudflared\)
+├── start-db.bat                  <- local portable PostgreSQL helper
 ├── STAR-DOM-Web.sln              <- open this in Visual Studio (optional)
 ├── Dockerfile / render.yaml      <- Render deploy (Mono + XSP4)
-├── start-db.bat                  <- local portable PostgreSQL helper
 ├── tools\                        <- PostgreSQL server runtime (committed) + build notes
 └── STAR-DOM-Web\                 <- the website (everything lives here)
-    ├── run-website.bat           <- ★ double-click this to run the site
-    ├── share-website.bat         <- share the local site via a Cloudflare tunnel
-    │                                (cloudflared ships in tools\cloudflared\)
     ├── STAR-DOM-Web.vbproj
     ├── web.config                <- fallback connection string (localhost dev)
     ├── App\                      <- customer + merchant + admin pages
@@ -32,14 +32,15 @@ D:\STARDOM
 | **.NET Framework 4.8** runtime | ✅ Present |
 | **PostgreSQL 16.4 (portable, in the repo)** | ✅ server runtime in `tools\pgsql`; data dir auto-created at `tools\pgdata` on first run; db `stardom` on localhost:5432 |
 
-`run-website.bat` and `share-website.bat` start the local database for you
-(they call `..\start-db.bat` one level up) before launching IIS Express.
+`run-website.bat` and `share-website.bat` (in the repo root) start the local
+database for you (they call `start-db.bat` next to them) before launching
+IIS Express.
 The site prefers env vars (`SUPABASE_DB_URL` / `POSTGRES_URL` / `DB_*`) and
 falls back to the `web.config` connection string (localhost dev placeholder).
 
 ## Run the site
 
-**Simplest:** double-click **`D:\STARDOM\STAR-DOM-Web\run-website.bat`** —
+**Simplest:** double-click **`D:\STARDOM\run-website.bat`** —
 it boots PostgreSQL, starts IIS Express on port **8095**, and opens your browser.
 
 Or from a terminal:

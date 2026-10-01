@@ -501,10 +501,25 @@ CREATE INDEX IF NOT EXISTS IDX_BundleItems_Product ON BundleItems (ProductId);
 CREATE INDEX IF NOT EXISTS IDX_Promotions_Live ON Promotions (IsActive, StartsAt, EndsAt);
 CREATE INDEX IF NOT EXISTS IDX_CartItems_Cart ON CartItems (CartId);
 CREATE INDEX IF NOT EXISTS IDX_CartItems_Product ON CartItems (ProductId);
-ALTER TABLE WishlistItems ADD CONSTRAINT UK_Wishlist UNIQUE (UserId, ProductId);
+-- Unquoted identifiers fold to lowercase, so these constraints exist in
+-- pg_constraint as uk_wishlist / uk_eventinventory regardless of the case
+-- used here. The lowercase checks keep the script truly re-runnable.
+DO $do$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uk_wishlist') THEN
+        ALTER TABLE WishlistItems ADD CONSTRAINT UK_Wishlist UNIQUE (UserId, ProductId);
+    END IF;
+END
+$do$;
 CREATE INDEX IF NOT EXISTS IDX_Events_Status ON PopUpEvents (Status, StartDate);
 CREATE INDEX IF NOT EXISTS IDX_Events_Current ON PopUpEvents (IsCurrent);
-ALTER TABLE EventInventory ADD CONSTRAINT UK_EventInventory UNIQUE (EventId, ProductId);
+DO $do$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uk_eventinventory') THEN
+        ALTER TABLE EventInventory ADD CONSTRAINT UK_EventInventory UNIQUE (EventId, ProductId);
+    END IF;
+END
+$do$;
 CREATE INDEX IF NOT EXISTS IDX_Orders_User ON Orders (UserId);
 CREATE INDEX IF NOT EXISTS IDX_Orders_Status ON Orders (Status);
 CREATE INDEX IF NOT EXISTS IDX_Orders_Created ON Orders (CreatedAt);
@@ -516,7 +531,13 @@ CREATE INDEX IF NOT EXISTS IDX_OrderItems_Product ON OrderItems (ProductId);
 CREATE INDEX IF NOT EXISTS IDX_Payments_Order ON Payments (OrderId);
 CREATE INDEX IF NOT EXISTS IDX_Payments_Method ON Payments (PaymentMethod);
 CREATE INDEX IF NOT EXISTS IDX_Receipts_Order ON Receipts (OrderId);
-ALTER TABLE Receipts ADD CONSTRAINT UK_Receipts_Payment UNIQUE (PaymentId);
+DO $do$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uk_receipts_payment') THEN
+        ALTER TABLE Receipts ADD CONSTRAINT UK_Receipts_Payment UNIQUE (PaymentId);
+    END IF;
+END
+$do$;
 CREATE INDEX IF NOT EXISTS IDX_Reviews_Product ON Reviews (ProductId);
 CREATE INDEX IF NOT EXISTS IDX_Reviews_User ON Reviews (UserId);
 CREATE INDEX IF NOT EXISTS IDX_Commissions_Merchant ON Commissions (MerchantId, Status);
@@ -541,9 +562,17 @@ ALTER TABLE Bundles ADD COLUMN IF NOT EXISTS BundlePrice DECIMAL(12,2) NOT NULL 
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedBy INT NULL;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedAt TIMESTAMPTZ NULL;
+-- The CREATE TABLE block above already declares FK_Orders_ShippingFeeBy, and
+-- because identifiers fold to lowercase, pg_constraint stores it as
+-- fk_orders_shippingfeeby. Comparing conname to the mixed-case literal
+-- 'FK_Orders_ShippingFeeBy' never matches, so the ADD CONSTRAINT fired again
+-- and aborted a FRESH bootstrap (this is what broke start-db.bat's one-time
+-- seed on a newly cloned machine: schema failed -> seed never ran -> 0
+-- products). PostgreSQL has no ADD CONSTRAINT IF NOT EXISTS, so the guard
+-- stays a DO block — just comparing against the lowercase stored name.
 DO $do$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_Orders_ShippingFeeBy') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_orders_shippingfeeby') THEN
         ALTER TABLE Orders ADD CONSTRAINT FK_Orders_ShippingFeeBy
             FOREIGN KEY (ShippingFeeConfirmedBy) REFERENCES Users(Id);
     END IF;
