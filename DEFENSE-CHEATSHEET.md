@@ -113,23 +113,12 @@ Models (Shared\Models) are shared DTOs used by all layers.
 
 ### General
 
-**Q: Why ASP.NET Web Forms and not MVC, PHP, or a SPA?**
-> A: The capstone specification targets the .NET stack, and Web Forms fits our
-> team's strength and timeline. The business logic is deliberately isolated in
-> a Services layer, so the UI technology could be replaced without touching
-> rules — which is the part that matters for maintainability.
-
 **Q: Why PostgreSQL and not MySQL?**
 > A: We initially built on MySQL and migrated fully to PostgreSQL because our
 > production target (Supabase) is PostgreSQL, it offers stronger data types
 > (true booleans, timestamptz), and its transactional guarantees are what our
 > checkout flow depends on. The migration also taught us dialect discipline —
 > all SQL now runs through one repository layer.
-
-**Q: Who did what in the team? / Is this solo?**
-> A: (State your real setup — the repo shows one contributor. Suggested:)
-> "I built and maintained the entire codebase, with mentor guidance on
-> architecture." *(Adjust to your actual team situation.)*
 
 **Q: What design pattern does the system use?**
 > A: A layered / Repository pattern: pages never write SQL; they call Services,
@@ -209,12 +198,6 @@ Models (Shared\Models) are shared DTOs used by all layers.
 > the order close — this prevents disputes where one side claims the other
 > never confirmed.
 
-**Q: Why was the POS / in-person sale feature removed?**
-> A: Scope discipline. The website's inventory is the ONLINE inventory. For
-> physical booth sales the owner deducts stock manually — so the website never
-> lies about what is physically at a booth, and pop-up pages serve as
-> information for online buyers (location, hours, event exclusives).
-
 **Q: Why are commissions delivery-only?**
 > A: A commission takes days of production; requiring the buyer to meet a
 > booth window is unrealistic. Delivery-only keeps fulfillment uniform and
@@ -240,12 +223,6 @@ Models (Shared\Models) are shared DTOs used by all layers.
 > We moved the whole checkout into one transaction and made the decrement
 > conditional, so the database itself arbitrates who gets the last unit. The
 > loser gets a clean 'insufficient stock' message and a full rollback."
-
-**C. Deploying a .NET Framework app to Linux.**
-> "Mono's VB compiler (vbnc) crashed on a Roslyn-only directive that the code
-> generator emits. We ship a shim that strips that one line before vbnc runs,
-> and the Dockerfile compiles every page as a deploy gate — a broken page
-> fails the build instead of 500-ing in production."
 
 ---
 
