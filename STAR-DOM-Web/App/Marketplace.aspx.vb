@@ -73,8 +73,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""eyebrow"">CATALOG DISCOVERY</div>")
             sb.Append("<h2>Handcrafted Products &amp; Art</h2>")
             sb.Append("</div>")
-            sb.Append("<div class=""sub"">" & featured.Count.ToString() & " of " & _catalog.ListProducts().Count.ToString() &
-                      " SKUs · <span style=""color:var(--green);font-weight:700"">" & WebUi.Ic("sync", "sm") & " Live POS sync</span></div>")
+            sb.Append("<div class=""sub"">" & featured.Count.ToString() & " of " & _catalog.ListProducts().Count.ToString() & " SKUs</div>")
             sb.Append("</div>")
 
             Dim chips As New StringBuilder()
@@ -187,8 +186,7 @@ Namespace STAR_DOM.Web
             End If
             sb.Append("<div class=""pfoot"">")
             sb.Append(WebUi.Money(p.EffectivePrice))
-            sb.Append(WebUi.BtnHref("/App/Cart.aspx?add=" & p.Id.ToString() & "&q=1&ret=/App/Marketplace.aspx", "Add", "primary", "add_shopping_cart",
-                                   WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice)))
+            sb.Append(WebUi.AddCartButton(p, "/App/Marketplace.aspx"))
             sb.Append("</div>")
             sb.Append(If(p.StockQuantity <= p.LowStockThreshold, "<span class=""stockline"" style=""color:var(--primary)"">Only " &
                         p.StockQuantity.ToString() & " remaining!</span>", "<span class=""stockline"">" &

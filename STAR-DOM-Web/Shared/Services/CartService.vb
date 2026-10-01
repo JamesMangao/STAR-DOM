@@ -1,3 +1,5 @@
+Imports System.Data
+Imports STAR_DOM.Database
 Imports STAR_DOM.Helpers
 Imports STAR_DOM.Models
 Imports STAR_DOM.Repositories
@@ -72,29 +74,58 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
-        ''' Human label of the first active bundle containing the product, e.g.
-        ''' "any 4 for ₱100" — shown on the product page so shoppers see the deal
-        ''' before adding to cart. Empty when the product is not in an active bundle.
+        ''' The active bundle containing a product, or Nothing. Callers use it to show the
+        ''' deal (group size, bundle price, and what the members cost separately) before
+        ''' the shopper adds anything to the cart.
         ''' </summary>
-        Public Function BundleLabelForProduct(productId As Integer) As String
+        Public Function BundleForProduct(productId As Integer) As BundleGroup
             For Each g As BundleGroup In _cart.ListBundleGroups()
-                If g.ProductIds.Contains(productId) Then
-                    Return "any " & g.GroupSize.ToString() & " for " & Fmt.PHP(g.GroupPrice)
-                End If
+                If g.ProductIds.Contains(productId) Then Return g
             Next
-            Return ""
+            Return Nothing
         End Function
 
         ''' <summary>
-        ''' Shopper-facing bundle legend, e.g. "Stickers Bundle — 4 for ₱100 ·
-        ''' Button pins Bundle — 3 for ₱100". Empty when no deal-style bundle is active.
+        ''' Short deal text for a product, e.g. "any 4 for ₱100". Empty when the
+        ''' product is not in an active bundle.
+        ''' </summary>
+        Public Function BundleLabelForProduct(productId As Integer) As String
+            Dim g As BundleGroup = BundleForProduct(productId)
+            If g Is Nothing Then Return ""
+            Return "any " & g.GroupSize.ToString() & " for " & Fmt.PHP(g.GroupPrice)
+        End Function
+
+        ''' <summary>
+        ''' Regular (non-bundle) cost of one full group of a bundle, honouring each
+        ''' member's current sale price — the "before" figure shoppers compare against
+        ''' the bundle price. Zero when the members cannot be priced.
+        ''' </summary>
+        Public Function BundleRegularPrice(g As BundleGroup) As Decimal
+            If g Is Nothing OrElse g.ProductIds.Count = 0 Then Return 0D
+            Dim rows As List(Of DataRow) = Db.Rows(
+                "SELECT Id, BasePrice, SalePrice FROM Products WHERE Id = ANY(@ids)",
+                Db.P("@ids", g.ProductIds.ToArray()))
+            Dim total As Decimal = 0D
+            Dim n As Integer = 0
+            For Each r As DataRow In rows
+                Dim sale As Decimal? = RowReader.AsNullableDec(r, "SalePrice")
+                total += If(sale.HasValue AndAlso sale.Value > 0D, sale.Value, RowReader.AsDec(r, "BasePrice"))
+                n += 1
+            Next
+            If n = 0 Then Return 0D
+            Return Decimal.Round(total * g.GroupSize / n, 2)
+        End Function
+
+        ''' <summary>
+        ''' Shopper-facing bundle legend, e.g. "Stickers Bundle — any 4 for ₱100 ·
+        ''' Button Pins Bundle — any 3 for ₱100". Empty when no deal bundle is active.
         ''' </summary>
         Public Function BundleNote() As String
             Dim parts As New List(Of String)()
             For Each g As BundleGroup In _cart.ListBundleGroups()
-                Dim label As String = System.Text.RegularExpressions.Regex.Replace(g.Name, "\s*\(.*\)\s*$", "").Trim()
-                If label = "" Then label = g.Name
-                parts.Add(label & " — " & g.GroupSize.ToString() & " for " & Fmt.PHP(g.GroupPrice))
+                Dim label As String = If(g.Name, "").Trim()
+                If label = "" Then label = "Bundle #" & g.BundleId.ToString()
+                parts.Add(label & " — any " & g.GroupSize.ToString() & " for " & Fmt.PHP(g.GroupPrice))
             Next
             Return String.Join(" · ", parts)
         End Function

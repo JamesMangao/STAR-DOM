@@ -181,6 +181,49 @@ Namespace STAR_DOM.Web
         End Function
 
         ''' <summary>
+        ''' Add-to-cart button that opens the quantity picker instead of jumping straight
+        ''' to the cart with a hardcoded q=1. Emits <c>data-addcart</c>, which the script in
+        ''' Site.master intercepts, together with the product details the modal shows.
+        ''' </summary>
+        ''' <remarks>
+        ''' The anchor keeps a real href with q=1, so the button still works with
+        ''' JavaScript disabled, when the script fails, and for anonymous visitors who
+        ''' are bounced through the sign-in gate first (the gate carries this href to
+        ''' Login.aspx as the return target, so their single Add still lands).
+        ''' <para>
+        ''' <paramref name="p"/> only supplies the id and the modal's display data; the
+        ''' modal's own quantity cap is a UI convenience, and the cart page plus
+        ''' CartRepository still enforce real stock server-side.
+        ''' </para>
+        ''' </remarks>
+        Public Function AddCartButton(p As STAR_DOM.Models.Product,
+                                      returnUrl As String,
+                                      Optional text As String = "Add",
+                                      Optional kind As String = "primary",
+                                      Optional icon As String = "add_shopping_cart") As String
+            Dim q As Integer = 1
+            If p.StockQuantity > 0 AndAlso p.StockQuantity < q Then q = p.StockQuantity
+            Dim url As String = "/App/Cart.aspx?add=" & p.Id.ToString() & "&q=" & q.ToString() &
+                                "&ret=" & Attr(returnUrl)
+            Dim ic As String = ""
+            If icon <> "" Then
+                ic = "<span class=""" & If(IsGlyph(icon), "ic", "ic ms") & """>" & Esc(icon) & "</span>"
+            End If
+            Dim sb As New StringBuilder()
+            sb.Append("<a class=""btn " & kind & """ href=""" & Attr(url) & """")
+            sb.Append(" data-addcart=""" & Attr(url) & """")
+            sb.Append(" data-name=""" & Attr(p.Name) & """")
+            sb.Append(" data-price=""" & Attr(Fmt_PHP(p.EffectivePrice)) & """")
+            sb.Append(" data-unit=""" & p.EffectivePrice.ToString(System.Globalization.CultureInfo.InvariantCulture) & """")
+            sb.Append(" data-stock=""" & p.StockQuantity.ToString() & """")
+            sb.Append(" data-img=""" & Attr(p.PrimaryImageFile) & """")
+            sb.Append(" data-seed=""" & p.Id.ToString() & """")
+            sb.Append(AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice))
+            sb.Append(">" & ic & "<span>" & Esc(text) & "</span></a>")
+            Return sb.ToString()
+        End Function
+
+        ''' <summary>
         ''' Prev/next pager for bounded lists. Pass a URL template containing "{P}" for the page number,
         ''' e.g. "/App/Merchant/Orders.aspx?p={P}".
         ''' </summary>

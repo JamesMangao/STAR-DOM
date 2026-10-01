@@ -92,9 +92,13 @@ Namespace STAR_DOM.Services
 
             Dim subtotal As Decimal = items.Sum(Function(i) i.LineTotal)
             Dim bundleDiscount As Decimal = _cart.BundleDiscount(items)
-            ' Pick-up never carries a shipping fee; delivery is free from ₱1,500.
-            Dim shippingFee As Decimal = If(isPickup, 0D, If(subtotal >= 1500D, 0D, 80D))
-            Dim total As Decimal = Math.Max(subtotal - bundleDiscount + shippingFee, 0D)
+            ' No shipping formula: the courier fee is not knowable at checkout. A delivery
+            ' order is created with ShippingFee 0, ShippingFeeConfirmed FALSE, and a total
+            ' that is still subtotal minus bundle savings. The merchant quotes the real J&T
+            ' fee when confirming the order (ConfirmWithShippingFee), which is what makes
+            ' the total final. Pick-up never carries a fee, so its total is final at once.
+            Dim shippingFee As Decimal = 0D
+            Dim total As Decimal = Math.Max(subtotal - bundleDiscount, 0D)
             Dim orderNumber As String = ""
             Dim orderId As Integer = 0
 
@@ -184,13 +188,14 @@ Namespace STAR_DOM.Services
 
             Dim notif As New NotificationService()
             notif.Notify(Session.CurrentUser.Id, "Order placed – " & orderNumber,
-                         "Your order totaling " & Fmt.PHP(total) & " via " & method &
-                         " has been received. " & If(isPickup,
+                         "Your order of " & Fmt.PHP(total) & " via " & method & " has been received. " &
+                         If(isPickup,
                              "We'll prepare it for pick-up at " & pickupEvent.Name & ".",
-                             "It ships via J&T Express — track it in My Orders."),
+                             "We'll confirm the J&T shipping fee and send you the final total before it ships. Track it in My Orders."),
                          "ORDER", "my-orders")
             notif.NotifyRole("ADMIN", "New order – " & orderNumber,
-                             Fmt.PHP(total) & " – " & items.Count.ToString() & " item(s) ready for processing.",
+                             Fmt.PHP(total) & " – " & items.Count.ToString() & " item(s) ready for processing" &
+                             If(isPickup, ".", ". Quote the J&T shipping fee to confirm it."),
                              "ORDER", "merchant-orders")
 
             Return ServiceResult.Ok("Order " & orderNumber & " placed!", orderNumber)
@@ -337,6 +342,75 @@ Namespace STAR_DOM.Services
             Return _orders.CountAll(search, status)
         End Function
 
+        ''' <summary>
+        ''' Confirm a delivery order by quoting the courier fee the customer will be
+        ''' charged. Entering the fee IS the confirmation: it sets Status = CONFIRMED and
+        ''' finalises TotalAmount in a single statement, so the order can never sit in
+        ''' CONFIRMED while showing a total that still has no shipping on it.
+        ''' </summary>
+        Public Function ConfirmWithShippingFee(orderId As Integer, feeText As String, password As String) As ServiceResult
+            If Not Session.CanManageStore Then Return ServiceResult.Fail("Only the store team can do this.")
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.IsPickup Then Return ServiceResult.Fail("Pick-up orders carry no shipping fee and are confirmed as usual.")
+            If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
+            ' PROCESSING is refused alongside SHIPPED/DELIVERED on purpose. Confirming
+            ' writes Status = CONFIRMED, so letting an in-flight order back in would
+            ' drag it a step backwards in the pipeline. Re-quoting a CONFIRMED order is
+            ' still allowed — that is how a mis-typed fee gets corrected.
+            If order.Status = "PROCESSING" OrElse order.Status = "SHIPPED" OrElse order.Status = "DELIVERED" Then
+                Return ServiceResult.Fail("This order is already on its way — the shipping fee can no longer be changed.")
+            End If
+
+            ' Parsed with InvariantCulture so a comma decimal separator cannot turn a
+            ' fee into something wildly larger (or negative) than intended.
+            Dim fee As Decimal = 0D
+            Dim rawFee As String = If(feeText, "").Trim()
+            If rawFee = "" Then rawFee = "0"
+            If Not Decimal.TryParse(rawFee, System.Globalization.NumberStyles.Any,
+                                    System.Globalization.CultureInfo.InvariantCulture, fee) Then
+                Return ServiceResult.Fail("Enter the shipping fee as a number, e.g. 145.")
+            End If
+            If fee < 0D OrElse fee > 10000D Then
+                Return ServiceResult.Fail("Shipping fee must be between ₱0 and ₱10,000.")
+            End If
+
+            ' Same password re-entry gate as ConfirmPayment, so a left-open merchant
+            ' session cannot quietly commit a customer's total.
+            Dim pwd As String = If(password, "").Trim()
+            If pwd = "" Then Return ServiceResult.Fail("Enter your password to confirm the order.")
+            Dim freshUser As User = New UserRepository().GetById(Session.CurrentUser.Id)
+            If freshUser Is Nothing OrElse Not PasswordHasher.Verify(pwd, freshUser.PasswordHash) Then
+                Return ServiceResult.Fail("Password incorrect — the order was not confirmed.")
+            End If
+
+            Try
+                Db.InTransaction(Of Boolean)(Function() As Boolean
+                    _orders.ConfirmWithShippingFee(orderId, Math.Round(fee, 2), Session.CurrentUser.Id)
+                    Return True
+                End Function)
+            Catch ex As Exception
+                Db.LogError("ConfirmWithShippingFee", ex)
+                Return ServiceResult.Fail("Could not save the shipping fee: " & ex.Message)
+            End Try
+
+            ' Re-read: the transaction is the authority on the new total, and the
+            ' receipt and payment row both have to be brought in line with it.
+            Dim confirmed As Order = _orders.GetById(orderId)
+            If confirmed Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            _orders.UpdatePaymentAmountForOrder(confirmed.Id, confirmed.TotalAmount)
+            _receipts.RefreshTotals(confirmed)
+
+            Dim notif As New NotificationService()
+            notif.Notify(confirmed.UserId, "Order confirmed – " & confirmed.OrderNumber,
+                         "Shipping is " & Fmt.PHP(confirmed.ShippingFee) & " via J&T Express. " &
+                         "Your final total is " & Fmt.PHP(confirmed.TotalAmount) & " — we'll let you know when it ships.",
+                         "ORDER", "my-orders")
+
+            Return ServiceResult.Ok("Order confirmed — final total " & Fmt.PHP(confirmed.TotalAmount) &
+                                    " (includes " & Fmt.PHP(confirmed.ShippingFee) & " shipping).")
+        End Function
+
         ''' <summary>Merchant updates fulfilment state, keeping the payment status consistent.</summary>
         Public Function UpdateOrderState(orderId As Integer, newStatus As String, Optional tracking As String = "") As ServiceResult
             Dim order As Order = _orders.GetById(orderId)
@@ -346,6 +420,14 @@ Namespace STAR_DOM.Services
             ' the claim (ConfirmPickup), not through the ship/deliver path.
             If order.IsPickup AndAlso (newStatus = "SHIPPED" OrElse newStatus = "DELIVERED") Then
                 Return ServiceResult.Fail("Pick-up orders are completed by the two-sided claim confirmation, not by shipping.")
+            End If
+
+            ' A delivery order cannot be confirmed on a bare status change: the courier
+            ' fee is what the customer is quoted, so it has to be entered through
+            ' ConfirmWithShippingFee. A zero fee is still a decision worth recording, so
+            ' this gate is on ShippingFeeConfirmed rather than on the fee being non-zero.
+            If newStatus = "CONFIRMED" AndAlso Not order.IsPickup AndAlso Not order.ShippingFeeConfirmed Then
+                Return ServiceResult.Fail("Enter the J&T shipping fee to confirm this order — the customer is quoted the final total at that point.")
             End If
 
             Dim wasCancelled As Boolean = order.Status = "CANCELLED"

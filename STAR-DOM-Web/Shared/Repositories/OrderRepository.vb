@@ -135,6 +135,29 @@ Namespace STAR_DOM.Repositories
                     Db.P("@s", status), Db.P("@id", orderId))
         End Sub
 
+        ''' <summary>
+        ''' Confirm a delivery order in the same statement that records the courier fee
+        ''' it was confirmed against, so the two can never disagree: there is no window
+        ''' in which Status = CONFIRMED but no fee was quoted.
+        ''' </summary>
+        Public Sub ConfirmWithShippingFee(orderId As Integer, fee As Decimal, userId As Integer)
+            Db.Exec(
+                "UPDATE Orders SET ShippingFee = @f, TotalAmount = GREATEST(Subtotal - DiscountAmount + @f, 0), " &
+                "ShippingFeeConfirmed = TRUE, ShippingFeeConfirmedBy = @u, ShippingFeeConfirmedAt = NOW(), " &
+                "Status = 'CONFIRMED', UpdatedAt = NOW() WHERE Id = @id",
+                Db.P("@f", fee), Db.P("@u", userId), Db.P("@id", orderId))
+        End Sub
+
+        ''' <summary>
+        ''' Keep Payments.Amount in step with a re-quoted total. A payment row is created
+        ''' at checkout against the pre-fee total, so without this the ledger and the
+        ''' order header would disagree about what was owed.
+        ''' </summary>
+        Public Sub UpdatePaymentAmountForOrder(orderId As Integer, amount As Decimal)
+            Db.Exec("UPDATE Payments SET Amount = @a WHERE OrderId = @o AND Status <> 'PAID'",
+                    Db.P("@a", amount), Db.P("@o", orderId))
+        End Sub
+
         ''' <summary>Put sold units back on the shelf when an order is cancelled.</summary>
         Public Sub RestoreOrderStock(orderId As Integer)
             ' MySQL wrote this as a multi-table UPDATE (UPDATE ... JOIN ... SET).
@@ -345,6 +368,9 @@ Namespace STAR_DOM.Repositories
                 .PickupEventId = RowReader.AsNullableInt(r, "PickupEventId"),
                 .PickupCustomerConfirmed = RowReader.AsBool(r, "PickupCustomerConfirmed"),
                 .PickupMerchantConfirmed = RowReader.AsBool(r, "PickupMerchantConfirmed"),
+                .ShippingFeeConfirmed = RowReader.AsBool(r, "ShippingFeeConfirmed"),
+                .ShippingFeeConfirmedBy = RowReader.AsNullableInt(r, "ShippingFeeConfirmedBy"),
+                .ShippingFeeConfirmedAt = RowReader.AsNullableDate(r, "ShippingFeeConfirmedAt"),
                 .TrackingNumber = RowReader.AsStr(r, "TrackingNumber"),
                 .PickupEventName = RowReader.AsStr(r, "PickupEventName"),
                 .PickupHoursText = RowReader.AsStr(r, "PickupHoursText")

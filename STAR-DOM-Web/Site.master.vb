@@ -304,6 +304,7 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""nav-group"">")
                 sb.Append("<div class=""nav-head"">SYSTEM<span class=""pill small gray"">ADMIN</span></div>")
                 sb.Append(NavLink(New NavItem("Admin Console", "/App/Admin/Users.aspx", "", "", "admin_panel_settings")))
+                sb.Append(NavLink(New NavItem("Payment Settings", "/App/Admin/PaymentSettings.aspx", "", "", "qr_code_2")))
                 sb.Append("</div>")
             End If
 

@@ -115,6 +115,34 @@
         </div>
     </div>
 
+    <!-- STAR:DOM quantity picker. Any element with data-addcart opens this instead
+         of navigating straight to Cart.aspx with q=1; the real href stays on the
+         anchor as the no-JavaScript / anonymous-sign-in fallback. -->
+    <div class="modal-backdrop" id="qtyModal" aria-hidden="true">
+        <div class="modal-card qty-card" role="dialog" aria-modal="true" aria-labelledby="qtyModalTitle" aria-describedby="qtyNote">
+            <span class="ag-ribbon" aria-hidden="true"></span>
+            <button type="button" class="ag-x" id="qtyX" aria-label="Close"><span class="ms sm">close</span></button>
+            <span class="modal-ic ag-ic ms">shopping_basket</span>
+            <span class="ag-eyebrow">Choose quantity</span>
+            <h3 id="qtyModalTitle">Add to cart</h3>
+            <div class="ag-product" id="qtyProduct">
+                <span class="ag-thumb" id="qtyThumb"></span>
+                <span class="ag-pmeta"><b id="qtyName"></b><span id="qtyUnit"></span></span>
+            </div>
+            <div class="qty-row">
+                <button type="button" class="qty-step" id="qtyMinus" aria-label="Decrease quantity"><span class="ms sm">remove</span></button>
+                <input type="number" id="qtyInput" value="1" min="1" step="1" inputmode="numeric" autocomplete="off" aria-label="Quantity to add" />
+                <button type="button" class="qty-step" id="qtyPlus" aria-label="Increase quantity"><span class="ms sm">add</span></button>
+            </div>
+            <p class="modal-msg qty-note" id="qtyNote"></p>
+            <div class="qty-total"><span>Subtotal</span><b id="qtyTotal">&mdash;</b></div>
+            <div class="modal-actions qty-actions">
+                <button type="button" class="btn ghost" id="qtyCancel">Cancel</button>
+                <button type="button" class="btn primary" id="qtyAdd">Add to cart</button>
+            </div>
+        </div>
+    </div>
+
     <!-- STAR:DOM premium sign-in gate. Rendered only for anonymous visitors
          (Site.master.vb sets Visible); when it is absent the script below treats
          the whole gate as inert, so signed-in users never see it. -->
@@ -209,25 +237,26 @@
             return v;
         }
 
-        function paintThumb(name, img, seed) {
-            gateThumb.style.backgroundImage = '';
+        function paintThumb(el, name, img, seed) {
+            if (!el) return;
+            el.style.backgroundImage = '';
             var imgSafe = safeImg(img);
             if (imgSafe) {
-                gateThumb.style.backgroundImage = "url('" + imgSafe + "')";
-                gateThumb.classList.add('has-img');
-                gateThumb.textContent = '';
+                el.style.backgroundImage = "url('" + imgSafe + "')";
+                el.classList.add('has-img');
+                el.textContent = '';
                 return;
             }
-            gateThumb.classList.remove('has-img');
+            el.classList.remove('has-img');
             var hue = (parseInt(seed, 10) || 0) * 47 % 360;
-            gateThumb.style.background = 'linear-gradient(135deg, hsl(' + hue + ',72%,93%), hsl(' +
+            el.style.background = 'linear-gradient(135deg, hsl(' + hue + ',72%,93%), hsl(' +
                 ((hue + 40) % 360) + ',66%,85%))';
             var parts = (name || '').trim().split(/\s+/);
             var letters = '';
             for (var i = 0; i < Math.min(parts.length, 2); i++) {
                 if (parts[i]) letters += parts[i].charAt(0);
             }
-            gateThumb.textContent = letters.toUpperCase() || 'SD';
+            el.textContent = letters.toUpperCase() || 'SD';
         }
 
         function openGate(link) {
@@ -242,7 +271,7 @@
             if (name) {
                 gateName.textContent = name;
                 gatePrice.textContent = link.getAttribute('data-price') || '';
-                paintThumb(name, link.getAttribute('data-img'), link.getAttribute('data-seed'));
+                paintThumb(gateThumb, name, link.getAttribute('data-img'), link.getAttribute('data-seed'));
                 gateProduct.style.display = 'flex';
             } else {
                 gateProduct.style.display = 'none';
@@ -284,12 +313,149 @@
             });
         }
 
+        // ---------- Quantity picker (add to cart) ----------
+        // Every data-addcart link opens this instead of jumping to Cart.aspx
+        // with q=1. The anchor's href is still a complete, working add, so this
+        // is an enhancement: without JS, or for the anonymous sign-in gate,
+        // the raw link still adds one.
+        var qtyModal = document.getElementById('qtyModal');
+        var qtyCard = qtyModal ? qtyModal.querySelector('.qty-card') : null;
+        var qtyThumb = document.getElementById('qtyThumb');
+        var qtyInput = document.getElementById('qtyInput');
+        var qtyNote = document.getElementById('qtyNote');
+        var qtyTotal = document.getElementById('qtyTotal');
+        var qtyMinus = document.getElementById('qtyMinus');
+        var qtyPlus = document.getElementById('qtyPlus');
+        var qtyAdd = document.getElementById('qtyAdd');
+        var qtyTarget = null;
+        var qtyUnit = 0;
+        var qtyMax = 1;
+        var qtyOut = false;
+        var qtyLastFocus = null;
+
+        function peso(n) {
+            return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function qtyClamp(v) {
+            var n = parseInt(v, 10);
+            if (!isFinite(n) || n < 1) n = 1;
+            if (n > qtyMax) n = qtyMax;
+            return n;
+        }
+
+        function qtySync(fromTyping) {
+            var n = qtyClamp(qtyInput.value);
+            if (!fromTyping) qtyInput.value = n;
+            qtyInput.disabled = qtyOut;
+            qtyAdd.disabled = qtyOut;
+            qtyMinus.disabled = qtyOut || n <= 1;
+            qtyPlus.disabled = qtyOut || n >= qtyMax;
+            if (qtyOut) {
+                // Active but zero-stock items still render an Add button, so say
+                // why instead of letting the shopper fill in a doomed quantity.
+                qtyNote.textContent = 'This one is out of stock right now.';
+                qtyTotal.textContent = '—';
+                return n;
+            }
+            qtyTotal.textContent = peso(qtyUnit * n);
+            // Only nag about the ceiling once it is a real ceiling, and only once
+            // the shopper has actually pushed against it.
+            if (qtyMax > 1 && n >= qtyMax) {
+                qtyNote.textContent = 'That is all we have in the booth right now.';
+            } else {
+                qtyNote.textContent = '';
+            }
+            return n;
+        }
+
+        function openQty(link) {
+            qtyTarget = link.getAttribute('data-addcart') || link.getAttribute('href') || '';
+            qtyUnit = parseFloat(link.getAttribute('data-unit'));
+            if (!isFinite(qtyUnit) || qtyUnit < 0) qtyUnit = 0;
+            var stock = parseInt(link.getAttribute('data-stock'), 10);
+            qtyOut = !isFinite(stock) || stock <= 0;
+            qtyMax = qtyOut ? 1 : stock;
+
+            var name = link.getAttribute('data-name') || 'this item';
+            document.getElementById('qtyName').textContent = name;
+            document.getElementById('qtyUnit').textContent = link.getAttribute('data-price') || '';
+            paintThumb(qtyThumb, name, link.getAttribute('data-img'), link.getAttribute('data-seed'));
+
+            qtyInput.max = qtyMax;
+            qtyInput.value = 1;
+            qtySync(false);
+
+            qtyLastFocus = link;
+            qtyModal.classList.add('open');
+            qtyModal.setAttribute('aria-hidden', 'false');
+            qtyCard.classList.remove('pop');
+            void qtyCard.offsetWidth;
+            qtyCard.classList.add('pop');
+            // The input is disabled for out-of-stock items, so park focus on
+            // Cancel rather than leaving keyboard users outside the dialog.
+            (qtyOut ? document.getElementById('qtyCancel') : qtyInput).focus();
+            if (!qtyOut) qtyInput.select();
+        }
+
+        function closeQty() {
+            if (!qtyModal.classList.contains('open')) return;
+            qtyModal.classList.remove('open');
+            qtyModal.setAttribute('aria-hidden', 'true');
+            if (qtyLastFocus) qtyLastFocus.focus();
+        }
+
+        function submitQty() {
+            if (!qtyTarget || qtyOut) return;
+            var n = qtySync(false);
+            // Swap only the q= value, so ret= and anything else the caller
+            // supplied survive untouched. The href always ships a q, but the
+            // fallback keeps this honest if a call site ever drops it.
+            var url = qtyTarget.replace(/([?&])q=[^&]*/, '$1q=' + n);
+            if (!/[?&]q=\d+/.test(url)) {
+                url += (url.indexOf('?') >= 0 ? '&' : '?') + 'q=' + n;
+            }
+            closeQty();
+            if (bar) bar.className = 'loading';
+            document.body.classList.add('page-leaving');
+            setTimeout(function () { window.location.href = url; }, 140);
+        }
+
+        if (qtyModal) {
+            qtyMinus.addEventListener('click', function () { qtyInput.value = qtyClamp((parseInt(qtyInput.value, 10) || 1) - 1); qtySync(false); });
+            qtyPlus.addEventListener('click', function () { qtyInput.value = qtyClamp((parseInt(qtyInput.value, 10) || 1) + 1); qtySync(false); });
+            qtyInput.addEventListener('input', function () { qtySync(true); });
+            qtyInput.addEventListener('blur', function () { qtySync(false); });
+            qtyAdd.addEventListener('click', submitQty);
+            document.getElementById('qtyCancel').addEventListener('click', closeQty);
+            document.getElementById('qtyX').addEventListener('click', closeQty);
+            qtyModal.addEventListener('click', function (e) { if (e.target === qtyModal) closeQty(); });
+            document.addEventListener('keydown', function (e) {
+                if (!qtyModal.classList.contains('open')) return;
+                if (e.key === 'Escape') closeQty();
+                else if (e.key === 'Enter' && e.target === qtyInput) { e.preventDefault(); submitQty(); }
+            });
+        }
+
+        document.addEventListener('click', function (e) {
+            var link = e.target && e.target.closest ? e.target.closest('[data-addcart]') : null;
+            if (!link) return;
+            // Anonymous shoppers get the sign-in gate instead; the gate carries
+            // this href to Login.aspx so the Add still completes on the way back.
+            if (isGated(link)) return;
+            // New tab / new window: let the browser use the plain href.
+            if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+            e.preventDefault();
+            openQty(link);
+        });
+
         // Page transition exit animation & progress bar
         var bar = document.getElementById('page-progress');
         document.addEventListener('click', function (e) {
             var link = e.target && e.target.closest ? e.target.closest('a') : null;
             if (!link || !link.href) return;
             if (link.target === '_blank' || link.hasAttribute('download') || link.getAttribute('data-confirm')) return;
+            if (link.hasAttribute('data-addcart')) return;
             if (isGated(link)) return;
             if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
 

@@ -121,6 +121,13 @@ CREATE TABLE IF NOT EXISTS Bundles (
     Name VARCHAR(160) NOT NULL,
     Description VARCHAR(255) NULL,
     DiscountPercent DECIMAL(5,2) NOT NULL DEFAULT 0,
+    -- The "any N for PHP M" deal as real data, NOT parsed out of Name. Keeping it
+    -- in columns means merchandising can rename a bundle freely without silently
+    -- disabling its pricing. GroupSize = how many items form one bundle group;
+    -- BundlePrice = what that whole group pays. Both 0 means "not a deal bundle"
+    -- and the cart pricing engine skips it.
+    GroupSize INT NOT NULL DEFAULT 0,
+    BundlePrice DECIMAL(12,2) NOT NULL DEFAULT 0,
     IsActive BOOLEAN NOT NULL DEFAULT TRUE,
     CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -250,11 +257,20 @@ CREATE TABLE IF NOT EXISTS Orders (
     -- A pick-up order is complete only when BOTH sides confirm the handover.
     PickupCustomerConfirmed BOOLEAN NOT NULL DEFAULT FALSE,
     PickupMerchantConfirmed BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Delivery shipping is quoted by the merchant, not computed: the courier fee is
+    -- only known once J&T weighs the parcel, so the order cannot reach CONFIRMED
+    -- until someone enters it. ShippingFee stays 0 and ShippingFeeConfirmed FALSE
+    -- from checkout until then, and TotalAmount is finalised at that moment.
+    -- Pick-up orders never set this and never carry a fee.
+    ShippingFeeConfirmed BOOLEAN NOT NULL DEFAULT FALSE,
+    ShippingFeeConfirmedBy INT NULL,
+    ShippingFeeConfirmedAt TIMESTAMPTZ NULL,
     CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP ,
     CONSTRAINT FK_Orders_User FOREIGN KEY (UserId) REFERENCES Users(Id),
     CONSTRAINT FK_Orders_Event FOREIGN KEY (EventId) REFERENCES PopUpEvents(Id),
-    CONSTRAINT FK_Orders_PickupEvent FOREIGN KEY (PickupEventId) REFERENCES PopUpEvents(Id)
+    CONSTRAINT FK_Orders_PickupEvent FOREIGN KEY (PickupEventId) REFERENCES PopUpEvents(Id),
+    CONSTRAINT FK_Orders_ShippingFeeBy FOREIGN KEY (ShippingFeeConfirmedBy) REFERENCES Users(Id)
 );
 
 CREATE TABLE IF NOT EXISTS EventSales (
@@ -433,6 +449,44 @@ CREATE TABLE IF NOT EXISTS AppErrors (
     CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ------------------------------------------------------------
+-- Payment settings (admin-managed e-wallet QR details)
+-- ------------------------------------------------------------
+-- One row per accepted e-wallet channel (GCASH, MAYA). The admin edits
+-- everything — QR code image, account number, and account name — from
+-- App/Admin/PaymentSettings.aspx, and the order-detail QR popup renders
+-- whatever is configured here.
+CREATE TABLE IF NOT EXISTS PaymentSettings (
+    Id SERIAL PRIMARY KEY,
+    Channel VARCHAR(20) NOT NULL UNIQUE,            -- 'GCASH' | 'MAYA'
+    AccountName VARCHAR(120) NOT NULL DEFAULT '',
+    AccountNumber VARCHAR(60) NOT NULL DEFAULT '',
+    QrImageFile VARCHAR(255) NOT NULL DEFAULT '',   -- uploaded QR image, root-relative path
+    QrCaption VARCHAR(120) NOT NULL DEFAULT '',     -- admin's note shown under the QR
+    -- What the customer-facing QR popup shows:
+    --   'BOTH'   = QR image + number + name (default)
+    --   'QR_ONLY' = QR image only
+    --   'NUMBER_NAME' = number + name, no QR image
+    --   'NAME_ONLY' = account name only (pure "send to" flow)
+    QrDisplayMode VARCHAR(20) NOT NULL DEFAULT 'BOTH',
+    IsEnabled BOOLEAN NOT NULL DEFAULT TRUE,        -- shown as a payment option when TRUE
+    UpdatedBy VARCHAR(120) NOT NULL DEFAULT '',
+    UpdatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Older installs: create the table if it is missing, then bring any existing
+-- table up to date (fresh installs already have the columns above).
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS AccountName VARCHAR(120) NOT NULL DEFAULT '';
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS AccountNumber VARCHAR(60) NOT NULL DEFAULT '';
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS QrImageFile VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS QrCaption VARCHAR(120) NOT NULL DEFAULT '';
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS QrDisplayMode VARCHAR(20) NOT NULL DEFAULT 'BOTH';
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS IsEnabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS UpdatedBy VARCHAR(120) NOT NULL DEFAULT '';
+
+-- PaymentSettings trigger lives with the other UpdatedAt triggers further below,
+-- after trg_star_dom_touch_updated_at() is defined.
+
 -- Indexes & Constraints
 CREATE INDEX IF NOT EXISTS IDX_Users_Role ON Users (RoleId);
 CREATE INDEX IF NOT EXISTS IDX_Users_Status ON Users (Status);
@@ -473,6 +527,30 @@ CREATE INDEX IF NOT EXISTS IDX_CommMessages_Sender ON CommissionMessages (Sender
 CREATE INDEX IF NOT EXISTS IDX_CommHistory_Commission ON CommissionStatusHistory (CommissionId);
 CREATE INDEX IF NOT EXISTS IDX_Notifications_User ON Notifications (UserId, IsRead);
 CREATE INDEX IF NOT EXISTS IDX_AppErrors_Created ON AppErrors (CreatedAt);
+
+-- ------------------------------------------------------------
+-- Column upgrades for installs created before these columns
+-- ------------------------------------------------------------
+-- CREATE TABLE IF NOT EXISTS is a no-op on a database that already has the
+-- table, so a pre-existing install never picks up new columns from the CREATE
+-- blocks above. These ADD COLUMN IF NOT EXISTS statements are what bring an
+-- older database up to date; they are no-ops on a fresh one.
+ALTER TABLE Bundles ADD COLUMN IF NOT EXISTS GroupSize INT NOT NULL DEFAULT 0;
+ALTER TABLE Bundles ADD COLUMN IF NOT EXISTS BundlePrice DECIMAL(12,2) NOT NULL DEFAULT 0;
+
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedBy INT NULL;
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedAt TIMESTAMPTZ NULL;
+DO $do$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_Orders_ShippingFeeBy') THEN
+        ALTER TABLE Orders ADD CONSTRAINT FK_Orders_ShippingFeeBy
+            FOREIGN KEY (ShippingFeeConfirmedBy) REFERENCES Users(Id);
+    END IF;
+END
+$do$;
+
+CREATE INDEX IF NOT EXISTS IDX_PaymentSettings_Channel ON PaymentSettings (Channel);
 
 -- ------------------------------------------------------------
 -- UpdatedAt maintenance
@@ -518,6 +596,11 @@ CREATE TRIGGER trg_orders_updatedat
 DROP TRIGGER IF EXISTS trg_commissions_updatedat ON Commissions;
 CREATE TRIGGER trg_commissions_updatedat
     BEFORE UPDATE ON Commissions
+    FOR EACH ROW EXECUTE FUNCTION public.trg_star_dom_touch_updated_at();
+
+DROP TRIGGER IF EXISTS trg_paymentsettings_updatedat ON PaymentSettings;
+CREATE TRIGGER trg_paymentsettings_updatedat
+    BEFORE UPDATE ON PaymentSettings
     FOR EACH ROW EXECUTE FUNCTION public.trg_star_dom_touch_updated_at();
 
 -- ------------------------------------------------------------

@@ -5,8 +5,25 @@ Namespace STAR_DOM.Repositories
 
     Public Class CategoryRepository
 
+        ''' <summary>
+        ''' Storefront-facing categories: enabled AND holding at least one live product.
+        ''' </summary>
+        ''' <remarks>
+        ''' An enabled category with nothing in it renders as a dead-end filter chip that
+        ''' leads to an empty result page, so it is filtered out here rather than left to
+        ''' whoever is doing the merchandising. Hiding a category is then automatic: stock
+        ''' the first SKU in a new category and the chip appears without anyone toggling a
+        ''' flag.
+        '''
+        ''' ListAll() is untouched — the merchant studio still needs to see and manage
+        ''' empty categories in order to put products into them.
+        ''' </remarks>
         Public Function ListActive() As List(Of Category)
-            Return Db.Rows("SELECT * FROM Categories WHERE IsActive = TRUE ORDER BY DisplayOrder, Name").Select(Function(r) Map(r)).ToList()
+            Return Db.Rows(
+                "SELECT c.* FROM Categories c " &
+                "WHERE c.IsActive = TRUE " &
+                "AND EXISTS (SELECT 1 FROM Products p WHERE p.CategoryId = c.Id AND p.IsActive = TRUE) " &
+                "ORDER BY c.DisplayOrder, c.Name").Select(Function(r) Map(r)).ToList()
         End Function
 
         Public Function ListAll() As List(Of Category)

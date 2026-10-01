@@ -90,6 +90,10 @@ Namespace STAR_DOM.Models
         Public Property Name As String
         Public Property Description As String
         Public Property DiscountPercent As Decimal
+        ''' <summary>Items per bundle group (the "N" in "any N for ₱M"). 0 = not a deal bundle.</summary>
+        Public Property GroupSize As Integer
+        ''' <summary>What a whole group of GroupSize items pays. 0 = not a deal bundle.</summary>
+        Public Property BundlePrice As Decimal
         Public Property IsActive As Boolean
         Public Property CreatedAt As Date
         Public Property Items As New List(Of BundleItem)()

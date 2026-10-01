@@ -101,13 +101,34 @@ remaining account-only links are matched by one `GATED` path list in the
   confirm orders, book J&T with the tracking number, confirm pick-up hand-over,
   and record payments behind a **password re-entry** (e-wallet reference number
   required for GCash/Maya), sales reports, review moderation, Admin Console
-  (users & roles).
+  (users & roles), and **Payment Settings**.
 - **Admin:** the owner account IS the admin — STAR:DOM has exactly two roles:
   ADMIN (store owner, who is also the merchant/artist) and CUSTOMER. New
   registrations always become CUSTOMER; only the owner can manage accounts.
 
 All business data is read from and written to PostgreSQL via parameterized
 `Npgsql` calls; nothing is hardcoded.
+
+## Payment Settings (GCash / Maya QR management)
+
+**Admin → SYSTEM → Payment Settings** (`/App/Admin/PaymentSettings.aspx`) is
+where the owner manages everything customers see when paying by e-wallet —
+no code changes needed:
+
+| Setting | What it controls |
+|---|---|
+| **QR code image** | Upload a PNG/JPG/WebP (max 5 MB) of each wallet's official QR; shown in the order payment popup. Without an upload, a stylized placeholder is shown. |
+| **Account number** (QR number) | The GCash / Maya mobile number displayed beside the QR. |
+| **Account name** (QR name) | The registered wallet name shown on the popup. |
+| **Display mode** | What customers see: **Everything** (QR + number + name, default), **QR code only**, **Number + name only**, or **Account name only**. |
+| **Show at checkout** | Toggle per channel — when off, that e-wallet disappears from the checkout payment options (COD is always offered). |
+| **Caption** | Optional note under the QR (e.g. "Scan using the GCash app"). |
+
+Each channel (GCash blue, Maya green) has its own card with a live
+**customer-view preview**, and changes take effect immediately on the order
+detail payment popup and at checkout. Values live in the `PaymentSettings`
+table (one row per channel, created on demand — no migration needed); the
+seed defaults match the numbers previously hardcoded in the app.
 
 ## Security notes
 

@@ -58,8 +58,19 @@ Namespace STAR_DOM.Web
             Dim expected As String = TryCast(s(_sessionKey), String)
             If String.IsNullOrEmpty(expected) Then Return False
 
-            Dim supplied As String = Convert.ToString(HttpContext.Current.Request.Form(FieldName))
-            Return FixedTimeEquals(expected, supplied)
+            ' Every value is checked, not just the first one. The shell form in
+            ' Site.master and each nested form both emit a token field, and an HTML
+            ' parser drops the nested <form> start tag — so a real browser submits
+            ' the field twice. Request.Form then holds a String[] and reading it as
+            ' a single value yields "token,token", which never matches. Accepting a
+            ' match on ANY value keeps the check tight (the token is still unguessable)
+            ' while surviving that duplicate-field quirk.
+            Dim supplied As String() = HttpContext.Current.Request.Form.GetValues(FieldName)
+            If supplied Is Nothing OrElse supplied.Length = 0 Then Return False
+            For Each v As String In supplied
+                If FixedTimeEquals(expected, v) Then Return True
+            Next
+            Return False
         End Function
 
         ''' <summary>

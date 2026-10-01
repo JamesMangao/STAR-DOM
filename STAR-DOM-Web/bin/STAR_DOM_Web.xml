@@ -95,6 +95,24 @@ STAR_DOM_Web
  to the result instead would land the attributes after the closing tag.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.WebUi.AddCartButton(STAR_DOM.Models.Product,System.String,System.String,System.String,System.String)">
+ <summary>
+ Add-to-cart button that opens the quantity picker instead of jumping straight
+ to the cart with a hardcoded q=1. Emits <c>data-addcart</c>, which the script in
+ Site.master intercepts, together with the product details the modal shows.
+ </summary>
+ <remarks>
+ The anchor keeps a real href with q=1, so the button still works with
+ JavaScript disabled, when the script fails, and for anonymous visitors who
+ are bounced through the sign-in gate first (the gate carries this href to
+ Login.aspx as the return target, so their single Add still lands).
+ <para>
+ <paramref name="p"/> only supplies the id and the modal's display data; the
+ modal's own quantity cap is a UI convenience, and the cart page plus
+ CartRepository still enforce real stock server-side.
+ </para>
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Web.WebUi.Pager(System.Int32,System.Int32,System.Int32,System.String)">
  <summary>
  Prev/next pager for bounded lists. Pass a URL template containing "{P}" for the page number,
@@ -175,6 +193,13 @@ STAR_DOM_Web
  Joins the split address inputs into the single line the orders table stores.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.OrderDetailPage.RenderQrPlaceholder(System.Text.StringBuilder,System.String,System.String)">
+ <summary>
+ The stylized SVG QR placeholder shown when the admin has not uploaded a
+ real QR image but the display mode still includes one. Kept from the
+ original design so the popup never renders an empty box.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Web.CommissionHubPage">
  <summary>
  Single entry point for every commission flow: customers discover artists and open a
@@ -192,7 +217,46 @@ STAR_DOM_Web
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderActions(System.Text.StringBuilder,STAR_DOM.Models.Order)">
- <summary>Per-row actions: advance status, book J&amp;T, confirm hand-over, record payment.</summary>
+ <summary>Per-row actions: quote shipping and confirm, advance status, book J&amp;T, confirm hand-over, record payment.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.NeedsShippingQuote(STAR_DOM.Models.Order)">
+ <summary>
+ True when a delivery order is waiting on its courier fee. Pick-up never
+ quotes, and neither does an order that already has one on record.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderShippingQuoteForm(STAR_DOM.Models.Order)">
+ <summary>
+ Inline form that quotes the J&amp;T fee and confirms the order. Password-gated
+ in the service layer, same as recording a payment, because it commits the
+ customer's final total.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Web.AdminPaymentSettingsPage">
+ <summary>
+ Admin console page for managing the GCash / Maya payment channels:
+ QR code image, account number, account name, what the customer-facing
+ popup displays (QR only / number+name / both / name only), and whether
+ the channel is offered at checkout. Everything the order-detail QR
+ popup renders comes from here — nothing is hardcoded anymore.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.AdminPaymentSettingsPage.SaveQrImage(System.Web.HttpPostedFile,System.String@)">
+ <summary>
+ Saves an uploaded QR image under /Uploads/payments and returns the
+ root-relative path. Returns "" when the file is rejected, with a
+ customer-readable reason in <paramref name="err"/>.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.AdminPaymentSettingsPage.QrPreviewBlock(STAR_DOM.Models.PaymentSetting,System.Boolean)">
+ <summary>
+ A read-only rendering of the customer-facing QR popup for one channel —
+ the same layout logic the order-detail page uses, minus the amount row.
+ Pass <paramref name="compact"/> to render it inside the admin preview card.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.AdminPaymentSettingsPage.Flash">
+ <summary>Same one-shot flash message convention used across the app.</summary>
 </member>
 <member name="T:STAR_DOM.Database.Db">
  <summary>Core PostgreSQL/Supabase access for the web app. All SQL flows through here with parameters only.</summary>
@@ -336,6 +400,12 @@ STAR_DOM_Web
  Stored format: PBKDF2$10000$&lt;base64 salt&gt;$&lt;base64 hash&gt;
  </summary>
 </member>
+<member name="P:STAR_DOM.Models.Bundle.GroupSize">
+ <summary>Items per bundle group (the "N" in "any N for ₱M"). 0 = not a deal bundle.</summary>
+</member>
+<member name="P:STAR_DOM.Models.Bundle.BundlePrice">
+ <summary>What a whole group of GroupSize items pays. 0 = not a deal bundle.</summary>
+</member>
 <member name="T:STAR_DOM.Models.BundleGroup">
  <summary>
  A resolved "N for ₱M" bundle rule used by cart/checkout pricing. Membership
@@ -343,6 +413,9 @@ STAR_DOM_Web
  from the bundle name itself, e.g. "Stickers Bundle (4 for 100)" -> any 4
  member units ring up at ₱100 instead of list price.
  </summary>
+</member>
+<member name="P:STAR_DOM.Models.Order.HasFinalTotal">
+ <summary>True once the order has a final, customer-facing total.</summary>
 </member>
 <member name="P:STAR_DOM.Models.Order.TrackingNumber">
  <summary>
@@ -360,6 +433,30 @@ STAR_DOM_Web
 <member name="T:STAR_DOM.Models.ServiceResult">
  <summary>Service result: success flag + user-facing message + optional payload.</summary>
 </member>
+<member name="T:STAR_DOM.Models.PaymentSetting">
+ <summary>
+ Admin-managed payment channel settings for one e-wallet (GCash or Maya).
+ Rendered by the order-detail QR popup; edited from App/Admin/PaymentSettings.aspx.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Models.PaymentSetting.Channel">
+ <summary>'GCASH' or 'MAYA'.</summary>
+</member>
+<member name="P:STAR_DOM.Models.PaymentSetting.QrImageFile">
+ <summary>Root-relative path of the uploaded QR image ("" when none is set).</summary>
+</member>
+<member name="P:STAR_DOM.Models.PaymentSetting.QrCaption">
+ <summary>Optional admin caption shown under the QR code.</summary>
+</member>
+<member name="P:STAR_DOM.Models.PaymentSetting.QrDisplayMode">
+ <summary>What the customer-facing popup shows: BOTH / QR_ONLY / NUMBER_NAME / NAME_ONLY.</summary>
+</member>
+<member name="P:STAR_DOM.Models.PaymentSetting.IsEnabled">
+ <summary>When FALSE the channel is hidden from checkout and the QR popup.</summary>
+</member>
+<member name="P:STAR_DOM.Models.PaymentSetting.DisplayChannel">
+ <summary>GCASH -> GCash, MAYA -> Maya, anything else passes through.</summary>
+</member>
 <member name="T:STAR_DOM.Reports.ReportRow">
  <summary>Key/value row used by report grids and chart series.</summary>
 </member>
@@ -368,14 +465,33 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Repositories.CartRepository.ListBundleGroups">
  <summary>
- Active "N for ₱M" bundle rules for cart pricing. The deal is parsed from the
- bundle name — "(4 for 100)" — so merchandising can reprice a bundle by
- renaming it; bundles without that pattern (plain percentage promos) are
- skipped by the cart pricing engine.
+ Active bundle rules for cart pricing: one group of GroupSize items from the
+ bundle's products costs BundlePrice.
+
+ The deal is stored in Bundles.GroupSize / Bundles.BundlePrice as columns, NOT
+ parsed out of the name. An earlier build read "(4 for 100)" out of Name, which
+ meant renaming a bundle to "Stickers Bundle - 4 for 100" silently turned its
+ pricing off — no discount, no error. The name is now only a display label and
+ can be reworded freely.
+
+ A bundle with GroupSize &lt; 1 or BundlePrice &lt;= 0 is not a deal bundle
+ (a plain percentage promo, say) and is skipped by the pricing engine.
  </summary>
 </member>
-<member name="M:STAR_DOM.Repositories.CartRepository.ParseBundleDeal(System.String,System.Int32@,System.Decimal@)">
- <summary>"Stickers Bundle (4 for 100)" -> size 4, group price 100.</summary>
+<member name="M:STAR_DOM.Repositories.CategoryRepository.ListActive">
+ <summary>
+ Storefront-facing categories: enabled AND holding at least one live product.
+ </summary>
+ <remarks>
+ An enabled category with nothing in it renders as a dead-end filter chip that
+ leads to an empty result page, so it is filtered out here rather than left to
+ whoever is doing the merchandising. Hiding a category is then automatic: stock
+ the first SKU in a new category and the chip appears without anyone toggling a
+ flag.
+
+ ListAll() is untouched — the merchant studio still needs to see and manage
+ empty categories in order to put products into them.
+ </remarks>
 </member>
 <member name="M:STAR_DOM.Repositories.CommissionRepository.OpenSlotCounts">
  <summary>Open-slot counts for all merchants at once (single query instead of 1-per-merchant).</summary>
@@ -405,6 +521,20 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.OrderRepository.ListRecent(System.Int32)">
  <summary>Latest orders, bounded in SQL (used for dashboards instead of trimming full tables in memory).</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.ConfirmWithShippingFee(System.Int32,System.Decimal,System.Int32)">
+ <summary>
+ Confirm a delivery order in the same statement that records the courier fee
+ it was confirmed against, so the two can never disagree: there is no window
+ in which Status = CONFIRMED but no fee was quoted.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.UpdatePaymentAmountForOrder(System.Int32,System.Decimal)">
+ <summary>
+ Keep Payments.Amount in step with a re-quoted total. A payment row is created
+ at checkout against the pre-fee total, so without this the ledger and the
+ order header would disagree about what was owed.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.RestoreOrderStock(System.Int32)">
  <summary>Put sold units back on the shelf when an order is cancelled.</summary>
 </member>
@@ -420,11 +550,50 @@ STAR_DOM_Web
  Reviews are only allowed for verified purchases, so this gates SubmitReview.
  </summary>
 </member>
+<member name="T:STAR_DOM.Repositories.PaymentSettingRepository">
+ <summary>
+ Read/write access to the PaymentSettings table (one row per e-wallet channel:
+ GCash and Maya). All values are admin-managed from App/Admin/PaymentSettings.aspx.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.ListAll">
+ <summary>Both rows, ordered GCash first. Missing rows come back as safe defaults.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.Save(STAR_DOM.Models.PaymentSetting)">
+ <summary>Insert or update one channel's settings. Returns False when the channel is unknown.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.UpdateQrImage(System.String,System.String,System.String)">
+ <summary>Replace (or clear) just the QR image of one channel.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.IsChannelEnabled(System.String)">
+ <summary>True when the channel should be offered at checkout.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.EnsureTable">
+ <summary>
+ Creates the PaymentSettings table on demand, the same way Db.LogError
+ bootstraps AppErrors — so the feature works on installs that have not
+ re-run Database/supabase_schema.sql yet. Idempotent and cheap.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Repositories.ReceiptRepository">
  <summary>Issues and retrieves BIR-style official receipts (OR) for confirmed payments.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ReceiptRepository.Issue(STAR_DOM.Models.Order,System.Collections.Generic.List{STAR_DOM.Models.OrderItem},System.Int32,System.String,System.Nullable{System.DateTime})">
  <summary>Create a receipt for a paid payment. Idempotent per payment (UK Receipts.PaymentId).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReceiptRepository.RefreshTotals(STAR_DOM.Models.Order)">
+ <summary>
+ Rewrite an already-issued receipt's money columns from the order header.
+ </summary>
+ <remarks>
+ A COD receipt is issued at checkout, before the merchant has quoted the courier
+ fee, so it is born holding a total that is about to change. Receipts has a
+ UNIQUE constraint on PaymentId, so a receipt can never be re-issued for the same
+ payment — refreshing in place is the only option, and it has the side benefit
+ of keeping the OR number and issue date the customer was already given.
+
+ Returns True when a receipt was found and updated.
+ </remarks>
 </member>
 <member name="M:STAR_DOM.Repositories.ReceiptRepository.GetByPaymentIds(System.Collections.Generic.List{System.Int32})">
  <summary>Fetch receipts for many payment ids in one query (kills per-row receipt lookups).</summary>
@@ -449,17 +618,30 @@ STAR_DOM_Web
  between the members' cart value and the bundle price (sale prices honoured).
  </summary>
 </member>
+<member name="M:STAR_DOM.Services.CartService.BundleForProduct(System.Int32)">
+ <summary>
+ The active bundle containing a product, or Nothing. Callers use it to show the
+ deal (group size, bundle price, and what the members cost separately) before
+ the shopper adds anything to the cart.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Services.CartService.BundleLabelForProduct(System.Int32)">
  <summary>
- Human label of the first active bundle containing the product, e.g.
- "any 4 for ₱100" — shown on the product page so shoppers see the deal
- before adding to cart. Empty when the product is not in an active bundle.
+ Short deal text for a product, e.g. "any 4 for ₱100". Empty when the
+ product is not in an active bundle.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CartService.BundleRegularPrice(STAR_DOM.Models.BundleGroup)">
+ <summary>
+ Regular (non-bundle) cost of one full group of a bundle, honouring each
+ member's current sale price — the "before" figure shoppers compare against
+ the bundle price. Zero when the members cannot be priced.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CartService.BundleNote">
  <summary>
- Shopper-facing bundle legend, e.g. "Stickers Bundle — 4 for ₱100 ·
- Button pins Bundle — 3 for ₱100". Empty when no deal-style bundle is active.
+ Shopper-facing bundle legend, e.g. "Stickers Bundle — any 4 for ₱100 ·
+ Button Pins Bundle — any 3 for ₱100". Empty when no deal bundle is active.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CatalogService.CommissionSlots">
@@ -493,6 +675,14 @@ STAR_DOM_Web
  customer taps "order received" and the merchant/stall team taps "handed
  over". When the second confirmation lands, the order becomes DELIVERED
  (and PAID, for pay-on-claim methods) with an official receipt.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.ConfirmWithShippingFee(System.Int32,System.String,System.String)">
+ <summary>
+ Confirm a delivery order by quoting the courier fee the customer will be
+ charged. Entering the fee IS the confirmation: it sets Status = CONFIRMED and
+ finalises TotalAmount in a single statement, so the order can never sit in
+ CONFIRMED while showing a total that still has no shipping on it.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.UpdateOrderState(System.Int32,System.String,System.String)">

@@ -50,17 +50,22 @@ ON CONFLICT (Id) DO UPDATE SET Email = EXCLUDED.Email, FullName = EXCLUDED.FullN
 
 -- ---------- Categories ----------
 INSERT INTO Categories (Id, Name, Slug, Description, DisplayOrder, IsActive) VALUES
-(1,  'Original Art',    'original-art',    'One-of-a-kind originals and A3/A2 gallery pieces', 1, TRUE),
-(2,  'Fine Art Prints', 'fine-art-prints', 'Giclee & archival pigment prints on cotton card', 2, TRUE),
-(3,  'Stickers',        'stickers',        'Die-cut, holographic & waterproof sticker packs', 3, TRUE),
-(4,  'Keychains',       'keychains',       'Acrylic & metal keychains', 4, TRUE),
-(5,  'Acrylic Charms',  'acrylic-charms',  'Glitter epoxy charms, stands, and acrylic accessories', 5, TRUE),
-(6,  'Merchandise',     'merchandise',     'Enamel pins, totes, apparel & convention merch', 6, TRUE),
-(7,  'Bundles',         'bundles',         'Curated multi-item bazaar bundles', 7, TRUE),
-(8,  'Custom Artwork',  'custom-artwork',  'Bespoke digital & traditional commissions', 8, TRUE),
-(9,  'Commission Slots','commission-slots','Open atelier commission slots', 9, TRUE),
-(10, 'Other',           'other',           'Miscellaneous artisan goods', 10, TRUE)
-ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name;
+(2,  'Art Print',       'art-print',       'Giclee & archival pigment prints on cotton card', 2, TRUE),
+(3,  'Stickers',        'stickers',        'Die-cut, holographic & waterproof stickers', 3, TRUE),
+(11, 'Sticker Sheets',  'sticker-sheets',  'Larger multi-design die-cut sticker sheets', 4, TRUE),
+(4,  'Keychains',       'keychains',       'Acrylic & metal keychains', 5, TRUE),
+(6,  'Button Pins',     'button-pins',     'Enamel pin designs, 1.25 in.', 6, TRUE),
+(10, 'Other',           'other',           'Miscellaneous artisan goods', 10, TRUE),
+-- Seeded inactive because the demo product set has nothing in them, and the
+-- storefront hides an empty category anyway. Flip to TRUE once products land
+-- there; CatalogService only shows categories that hold at least one live SKU.
+(1,  'Original Art',    'original-art',    'One-of-a-kind originals and A3/A2 gallery pieces', 1, FALSE),
+(5,  'Acrylic Charms',  'acrylic-charms',  'Glitter epoxy charms, stands, and acrylic accessories', 5, FALSE),
+(7,  'Bundles',         'bundles',         'Curated multi-item bazaar bundles', 7, FALSE),
+(8,  'Custom Artwork',  'custom-artwork',  'Bespoke digital & traditional commissions', 8, FALSE),
+(9,  'Commission Slots','commission-slots','Open atelier commission slots', 9, FALSE)
+ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name, Slug = EXCLUDED.Slug,
+  Description = EXCLUDED.Description, DisplayOrder = EXCLUDED.DisplayOrder, IsActive = EXCLUDED.IsActive;
 
 -- ---------- Promotions ----------
 INSERT INTO Promotions (Name, Description, DiscountType, DiscountValue, StartsAt, EndsAt, IsActive) VALUES
@@ -201,7 +206,7 @@ INSERT INTO Products (Id, MerchantId, CategoryId, Name, Slug, Description, BaseP
 (7, 4, 3, 'Deer', 'deer-sticker', 'Authentic sticker by Puffu Studio. Low Stock (Notes 10)', 30.00, NULL, 10, 3, 'SKU-AS-0007', 'Puffu Studio', TRUE, TRUE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 5.00, 1, 23),
 (8, 4, 3, 'Punch', 'punch-sticker', 'Authentic sticker by Puffu Studio. Low Stock (Notes 10)', 30.00, NULL, 10, 3, 'SKU-AS-0008', 'Puffu Studio', TRUE, TRUE, TRUE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 0.00, 0, 26),
 (9, 4, 3, 'Hollanov', 'hollanov-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes 26)', 30.00, NULL, 26, 3, 'SKU-AS-0009', 'Puffu Studio', TRUE, TRUE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 4.50, 1, 29),
-(10, 4, 3, 'Hollander', 'hollander-sticker', 'Authentic sticker by Puffu Studio. Low Stock (Notes 12)', 30.00, NULL, 12, 3, 'SKU-AS-0010', 'Puffu Studio', TRUE, TRUE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 5.00, 0, 32),
+(10, 4, 3, 'Hollander', 'hollander-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes 12)', 30.00, NULL, 12, 3, 'SKU-AS-0010', 'Puffu Studio', TRUE, TRUE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 5.00, 0, 32),
 (11, 4, 3, 'Rozanov', 'rozanov-sticker', 'Authentic sticker by Puffu Studio. Low Stock (Notes 12)', 30.00, NULL, 11, 3, 'SKU-AS-0011', 'Puffu Studio', TRUE, TRUE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 4.50, 1, 35),
 (12, 4, 3, 'Good Boy', 'good-boy-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes 10)', 30.00, NULL, 38, 3, 'SKU-AS-0012', 'Puffu Studio', TRUE, TRUE, FALSE, TRUE, '', 'Die-cut sticker, Matte finish', 0.00, 0, 38),
 (13, 4, 3, 'Good Girl', 'good-girl-sticker', 'Authentic sticker by Puffu Studio. In Stock (9(otherdesign) 14)', 30.00, NULL, 52, 3, 'SKU-AS-0013', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 5.00, 1, 1),
@@ -216,11 +221,11 @@ INSERT INTO Products (Id, MerchantId, CategoryId, Name, Slug, Description, BaseP
 (22, 4, 3, 'Santan', 'santan-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes 7)', 30.00, NULL, 31, 3, 'SKU-AS-0022', 'Puffu Studio', TRUE, FALSE, TRUE, FALSE, '', 'Die-cut sticker, Matte finish', 5.00, 0, 28),
 (23, 4, 3, 'hello', 'hello-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes 10)', 30.00, NULL, 10, 3, 'SKU-AS-0023', 'Puffu Studio', TRUE, FALSE, FALSE, TRUE, '', 'Die-cut sticker, Matte finish', 4.50, 1, 31),
 (24, 4, 3, 'dont kys', 'dont-kys-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes 0)', 30.00, NULL, 20, 3, 'SKU-AS-0024', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 0.00, 0, 34),
-(25, 4, 3, 'Dinostarz', 'dinostarz-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. Low Stock (Notes)', 120.00, NULL, 4, 3, 'SKU-AS-0025', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 5.00, 1, 37),
-(26, 4, 3, 'fishies', 'fishies-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. Restock (Notes)', 80.00, NULL, 1, 3, 'SKU-AS-0026', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, 'RESTOCK', 'Die-cut sticker, Matte finish', 0.00, 0, 0),
-(27, 4, 3, 'smiskis', 'smiskis-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. Low Stock (Notes)', 80.00, NULL, 6, 3, 'SKU-AS-0027', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 4.50, 1, 3),
-(28, 4, 3, 'starcraze', 'starcraze-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. In Stock (Notes)', 120.00, NULL, 6, 3, 'SKU-AS-0028', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 5.00, 0, 6),
-(29, 4, 3, 'skulz', 'skulz-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. In Stock (Notes)', 120.00, NULL, 5, 3, 'SKU-AS-0029', 'Puffu Studio', TRUE, FALSE, TRUE, FALSE, '', 'Die-cut sticker, Matte finish', 4.50, 1, 9),
+(25, 4, 11, 'Dinostarz', 'dinostarz-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. Low Stock (Notes)', 120.00, NULL, 4, 3, 'SKU-AS-0025', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 5.00, 1, 37),
+(26, 4, 11, 'fishies', 'fishies-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. Restock (Notes)', 80.00, NULL, 1, 3, 'SKU-AS-0026', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, 'RESTOCK', 'Die-cut sticker, Matte finish', 0.00, 0, 0),
+(27, 4, 11, 'smiskis', 'smiskis-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. Low Stock (Notes)', 80.00, NULL, 6, 3, 'SKU-AS-0027', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 4.50, 1, 3),
+(28, 4, 11, 'starcraze', 'starcraze-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. In Stock (Notes)', 120.00, NULL, 6, 3, 'SKU-AS-0028', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 5.00, 0, 6),
+(29, 4, 11, 'skulz', 'skulz-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. In Stock (Notes)', 120.00, NULL, 5, 3, 'SKU-AS-0029', 'Puffu Studio', TRUE, FALSE, TRUE, FALSE, '', 'Die-cut sticker, Matte finish', 4.50, 1, 9),
 (30, 3, 2, 'Trees(4x6")', 'trees-4x6-art-print', 'Authentic art print by Renzo Cruz Atelier. In Stock (Notes)', 100.00, NULL, 5, 3, 'SKU-AS-0030', 'Renzo Cruz Atelier', TRUE, FALSE, FALSE, FALSE, '', 'Archival art print, Matte finish', 0.00, 0, 12),
 (31, 2, 2, 'Trees (5x7")', 'trees-5x7-art-print', 'Authentic art print by Mika Visuals. Restock (Notes)', 100.00, NULL, 2, 3, 'SKU-AS-0031', 'Mika Visuals', TRUE, FALSE, FALSE, FALSE, 'RESTOCK', 'Archival art print, Matte finish', 5.00, 1, 15),
 (32, 3, 2, 'Heated Rivalry (4x6")', 'heated-rivalry-4x6-art-print', 'Authentic art print by Renzo Cruz Atelier. In Stock (Notes)', 100.00, NULL, 10, 3, 'SKU-AS-0032', 'Renzo Cruz Atelier', TRUE, FALSE, FALSE, FALSE, '', 'Archival art print, Matte finish', 0.00, 0, 18),
@@ -256,11 +261,11 @@ INSERT INTO Products (Id, MerchantId, CategoryId, Name, Slug, Description, BaseP
 (62, 3, 4, 'santan', 'santan-keychains', 'Authentic keychains by RedFox Workshop. Low Stock (Notes)', 80.00, NULL, 4, 3, 'SKU-AS-0062', 'RedFox Workshop', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Durable acrylic keychain', 0.00, 0, 28),
 (63, 3, 4, 'jade', 'jade-keychains', 'Authentic keychains by RedFox Workshop. Low Stock (Notes)', 80.00, NULL, 3, 3, 'SKU-AS-0063', 'RedFox Workshop', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Durable acrylic keychain', 4.50, 1, 31),
 (64, 3, 4, 'Webbing keychain', 'webbing-keychain-keychains', 'Authentic keychains by RedFox Workshop. In Stock (Notes)', 120.00, NULL, 21, 3, 'SKU-AS-0064', 'RedFox Workshop', TRUE, FALSE, TRUE, FALSE, '', 'Durable acrylic keychain', 5.00, 0, 34),
-(65, 2, 6, 'pigeon', 'pigeon-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0065', 'Guild Collective', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Skin-safe temporary tattoo', 4.50, 1, 37),
-(66, 2, 6, 'phyton', 'phyton-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0066', 'Guild Collective', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Skin-safe temporary tattoo', 0.00, 0, 0),
-(67, 2, 6, 'leopard', 'leopard-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0067', 'Guild Collective', TRUE, FALSE, FALSE, TRUE, 'LOW STOCK', 'Skin-safe temporary tattoo', 5.00, 1, 3),
-(68, 2, 6, 'fish', 'fish-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0068', 'Guild Collective', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Skin-safe temporary tattoo', 0.00, 0, 6),
-(69, 2, 6, 'tamaraw', 'tamaraw-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0069', 'Guild Collective', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Skin-safe temporary tattoo', 4.50, 1, 9),
+(65, 2, 6, 'pigeon', 'pigeon-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0065', 'Guild Collective', FALSE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Skin-safe temporary tattoo', 4.50, 1, 37),
+(66, 2, 6, 'phyton', 'phyton-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0066', 'Guild Collective', FALSE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Skin-safe temporary tattoo', 0.00, 0, 0),
+(67, 2, 6, 'leopard', 'leopard-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0067', 'Guild Collective', FALSE, FALSE, FALSE, TRUE, 'LOW STOCK', 'Skin-safe temporary tattoo', 5.00, 1, 3),
+(68, 2, 6, 'fish', 'fish-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0068', 'Guild Collective', FALSE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Skin-safe temporary tattoo', 0.00, 0, 6),
+(69, 2, 6, 'tamaraw', 'tamaraw-temp-tattoos', 'Authentic temp tattoos by Guild Collective. Low Stock (Notes)', 70.00, NULL, 3, 3, 'SKU-AS-0069', 'Guild Collective', FALSE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Skin-safe temporary tattoo', 4.50, 1, 9),
 (70, 4, 3, 'Disappoint your parents', 'disappoint-your-parents-sticker', 'Authentic sticker by Puffu Studio. Low Stock (5 11)', 30.00, NULL, 11, 3, 'SKU-AS-0070', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 5.00, 0, 12),
 (71, 4, 3, 'One day at a time', 'one-day-at-a-time-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes 2)', 30.00, NULL, 17, 3, 'SKU-AS-0071', 'Puffu Studio', TRUE, FALSE, TRUE, FALSE, '', 'Die-cut sticker, Matte finish', 4.50, 1, 15),
 (72, 4, 3, 'Know it''s for the better', 'know-it-s-for-the-better-sticker', 'Authentic sticker by Puffu Studio. Low Stock (10 13)', 30.00, NULL, 13, 3, 'SKU-AS-0072', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, 'LOW STOCK', 'Die-cut sticker, Matte finish', 0.00, 0, 18),
@@ -284,14 +289,23 @@ INSERT INTO Products (Id, MerchantId, CategoryId, Name, Slug, Description, BaseP
 (90, 4, 3, 'we ball', 'we-ball-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes 11)', 30.00, NULL, 39, 3, 'SKU-AS-0090', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 0.00, 0, 32),
 (91, 4, 3, 'war', 'war-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes)', 30.00, NULL, 0, 3, 'SKU-AS-0091', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 5.00, 1, 35),
 (92, 4, 3, 'honeybee', 'honeybee-sticker', 'Authentic sticker by Puffu Studio. In Stock (Notes)', 30.00, NULL, 12, 3, 'SKU-AS-0092', 'Puffu Studio', TRUE, FALSE, TRUE, FALSE, '', 'Die-cut sticker, Matte finish', 0.00, 0, 38),
-(93, 4, 3, 'love', 'love-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. In Stock (Notes)', 70.00, NULL, 8, 3, 'SKU-AS-0093', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 4.50, 1, 1),
-(94, 3, 10, 'Desk buddies (Pokemon)', 'desk-buddies-pokemon-clay-deskbuddies', 'Authentic clay deskbuddies by RedFox Workshop. Out of Stock (Notes)', 0.00, NULL, 0, 3, 'SKU-AS-0094', 'RedFox Workshop', TRUE, FALSE, FALSE, FALSE, 'OUT OF STOCK', 'Handcrafted polymer clay desk buddy', 5.00, 0, 4),
-(95, 3, 10, 'Desk buddies (Dinosaurs)', 'desk-buddies-dinosaurs-clay-deskbuddies', 'Authentic clay deskbuddies by RedFox Workshop. Out of Stock (Notes)', 0.00, NULL, 0, 3, 'SKU-AS-0095', 'RedFox Workshop', TRUE, FALSE, FALSE, FALSE, 'OUT OF STOCK', 'Handcrafted polymer clay desk buddy', 4.50, 1, 7),
-(96, 2, 6, 'Pins (big)', 'pins-big-clay-pins', 'Authentic clay pins by Guild Collective. Out of Stock (Notes)', 0.00, NULL, 0, 3, 'SKU-AS-0096', 'Guild Collective', TRUE, FALSE, FALSE, FALSE, 'OUT OF STOCK', 'Handcrafted polymer clay pin', 0.00, 0, 10),
-(97, 2, 6, 'Pins (small)', 'pins-small-clay-pins', 'Authentic clay pins by Guild Collective. Out of Stock (Notes)', 0.00, NULL, 0, 3, 'SKU-AS-0097', 'Guild Collective', TRUE, FALSE, FALSE, FALSE, 'OUT OF STOCK', 'Handcrafted polymer clay pin', 5.00, 1, 13),
+(93, 4, 11, 'love', 'love-sticker-sheets', 'Authentic sticker sheets by Puffu Studio. In Stock (Notes)', 70.00, NULL, 8, 3, 'SKU-AS-0093', 'Puffu Studio', TRUE, FALSE, FALSE, FALSE, '', 'Die-cut sticker, Matte finish', 4.50, 1, 1),
+(94, 3, 10, 'Desk buddies (Pokemon)', 'desk-buddies-pokemon-clay-deskbuddies', 'Authentic clay deskbuddies by RedFox Workshop. Out of Stock (Notes)', 0.00, NULL, 0, 3, 'SKU-AS-0094', 'RedFox Workshop', FALSE, FALSE, FALSE, FALSE, 'OUT OF STOCK', 'Handcrafted polymer clay desk buddy', 5.00, 0, 4),
+(95, 3, 10, 'Desk buddies (Dinosaurs)', 'desk-buddies-dinosaurs-clay-deskbuddies', 'Authentic clay deskbuddies by RedFox Workshop. Out of Stock (Notes)', 0.00, NULL, 0, 3, 'SKU-AS-0095', 'RedFox Workshop', FALSE, FALSE, FALSE, FALSE, 'OUT OF STOCK', 'Handcrafted polymer clay desk buddy', 4.50, 1, 7),
+(96, 2, 6, 'Pins (big)', 'pins-big-clay-pins', 'Authentic clay pins by Guild Collective. Out of Stock (Notes)', 0.00, NULL, 0, 3, 'SKU-AS-0096', 'Guild Collective', FALSE, FALSE, FALSE, FALSE, 'OUT OF STOCK', 'Handcrafted polymer clay pin', 0.00, 0, 10),
+(97, 2, 6, 'Pins (small)', 'pins-small-clay-pins', 'Authentic clay pins by Guild Collective. Out of Stock (Notes)', 0.00, NULL, 0, 3, 'SKU-AS-0097', 'Guild Collective', FALSE, FALSE, FALSE, FALSE, 'OUT OF STOCK', 'Handcrafted polymer clay pin', 5.00, 1, 13),
 (98, 3, 2, 'Forwards beckon rebound', 'forwards-beckon-rebound-art-print', 'Authentic art print by Renzo Cruz Atelier. Restock (Notes)', 100.00, NULL, 7, 3, 'SKU-AS-0098', 'Renzo Cruz Atelier', TRUE, FALSE, FALSE, FALSE, 'RESTOCK', 'Archival art print, Matte finish', 0.00, 0, 16),
 (99, 2, 2, 'Everything stays', 'everything-stays-art-print', 'Authentic art print by Mika Visuals. Restock (Notes)', 100.00, NULL, 5, 3, 'SKU-AS-0099', 'Mika Visuals', TRUE, FALSE, TRUE, FALSE, 'RESTOCK', 'Archival art print, Matte finish', 4.50, 1, 19),
 (100, 3, 2, 'Honeybee', 'honeybee-art-print', 'Authentic art print by Renzo Cruz Atelier. Restock (Notes)', 100.00, NULL, 6, 3, 'SKU-AS-0100', 'Renzo Cruz Atelier', TRUE, FALSE, FALSE, TRUE, 'RESTOCK', 'Archival art print, Matte finish', 5.00, 0, 22);
+
+-- Nine products are seeded IsActive = FALSE because the current pricelist no
+-- longer carries them. They are deactivated rather than deleted so historical
+-- order lines and cart rows still resolve to a real product:
+--   65-69  pigeon / phyton / leopard / fish / tamaraw  (temp tattoos, not sold)
+--   94-95  Desk buddies Pokemon / Dinosaurs            (zero price)
+--   96-97  Pins (big) / Pins (small)                    (zero price)
+-- Category 10 "Other" therefore holds no live product and the storefront
+-- auto-hides the tab; the merchant studio still lists it.
 
 -- ---------- Product Images (From Assets) ----------
 INSERT INTO ProductImages (ProductId, ImageFile, IsPrimary, SortOrder) VALUES
@@ -376,15 +390,56 @@ INSERT INTO EventSales (EventId, OrderId, ProductId, Quantity, UnitPrice, TotalA
 -- User specs: Stickers Bundle (4 for 100 PHP), Button pins Bundle (3 for 100 PHP)
 -- Standard price 4 stickers @ 30 = 120 PHP -> 100 PHP (16.67% discount)
 -- Standard price 3 button pins @ 35 = 105 PHP -> 100 PHP (4.76% discount)
-INSERT INTO Bundles (Id, Name, Description, DiscountPercent, IsActive) VALUES
-(1, 'Stickers Bundle (4 for 100)', 'Choose your favorite 4 stickers (Bleeding heart, Tamaraw, Tarsier, Goby) for only ₱100!', 16.67, TRUE),
-(2, 'Button Pins Bundle (3 for 100)', 'Pick 3 premium 1.25 in. button pins (Bleed, Bangus, I luv stars) for only ₱100!', 4.76, TRUE),
-(3, 'Artisan Prints & Sheet Set', 'Dinostarz sticker sheet + Trees art print set with matte finish', 15.00, TRUE);
+--
+-- Membership is the whole category, not a hand-picked shortlist: the shopper
+-- reads "any 4 stickers" as any sticker in the shop, and a bundle that only
+-- covered four designs just made the deal look broken. Bundle 1 therefore lists
+-- every ₱30 die-cut sticker in category 3; the premium sheet designs (Dinostarz,
+-- fishies, smiskis, starcraze, skulz, love) live in category 11 "Sticker
+-- Sheets" precisely because a ₱120 sheet inside a "4 for ₱100" bundle would sell
+-- at ₱25. Bundle 2 covers the whole Button Pins category.
+--
+-- The deal lives in GroupSize + BundlePrice, never in Name. An older build
+-- parsed "(4 for 100)" out of the name string, so renaming a bundle silently
+-- turned its pricing off. The name is now only a label.
+-- GroupSize = items per group; BundlePrice = what the whole group pays.
+INSERT INTO Bundles (Id, Name, Description, DiscountPercent, GroupSize, BundlePrice, IsActive) VALUES
+(1, 'Stickers Bundle', 'Any 4 standard die-cut stickers for only ₱100!', 16.67, 4, 100, TRUE),
+(2, 'Button Pins Bundle', 'Any 3 button pins for only ₱100!', 4.76, 3, 100, TRUE),
+(3, 'Artisan Prints & Sheet Set', 'Dinostarz sticker sheet + Trees art print set with matte finish', 15.00, 2, 200, TRUE);
 
+-- Bundle 1: every ₱30 die-cut sticker (all of category 3 "Stickers").
+DELETE FROM BundleItems WHERE BundleId = 1;
 INSERT INTO BundleItems (BundleId, ProductId, Quantity) VALUES
-(1, 1, 1), (1, 2, 1), (1, 3, 1), (1, 4, 1),
-(2, 47, 1), (2, 48, 1), (2, 49, 1),
+(1, 1, 1), (1, 2, 1), (1, 3, 1), (1, 4, 1), (1, 5, 1), (1, 6, 1), (1, 7, 1), (1, 8, 1),
+(1, 9, 1), (1, 10, 1), (1, 11, 1), (1, 12, 1), (1, 13, 1), (1, 14, 1), (1, 15, 1),
+(1, 16, 1), (1, 17, 1), (1, 18, 1), (1, 19, 1), (1, 20, 1), (1, 21, 1), (1, 22, 1),
+(1, 23, 1), (1, 24, 1), (1, 70, 1), (1, 71, 1), (1, 72, 1), (1, 73, 1), (1, 74, 1),
+(1, 75, 1), (1, 76, 1), (1, 77, 1), (1, 78, 1), (1, 79, 1), (1, 80, 1), (1, 81, 1),
+(1, 82, 1), (1, 83, 1), (1, 84, 1), (1, 85, 1), (1, 86, 1), (1, 87, 1), (1, 88, 1),
+(1, 89, 1), (1, 90, 1), (1, 91, 1), (1, 92, 1);
+
+-- Bundle 2: the ten ₱35 button pins. The ₱70 temp-tattoo designs (65-69) and the
+-- two zero-price clay pin placeholders (96-97) are NOT members — a ₱70 design
+-- inside a "3 for ₱100" bundle would sell at a third of its price.
+DELETE FROM BundleItems WHERE BundleId = 2;
+INSERT INTO BundleItems (BundleId, ProductId, Quantity) VALUES
+(2, 46, 1), (2, 47, 1), (2, 48, 1), (2, 49, 1), (2, 50, 1), (2, 51, 1), (2, 52, 1),
+(2, 53, 1), (2, 54, 1), (2, 55, 1);
+
+-- Bundle 3 is a fixed pairing, so its membership stays exactly as listed.
+DELETE FROM BundleItems WHERE BundleId = 3;
+INSERT INTO BundleItems (BundleId, ProductId, Quantity) VALUES
 (3, 25, 1), (3, 30, 1);
+
+-- ---------- Payment settings (admin-managed e-wallet QR details) ----------
+-- Defaults match the details that used to be hardcoded in OrderDetail's QR
+-- popup. The admin can change all of this from App/Admin/PaymentSettings.aspx
+-- without touching code or re-seeding.
+INSERT INTO PaymentSettings (Channel, AccountName, AccountNumber, QrDisplayMode, IsEnabled) VALUES
+('GCASH', 'STAR:DOM ATELIER / JAMES M.', '0917 839 2041', 'BOTH', TRUE),
+('MAYA',  'STAR:DOM ATELIER / JAMES M.', '0998 552 1928', 'BOTH', TRUE)
+ON CONFLICT (Channel) DO NOTHING;
 
 -- Sync auto-increment sequences after explicit ID inserts
 SELECT setval(pg_get_serial_sequence('roles', 'id'), COALESCE(MAX(Id), 1)) FROM Roles;

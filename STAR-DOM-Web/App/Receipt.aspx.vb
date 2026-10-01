@@ -35,6 +35,10 @@ Namespace STAR_DOM.Web
                     Out.Text = WebUi.AlertBox("Order not found.")
                     Return
                 End If
+                If o.Status = "CANCELLED" Then
+                    Out.Text = WebUi.AlertBox("This order has been cancelled. No official receipt is available for cancelled orders.")
+                    Return
+                End If
                 If o.UserId <> STAR_DOM.Helpers.Session.CurrentUser.Id AndAlso Not STAR_DOM.Helpers.Session.CanManageStore Then
                     Out.Text = WebUi.AlertBox("You don't have access to this receipt.")
                     Return

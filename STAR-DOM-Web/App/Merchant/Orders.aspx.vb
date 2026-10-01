@@ -52,6 +52,20 @@ Namespace STAR_DOM.Web
                     Response.Redirect("/App/Merchant/Orders.aspx", True)
                 End If
 
+                ' Quote the J&T fee and confirm the order in one step. For a delivery order this
+                ' is the ONLY way into CONFIRMED — UpdateOrderState refuses that
+                ' transition until a fee has been quoted, so the customer is never shown
+                ' a total that still has no shipping on it.
+                If Guard.IsPost() AndAlso Request.Form("feeOrderId") <> "" Then
+                    Dim fid As Integer = 0
+                    Integer.TryParse(Request.Form("feeOrderId"), fid)
+                    Dim rf As ServiceResult = _orders.ConfirmWithShippingFee(fid, Request.Form("shipFee"),
+                                                                             Request.Form("feePassword"))
+                    Session("flash_msg") = rf.Message
+                    Session("flash_ok") = rf.Success
+                    Response.Redirect("/App/Merchant/Orders.aspx", True)
+                End If
+
                 ' ----- GET actions ----------------------------------------------
                 If Request.QueryString("advance") <> "" Then
                     Dim id As Integer = 0
@@ -151,7 +165,10 @@ Namespace STAR_DOM.Web
                               WebUi.Esc(o.CreatedAt.ToString("MMM d, h:mm tt")) & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(o.CustomerName) & "</td>")
                     sb.Append("<td>" & o.ItemCount.ToString() & "</td>")
-                    sb.Append("<td>" & WebUi.Money(o.TotalAmount) & "</td>")
+                    ' A delivery order with no fee yet is showing a goods total, not the amount the
+                    ' customer owes — flag it so the figure is never misread as final.
+                    sb.Append("<td>" & WebUi.Money(o.TotalAmount) &
+                              If(o.HasFinalTotal, "", "<br><span class=""sub"" style=""font-size:10.5px;color:var(--primary)"">+ shipping TBC</span>") & "</td>")
                     sb.Append("<td>" & WebUi.Esc(DisplayPay(o.PaymentMethod)) &
                               If(o.IsPickup, "<br><span class=""sub"" style=""font-size:10.5px"">PICK-UP @ stall</span>", "") & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.PaymentStatus) & "</td>")
@@ -179,9 +196,14 @@ Namespace STAR_DOM.Web
                 sb.Append("</tr></thead><tbody>")
                 For Each p As Payment In pays
                     Dim orLink As String = ""
+                    Dim o As Order = _orders.GetOrder(p.OrderId)
+                    Dim isCancelled As Boolean = (o IsNot Nothing AndAlso o.Status = "CANCELLED")
+
                     Dim ptr As Receipt = Nothing
                     If receiptMap.ContainsKey(p.Id) Then ptr = receiptMap(p.Id)
-                    If ptr IsNot Nothing Then
+                    If isCancelled Then
+                        orLink = "<span class=""badge muted"">CANCELLED</span>"
+                    ElseIf ptr IsNot Nothing Then
                         orLink = "<a href=""/App/Receipt.aspx?p=" & p.Id.ToString() & """><span class=""ms sm"">receipt_long</span> " &
                                  WebUi.Esc(ptr.ReceiptNumber) & "</a>"
                     ElseIf p.Status = "PAID" Then
@@ -202,15 +224,28 @@ Namespace STAR_DOM.Web
             Out.Text = sb.ToString()
         End Sub
 
-        ''' <summary>Per-row actions: advance status, book J&amp;T, confirm hand-over, record payment.</summary>
+        ''' <summary>Per-row actions: quote shipping and confirm, advance status, book J&amp;T, confirm hand-over, record payment.</summary>
         Private Sub RenderActions(sb As StringBuilder, o As Order)
             Dim nextState As String = MapNextState(o.Status)
             If o.IsPickup AndAlso (nextState = "SHIPPED" OrElse nextState = "DELIVERED") Then nextState = ""
 
+            ' A delivery order awaiting a quote: the fee input replaces the CONFIRMED
+            ' link entirely, because there is no honest way to confirm without a number.
+            If NeedsShippingQuote(o) Then
+                sb.Append(RenderShippingQuoteForm(o))
+            End If
+
             ' Delivery orders: confirm → prepare → book J&T (with tracking) → delivered.
+            ' The CONFIRMED link is skipped when a quote is still outstanding.
             If nextState <> "" AndAlso nextState <> "SHIPPED" Then
-                sb.Append("<a href=""/App/Merchant/Orders.aspx?advance=" & o.Id.ToString() & """>" &
-                          "<span class=""ms sm"">arrow_forward</span> " & nextState & "</a>")
+                If nextState = "CONFIRMED" AndAlso NeedsShippingQuote(o) Then
+                    ' handled above by RenderShippingQuoteForm
+                Else
+                    Dim confirmMsg As String = "Advance this order to " & nextState & "?"
+                    sb.Append("<a href=""/App/Merchant/Orders.aspx?advance=" & o.Id.ToString() & """" &
+                              " data-confirm=""" & WebUi.Attr(confirmMsg) & """>" &
+                              "<span class=""ms sm"">arrow_forward</span> " & nextState & "</a>")
+                End If
             ElseIf nextState = "SHIPPED" Then
                 sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap"">")
                 ' Each of the per-order forms below is nested inside the shell form, which
@@ -219,7 +254,9 @@ Namespace STAR_DOM.Web
                 sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                 sb.Append("<input type=""hidden"" name=""shipOrderId"" value=""" & o.Id.ToString() & """>")
                 sb.Append("<input name=""tracking"" placeholder=""J&T tracking no."" style=""width:112px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
-                sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Book with J&T Express""><span class=""ms sm"">local_shipping</span>Book J&T</button>")
+                sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Book with J&T Express"" " +
+                          "data-confirm=""Hand this parcel to J&T and lock the order to SHIPPED? This cannot be undone from here."">" +
+                          "<span class=""ms sm"">local_shipping</span>Book J&T</button>")
                 sb.Append("</form>")
             End If
 
@@ -248,7 +285,9 @@ Namespace STAR_DOM.Web
                     sb.Append("<input name=""payRef"" placeholder=""Ref no."" required style=""width:86px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
                 End If
                 sb.Append("<input type=""password"" name=""payPassword"" placeholder=""Your password"" required autocomplete=""current-password"" style=""width:104px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
-                sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Record this payment""><span class=""ms sm"">payments</span>Confirm pay</button>")
+                sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Record this payment"" " +
+                              "data-confirm=""Record this payment as received? An official receipt will be issued."">" +
+                              "<span class=""ms sm"">payments</span>Confirm pay</button>")
                 sb.Append("</form>")
             End If
 
@@ -257,6 +296,42 @@ Namespace STAR_DOM.Web
             End If
             sb.Append("<a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View</a>")
         End Sub
+
+        ''' <summary>
+        ''' True when a delivery order is waiting on its courier fee. Pick-up never
+        ''' quotes, and neither does an order that already has one on record.
+        ''' </summary>
+        Private Function NeedsShippingQuote(o As Order) As Boolean
+            If o.IsPickup Then Return False
+            If o.ShippingFeeConfirmed Then Return False
+            Return o.Status = "PENDING" OrElse o.Status = "CONFIRMED" OrElse o.Status = "PROCESSING"
+        End Function
+
+        ''' <summary>
+        ''' Inline form that quotes the J&amp;T fee and confirms the order. Password-gated
+        ''' in the service layer, same as recording a payment, because it commits the
+        ''' customer's final total.
+        ''' </summary>
+        Private Function RenderShippingQuoteForm(o As Order) As String
+            Dim sb As New StringBuilder()
+            sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" " &
+                      "style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap;align-items:center"">")
+            sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+            sb.Append("<input type=""hidden"" name=""feeOrderId"" value=""" & o.Id.ToString() & """>")
+            sb.Append("<input name=""shipFee"" type=""number"" min=""0"" max=""10000"" step=""1"" " &
+                      "placeholder=""J&amp;T fee"" aria-label=""J&amp;T shipping fee in pesos"" " &
+                      "value=""" & WebUi.Attr(Fmt.Num(o.ShippingFee)) & """ " &
+                      "style=""width:78px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+            sb.Append("<input name=""feePassword"" type=""password"" placeholder=""Your password"" required " &
+                      "autocomplete=""current-password"" " &
+                      "style=""width:104px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+            sb.Append("<button class=""btn ghost sm"" type=""submit"" " &
+                      "data-confirm=""Confirm this order and send the customer the final total, including shipping?"">" &
+                      "<span class=""ms sm"">sell</span>Confirm &amp; quote shipping</button>")
+            sb.Append("</form>")
+            sb.Append("<span class=""sub"" style=""font-size:10.5px"">Enter the J&amp;T fee to confirm this order</span>")
+            Return sb.ToString()
+        End Function
 
         Private Function DisplayPay(pm As String) As String
             Select Case pm.ToUpperInvariant()

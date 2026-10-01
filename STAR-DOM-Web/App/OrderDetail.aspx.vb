@@ -3,6 +3,7 @@ Imports System.Web.UI
 Imports System.Web.UI.WebControls
 Imports STAR_DOM.Helpers
 Imports STAR_DOM.Models
+Imports STAR_DOM.Repositories
 Imports STAR_DOM.Services
 
 Namespace STAR_DOM.Web
@@ -134,34 +135,54 @@ Namespace STAR_DOM.Web
                                                o.Status <> "CANCELLED" AndAlso o.Status <> "DELIVERED")
             Dim canCancel As Boolean = (o.Status = "PENDING")
             If canPay OrElse canConfirmPickup OrElse canCancel Then
-                sb.Append("<div class=""frow"" style=""flex-wrap:wrap"">")
+                sb.Append("<div style=""margin-top:16px;display:flex;flex-direction:column;gap:12px"">")
                 If canPay Then
-                    ' POST + password re-entry; e-wallet orders also carry the reference
-                    ' number from the GCash/Maya receipt.
-                    sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center"">")
-                    ' Nested inside the shell form, which the browser closes at this tag — so
-                    ' the shell's token is not submitted with this form. Carry its own.
+                    Dim brandTitle As String = If(method = "GCASH", "GCash Payment Verification", "Maya Payment Verification")
+                    Dim brandColor As String = If(method = "GCASH", "#007dfe", "#00a651")
+                    Dim brandIc As String = If(method = "GCASH", "qr_code_2", "account_balance_wallet")
+                    Dim phRef As String = If(method = "GCASH", "e.g. 1002 9482 1192", "e.g. MAYA-9482-1192")
+
+                    sb.Append("<div class=""card"" style=""background:linear-gradient(180deg,#ffffff 0%,var(--surface-low) 100%);border:1.5px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--sh-1)"">")
+                    sb.Append("<div style=""display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"">")
+                    sb.Append("<div style=""display:flex;align-items:center;gap:8px""><span class=""ph-ic"" style=""width:30px;height:30px;font-size:16px;background:" & brandColor & ";color:#fff;border-radius:8px"">" & WebUi.Ic(brandIc, "sm") & "</span><b style=""font-size:13.5px;color:var(--ink)"">" & brandTitle & "</b></div>")
+                    sb.Append("<span class=""badge warn"" style=""font-size:10px"">Payment Pending</span>")
+                    sb.Append("</div>")
+                    sb.Append("<p class=""sub"" style=""margin:0 0 14px;font-size:12px;line-height:1.4"">Enter the official reference number from your " & WebUi.Esc(If(method = "GCASH", "GCash", "Maya")) & " receipt and your account password to confirm payment.</p>")
+
+                    sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:flex;flex-direction:column;gap:12px"">")
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<input type=""hidden"" name=""payOrder"" value=""" & o.Id.ToString() & """>")
-                    sb.Append("<input name=""payRef"" placeholder=""" & If(method = "GCASH", "GCash", "Maya") & " reference no."" required style=""padding:8px;border:1px solid var(--line);border-radius:8px;width:180px"">")
-                    sb.Append("<input type=""password"" name=""payPassword"" placeholder=""Your password"" required autocomplete=""current-password"" style=""padding:8px;border:1px solid var(--line);border-radius:8px;width:150px"">")
-                    sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">payments</span><span>I've Paid</span></button>")
-                    sb.Append("</form>")
+
+                    sb.Append("<div style=""display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px"">")
+                    ' Reference Input
+                    sb.Append("<div><label style=""display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px"">" & WebUi.Esc(If(method = "GCASH", "GCash", "Maya")) & " Reference No. *</label>")
+                    sb.Append("<div style=""position:relative""><input name=""payRef"" placeholder=""" & phRef & """ required style=""width:100%;box-sizing:border-box;padding:10px 12px 10px 34px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink);outline:none""><span class=""ms sm"" style=""position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--ink-soft);font-size:16px"">receipt</span></div></div>")
+
+                    ' Password Input
+                    sb.Append("<div><label style=""display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px"">Account Password *</label>")
+                    sb.Append("<div style=""position:relative""><input type=""password"" name=""payPassword"" placeholder=""Re-enter password"" required autocomplete=""current-password"" style=""width:100%;box-sizing:border-box;padding:10px 12px 10px 34px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink);outline:none""><span class=""ms sm"" style=""position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--ink-soft);font-size:16px"">lock</span></div></div>")
+                    sb.Append("</div>")
+
+                    sb.Append("<div style=""display:flex;align-items:center;justify-content:space-between;margin-top:4px;gap:8px;flex-wrap:wrap"">")
+                    sb.Append("<span style=""font-size:11.5px;color:var(--ink-soft)"">Security verification for fast merchant approval</span>")
+                    sb.Append("<button class=""btn primary"" type=""submit"" style=""padding:10px 20px;border-radius:10px;font-weight:700;display:inline-flex;align-items:center;gap:8px;box-shadow:var(--sh-1)""><span class=""ic ms"">check_circle</span><span>Confirm &amp; I've Paid</span></button>")
+                    sb.Append("</div>")
+                    sb.Append("</form></div>")
                 End If
+
                 If canConfirmPickup Then
                     sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:inline-flex"">")
-                    ' Same reason as the payment form above: the shell form's token stops
-                    ' being submitted once this nested form opens.
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<input type=""hidden"" name=""pickupOrder"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<button class=""btn primary"" type=""submit"" data-confirm=""Confirm you have received this order at the stall?""><span class=""ic ms"">task_alt</span><span>Confirm order received</span></button>")
                     sb.Append("</form>")
                 End If
+
                 If canCancel Then
-                    sb.Append("<a class=""btn danger"" href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() &
-                              "&cancel=1"" data-confirm=""Cancel this order?"" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Cancel Order</span></a>")
+                    sb.Append("<div><a class=""btn danger"" href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() &
+                              "&cancel=1"" data-confirm=""Cancel this order?"" data-confirm-danger"" style=""border-radius:10px;padding:8px 16px""><span class=""ic ms"">cancel</span><span>Cancel Order</span></a></div>")
                 End If
                 sb.Append("</div>")
             End If
@@ -183,8 +204,19 @@ Namespace STAR_DOM.Web
             If o.DiscountAmount > 0D Then
                 sb.Append("<dt>Bundle savings</dt><dd style=""color:#15803d;font-weight:700"">−" & WebUi.Money(o.DiscountAmount) & "</dd>")
             End If
-            If o.ShippingFee > 0D Then
-                sb.Append("<dt>Shipping fee</dt><dd>" & WebUi.Money(o.ShippingFee) & "</dd>")
+            ' Before the fee is quoted, say so rather than silently omitting the line: a total
+            ' that excludes shipping must not look like the final amount.
+            If o.IsPickup Then
+                sb.Append("<dt>Shipping fee</dt><dd>None — collected at the stall</dd>")
+            ElseIf o.ShippingFeeConfirmed Then
+                If o.ShippingFee > 0D Then
+                    sb.Append("<dt>Shipping fee</dt><dd>" & WebUi.Money(o.ShippingFee) & "</dd>")
+                Else
+                    sb.Append("<dt>Shipping fee</dt><dd>Free</dd>")
+                End If
+            Else
+                sb.Append("<dt>Shipping fee</dt><dd><span class=""badge warn"">to be quoted</span> " &
+                          "<span class=""sub"" style=""font-size:11.5px"">we'll send your final total when we confirm the order</span></dd>")
             End If
             If o.Notes <> "" Then sb.Append("<dt>Notes</dt><dd>" & WebUi.Esc(o.Notes) & "</dd>")
             sb.Append("</div></div>")
@@ -207,23 +239,150 @@ Namespace STAR_DOM.Web
                 sb.Append("</tr>")
             Next
             sb.Append("</tbody></table></div>")
-            sb.Append("<div style=""text-align:right;padding:6px 14px""><b>Order total: </b>" & WebUi.Money(o.TotalAmount) & "</div>")
+            ' Label the figure by what it actually is: a confirmed total includes shipping, an
+            ' unquoted one does not.
+            Dim totalLabel As String = If(o.HasFinalTotal, "Order total: ", "Goods total (shipping to be quoted): ")
+            sb.Append("<div style=""text-align:right;padding:6px 14px""><b>" & totalLabel & "</b>" & WebUi.Money(o.TotalAmount) & "</div>")
 
             ' payments ledger
             Dim pays As List(Of Payment) = _orders.PaymentsForOrder(o.Id)
             If pays.Count > 0 Then
                 sb.Append("<h3 style=""margin:14px 0 6px"">" & WebUi.Ic("receipt_long", "sm") & " Payments</h3>")
                 For Each p As Payment In pays
-                    Dim ptr As Receipt = _orders.ReceiptForPaymentId(p.Id)
+                    Dim ptr As Receipt = If(o.Status <> "CANCELLED", _orders.ReceiptForPaymentId(p.Id), Nothing)
                     sb.Append("<div class=""card"" style=""margin-bottom:8px"">" & WebUi.Esc(p.DisplayMethod) & " · " &
                               WebUi.Money(p.Amount) & " · " & WebUi.Esc(p.Status) & " · Ref " & WebUi.Esc(p.ReferenceNumber) &
                               If(p.PaidAt.HasValue, " · " & p.PaidAt.Value.ToString("MMM d, yyyy h:mm tt"), "") &
                               If(ptr IsNot Nothing, " &nbsp;<a href=""/App/Receipt.aspx?r=" & WebUi.Esc(ptr.ReceiptNumber) & """><span class=""ms sm"">receipt_long</span> Official Receipt</a>", "") & "</div>")
                 Next
             End If
+            ' bottom actions with Back Button
+            sb.Append("<div style=""margin-top:20px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"">")
+            sb.Append("<a href=""/App/Orders.aspx"" class=""btn ghost"" style=""border-radius:10px;padding:8px 18px"">" & WebUi.Ic("arrow_back", "sm") & " Back to My Orders</a>")
+            sb.Append("<a href=""/App/Marketplace.aspx"" class=""btn ghost"" style=""border-radius:10px;padding:8px 18px"">" & WebUi.Ic("storefront", "sm") & " Continue Shopping</a>")
+            sb.Append("</div>")
             sb.Append("</div></div>")
 
+            ' QR Code Popup Modal for Online Payment (GCash / Maya)
+            If isEWallet AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
+                ' Everything here is admin-managed (App/Admin/PaymentSettings.aspx):
+                ' the QR image, account number, account name, and which of them the
+                ' popup shows. Defaults survive a database without the settings table.
+                Dim ps As PaymentSetting = New PaymentSettingRepository().GetByChannel(method)
+                Dim qrBrand As String = ps.DisplayChannel
+                Dim qrColor As String = If(method = "GCASH", "#007dfe", "#00a651")
+                Dim qrAccountName As String = ps.AccountName
+                Dim qrNumber As String = ps.AccountNumber
+                Dim showQrImg As Boolean = (ps.QrDisplayMode = "BOTH" OrElse ps.QrDisplayMode = "QR_ONLY")
+                Dim showNumber As Boolean = (ps.QrDisplayMode = "BOTH" OrElse ps.QrDisplayMode = "NUMBER_NAME")
+                Dim showName As Boolean = (ps.QrDisplayMode = "BOTH" OrElse ps.QrDisplayMode = "NUMBER_NAME" OrElse ps.QrDisplayMode = "NAME_ONLY")
+                Dim openImmediately As Boolean = (Request.QueryString("new") = "1")
+
+                sb.Append("<div class=""modal-backdrop" & If(openImmediately, " open", "") & """ id=""qrPaymentModal"" aria-hidden=""" & If(openImmediately, "false", "true") & """>")
+                sb.Append("<div class=""modal-card"" role=""dialog"" aria-modal=""true"" style=""max-width:440px;text-align:center;padding:24px 26px"">")
+                sb.Append("<div style=""display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"">")
+                sb.Append("<div style=""display:flex;align-items:center;gap:8px""><span class=""ph-ic"" style=""width:32px;height:32px;font-size:16px;background:" & qrColor & ";color:#fff;border-radius:8px"">" & WebUi.Ic(If(method = "GCASH", "qr_code_2", "account_balance_wallet"), "sm") & "</span><b style=""font-size:15px;color:var(--ink)"">Scan to Pay with " & qrBrand & "</b></div>")
+                sb.Append("<button type=""button"" id=""qrModalCloseX"" style=""background:none;border:none;cursor:pointer;color:var(--ink-soft);padding:4px""><span class=""ms"">close</span></button>")
+                sb.Append("</div>")
+
+                ' QR Code Graphic — admin-uploaded image when available and the display mode includes it; otherwise the stylized placeholder
+                If showQrImg AndAlso ps.QrImageFile <> "" Then
+                    sb.Append("<div style=""background:#fff;border:2px solid var(--line);border-radius:16px;padding:16px;margin:12px auto;display:inline-block;box-shadow:var(--sh-1)"">")
+                    sb.Append("<img src=""" & WebUi.Attr("/" & ps.QrImageFile.TrimStart("/"c)) & """ alt=""" & WebUi.Attr(qrBrand & " QR code") & """ width=""180"" height=""180"" style=""display:block;margin:0 auto;object-fit:contain;background:#fff"">")
+                    If ps.QrCaption <> "" Then
+                        sb.Append("<div class=""sub"" style=""font-size:10.5px;text-align:center;margin-top:6px"">" & WebUi.Esc(ps.QrCaption) & "</div>")
+                    End If
+                    sb.Append("</div>")
+                ElseIf showQrImg Then
+                    sb.Append("<div style=""background:#fff;border:2px solid var(--line);border-radius:16px;padding:16px;margin:12px auto;display:inline-block;box-shadow:var(--sh-1)"">")
+                    RenderQrPlaceholder(sb, qrColor, method)
+                    sb.Append("</div>")
+                End If
+
+                ' Account Details Card — rows appear only when both the display
+                ' mode and the saved value allow them.
+                sb.Append("<div class=""card"" style=""background:var(--surface-low);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0 16px;text-align:left"">")
+                If showName AndAlso qrAccountName <> "" Then
+                    sb.Append("<div class=""row space-between"" style=""margin-bottom:4px""><span class=""sub"" style=""font-size:11px"">Account Name</span><b style=""font-size:12px"">" & WebUi.Esc(qrAccountName) & "</b></div>")
+                End If
+                If showNumber AndAlso qrNumber <> "" Then
+                    sb.Append("<div class=""row space-between"" style=""margin-bottom:4px""><span class=""sub"" style=""font-size:11px"">" & WebUi.Esc(qrBrand) & " Number</span><b style=""font-size:13px;color:" & qrColor & ";font-family:var(--font-mono)"">" & WebUi.Esc(qrNumber) & "</b></div>")
+                End If
+                sb.Append("<div class=""row space-between""><span class=""sub"" style=""font-size:11px"">Amount Due</span><b style=""font-size:14px;color:var(--primary)"">" & WebUi.Money(o.TotalAmount) & "</b></div>")
+                sb.Append("</div>")
+
+                sb.Append("<p class=""sub"" style=""margin:0 0 16px;font-size:11.5px;line-height:1.4"">1. Open your " & WebUi.Esc(qrBrand) & " app &amp; ")
+                If showQrImg AndAlso showNumber Then
+                    sb.Append("scan the QR code above or send to the number.")
+                ElseIf showQrImg Then
+                    sb.Append("scan the QR code above.")
+                ElseIf showNumber Then
+                    sb.Append("send to the " & WebUi.Esc(qrBrand) & " number.")
+                Else
+                    sb.Append("send to the account name shown.")
+                End If
+                sb.Append("<br>2. Save your receipt reference number.<br>3. Enter the reference number below to verify payment.</p>")
+                sb.Append("<button type=""button"" class=""btn primary"" id=""qrModalProceedBtn"" style=""width:100%;justify-content:center;border-radius:10px;padding:10px;font-weight:700"">I Have Scanned &amp; Sent Payment</button>")
+                sb.Append("</div></div>")
+
+                sb.Append("<script>")
+                sb.Append("(function(){")
+                sb.Append("var qrM=document.getElementById('qrPaymentModal');")
+                sb.Append("var qrClose=document.getElementById('qrModalCloseX');")
+                sb.Append("var qrBtn=document.getElementById('qrModalProceedBtn');")
+                sb.Append("function hideQr(){if(qrM){qrM.classList.remove('open');qrM.setAttribute('aria-hidden','true');}}")
+                sb.Append("if(qrClose)qrClose.addEventListener('click',hideQr);")
+                sb.Append("if(qrBtn)qrBtn.addEventListener('click',function(){hideQr();var refIn=document.querySelector('input[name=""payRef""]');if(refIn)refIn.focus();});")
+                sb.Append("if(qrM)qrM.addEventListener('click',function(e){if(e.target===qrM)hideQr();});")
+                sb.Append("document.addEventListener('keydown',function(e){if(qrM&&qrM.classList.contains('open')&&e.key==='Escape')hideQr();});")
+                sb.Append("})();")
+                sb.Append("</" & "script>")
+            End If
+
             Out.Text = sb.ToString()
+        End Sub
+
+        ''' <summary>
+        ''' The stylized SVG QR placeholder shown when the admin has not uploaded a
+        ''' real QR image but the display mode still includes one. Kept from the
+        ''' original design so the popup never renders an empty box.
+        ''' </summary>
+        Private Sub RenderQrPlaceholder(sb As StringBuilder, qrColor As String, method As String)
+            sb.Append("<svg width=""180"" height=""180"" viewBox=""0 0 180 180"" xmlns=""http://www.w3.org/2000/svg"" style=""display:block;margin:0 auto"">")
+            sb.Append("<rect width=""180"" height=""180"" fill=""#ffffff""/>")
+            ' Corner 1
+            sb.Append("<rect x=""10"" y=""10"" width=""46"" height=""46"" rx=""6"" fill=""none"" stroke=""" & qrColor & """ stroke-width=""5""/>")
+            sb.Append("<rect x=""22"" y=""22"" width=""22"" height=""22"" rx=""3"" fill=""" & qrColor & """/>")
+            ' Corner 2
+            sb.Append("<rect x=""124"" y=""10"" width=""46"" height=""46"" rx=""6"" fill=""none"" stroke=""" & qrColor & """ stroke-width=""5""/>")
+            sb.Append("<rect x=""136"" y=""22"" width=""22"" height=""22"" rx=""3"" fill=""" & qrColor & """/>")
+            ' Corner 3
+            sb.Append("<rect x=""10"" y=""124"" width=""46"" height=""46"" rx=""6"" fill=""none"" stroke=""" & qrColor & """ stroke-width=""5""/>")
+            sb.Append("<rect x=""22"" y=""136"" width=""22"" height=""22"" rx=""3"" fill=""" & qrColor & """/>")
+            ' Data pattern blocks
+            sb.Append("<rect x=""66"" y=""16"" width=""14"" height=""14"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""90"" y=""16"" width=""20"" height=""10"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""66"" y=""38"" width=""10"" height=""24"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""86"" y=""38"" width=""24"" height=""12"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""16"" y=""66"" width=""12"" height=""18"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""38"" y=""66"" width=""18"" height=""12"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""66"" y=""66"" width=""16"" height=""16"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""124"" y=""66"" width=""20"" height=""12"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""152"" y=""66"" width=""18"" height=""18"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""16"" y=""94"" width=""24"" height=""18"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""124"" y=""90"" width=""14"" height=""24"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""148"" y=""94"" width=""22"" height=""14"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""66"" y=""124"" width=""20"" height=""14"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""94"" y=""124"" width=""16"" height=""24"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""124"" y=""124"" width=""14"" height=""14"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""148"" y=""124"" width=""22"" height=""20"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""66"" y=""148"" width=""18"" height=""22"" fill=""#1e1b19""/>")
+            sb.Append("<rect x=""124"" y=""148"" width=""18"" height=""22"" fill=""#1e1b19""/>")
+            ' Center Brand Badge
+            sb.Append("<rect x=""68"" y=""68"" width=""44"" height=""44"" rx=""8"" fill=""#ffffff"" stroke=""" & qrColor & """ stroke-width=""2""/>")
+            sb.Append("<circle cx=""90"" cy=""90"" r=""16"" fill=""" & qrColor & """/>")
+            sb.Append("<text x=""90"" y=""95"" font-size=""13"" font-weight=""800"" fill=""#ffffff"" text-anchor=""middle"" font-family=""sans-serif"">" & If(method = "GCASH", "G", "M") & "</text>")
+            sb.Append("</svg>")
         End Sub
 
         Private Function DisplayPay(pm As String) As String

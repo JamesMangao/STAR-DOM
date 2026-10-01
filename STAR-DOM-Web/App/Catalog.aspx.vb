@@ -75,11 +75,20 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Function ProductCard(p As Product) As String
+            ' Bundle membership is looked up once per card and reused for the badge and
+            ' the strikethrough price, so a card costs at most one extra query.
+            Dim cartSvc As New CartService()
+            Dim bGroup As BundleGroup = cartSvc.BundleForProduct(p.Id)
+            Dim bRegular As Decimal = If(bGroup Is Nothing, 0D, cartSvc.BundleRegularPrice(bGroup))
+
             Dim sb As New StringBuilder()
             sb.Append("<div class=""pcard"">")
             sb.Append("<div style=""position:relative"">")
             sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name, "height:185px"))
             sb.Append("<div class=""badges"">")
+            If bGroup IsNot Nothing Then
+                sb.Append("<span class=""badge live"">BUNDLE</span>")
+            End If
             sb.Append(If(p.BadgeLabel <> "", "<span class=""badge warn"">" & WebUi.Esc(p.BadgeLabel) & "</span>",
                          If(p.HasDiscount, "<span class=""badge live"">" & p.DiscountPercent.ToString() & "% OFF</span>", "")))
             sb.Append("</div></div>")
@@ -92,9 +101,16 @@ Namespace STAR_DOM.Web
                           " <small style=""color:var(--ink-soft)"">(" & p.RatingCount.ToString() & ")</small></span>")
             End If
             sb.Append("<div class=""pfoot"">")
-            sb.Append(WebUi.Money(p.EffectivePrice))
-            sb.Append(WebUi.BtnHref("/App/Cart.aspx?add=" & p.Id.ToString() & "&q=1&ret=" & Server.UrlEncode(Request.RawUrl), "Add", "primary", "add_shopping_cart",
-                                   WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice)))
+            ' Two prices where a bundle applies: what the group costs normally, struck
+            ' through, then the bundle price the shopper actually pays.
+            If bGroup IsNot Nothing AndAlso bRegular > 0D AndAlso bRegular > bGroup.GroupPrice Then
+                sb.Append("<div><s class=""sub"" style=""font-size:11px"">" & WebUi.Money(bRegular) & "</s> " &
+                          "<span class=""money"">" & WebUi.Money(bGroup.GroupPrice) & "</span> " &
+                          "<span class=""sub"" style=""font-size:10.5px"">any " & bGroup.GroupSize.ToString() & "</span></div>")
+            Else
+                sb.Append(WebUi.Money(p.EffectivePrice))
+            End If
+            sb.Append(WebUi.AddCartButton(p, Server.UrlEncode(Request.RawUrl)))
             sb.Append("</div>")
             sb.Append(If(p.StockQuantity > 0,
                          "<span class=""stockline"">" & p.StockQuantity.ToString() & " in booth stock</span>",

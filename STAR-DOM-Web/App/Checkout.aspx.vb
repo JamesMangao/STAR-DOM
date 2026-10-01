@@ -4,6 +4,7 @@ Imports System.Web.UI
 Imports System.Web.UI.WebControls
 Imports STAR_DOM.Helpers
 Imports STAR_DOM.Models
+Imports STAR_DOM.Repositories
 Imports STAR_DOM.Services
 
 Namespace STAR_DOM.Web
@@ -173,7 +174,7 @@ Namespace STAR_DOM.Web
                 Session("flash_msg") = result.Message
                 Session("flash_ok") = True
                 If fresh IsNot Nothing Then
-                    Response.Redirect("/App/OrderDetail.aspx?id=" & fresh.Id.ToString(), True)
+                    Response.Redirect("/App/OrderDetail.aspx?id=" & fresh.Id.ToString() & "&new=1", True)
                 Else
                     Response.Redirect("/App/Orders.aspx", True)
                 End If
@@ -232,9 +233,13 @@ Namespace STAR_DOM.Web
 
             Dim subtotal As Decimal = items.Sum(Function(i) i.LineTotal)
             Dim bundleDisc As Decimal = _cart.BundleDiscount(items)
-            ' Delivery is free from ₱1,500; pick-up never carries a fee.
-            Dim deliveryFee As Decimal = If(subtotal >= 1500D, 0D, 80D)
             Dim bundleNote As String = _cart.BundleNote()
+
+            ' The courier fee is not knowable here: J&T only quotes once the parcel is
+            ' weighed. Checkout therefore shows the goods total, and the store quotes the
+            ' real shipping fee when confirming the order. Pick-up needs no quote.
+            Dim isPickupSel As Boolean = fulSel = "PICKUP"
+            Dim goodsTotal As Decimal = Math.Max(subtotal - bundleDisc, 0D)
 
             sb.Append("<div class=""row"" style=""align-items:flex-start;gap:24px"">")
             sb.Append("<form method=""post"" action=""/App/Checkout.aspx"" style=""flex:1.5;min-width:320px"">")
@@ -254,8 +259,9 @@ Namespace STAR_DOM.Web
             If bundleDisc > 0D Then
                 sb.Append("<div class=""row space-between"" style=""color:#15803d""><b>Bundle savings</b><b>−" & WebUi.Money(bundleDisc) & "</b></div>")
             End If
-            sb.Append("<div class=""row space-between""><b>Shipping</b><span id=""shipCell"" class=""sub"">—" & "</span></div>")
-            sb.Append("<div class=""row space-between"" style=""margin-top:6px""><b>Total</b><b id=""totalCell"" style=""color:var(--primary);font-size:18px"">" & WebUi.Money(subtotal - bundleDisc + deliveryFee) & "</b></div>")
+            sb.Append("<div class=""row space-between""><b>Shipping</b><span id=""shipCell"" class=""sub"">Quoted after confirmation</span></div>")
+            sb.Append("<div class=""row space-between"" style=""margin-top:6px""><b>Total</b><b id=""totalCell"" style=""color:var(--primary);font-size:18px"">" & WebUi.Money(goodsTotal) & "</b></div>")
+            sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:6px"">Shipping is not included yet — we quote the J&amp;T Express fee when we confirm your order and send you the final total before it ships.</div>")
             If bundleNote <> "" Then
                 sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:8px""><span class=""ms sm"" style=""vertical-align:-3px;color:var(--primary)"">sell</span> " & WebUi.Esc(bundleNote) & "</div>")
             End If
@@ -266,8 +272,14 @@ Namespace STAR_DOM.Web
             sb.Append("<label class=""card"" style=""display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;cursor:pointer"">")
             sb.Append("<input type=""radio"" name=""fulfillment"" value=""DELIVERY""" & If(fulSel = "DELIVERY", " checked", "") & " style=""margin-top:3px"">")
             sb.Append("<span class=""ms"" style=""color:var(--primary)"">local_shipping</span>")
-            sb.Append("<span><b>Delivery</b><br><span class=""sub"" style=""font-size:12px"">Ships nationwide via J&T Express · " &
-                      If(deliveryFee > 0D, WebUi.Esc(Fmt.PHP(deliveryFee)) & " shipping (free over ₱1,500)", "Free shipping") & "</span></span></label>")
+            sb.Append("<span><b>Delivery</b><br><span class=""sub"" style=""font-size:12px"">Ships nationwide via J&amp;T Express · " &
+                      "fee quoted when we confirm your order</span></span></label>")
+            ' Zone guide, so the eventual quote is never a surprise. Indicative only — the
+            ' figure actually charged follows the parcel's weight when it is quoted.
+            sb.Append("<div class=""sub"" style=""font-size:11.5px;margin:2px 0 10px;padding:9px 11px;background:var(--surface-low);border-radius:8px;border-left:3px solid var(--primary)"">")
+            sb.Append("<b style=""color:var(--ink)"">Typical J&amp;T zone rates:</b> Luzon ₱0–100 · Visayas ₱101–200 · Mindanao ₱201–300. " &
+                      "The exact fee follows the parcel's weight and is confirmed before dispatch.")
+            sb.Append("</div>")
             sb.Append("<label class=""card"" style=""display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;cursor:pointer"">")
             sb.Append("<input type=""radio"" name=""fulfillment"" value=""PICKUP""" & If(fulSel = "PICKUP", " checked", "") & " style=""margin-top:3px"">")
             sb.Append("<span class=""ms"" style=""color:var(--primary)"">storefront</span>")
@@ -319,45 +331,62 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""field""><label for=""nt"">Order notes (optional)</label><textarea id=""nt"" name=""notes"" style=""min-height:70px"">" & WebUi.Esc(notes) & "</textarea></div>")
             sb.Append("</div>")
 
-            ' payment
+            ' payment — e-wallet channels follow the admin's enable/disable toggles
+            ' from Payment Settings (COD is always offered).
+            Dim paySettings As New PaymentSettingRepository()
             sb.Append("<div class=""card""><h3 style=""margin-bottom:10px"">" & WebUi.Ic("payments", "sm") & " Payment method</h3>")
-            sb.Append(PayOption("GCASH", "GCash", "Pay instantly via the GCash app QR", "qr_code_2", pmSel))
-            sb.Append(PayOption("MAYA", "Maya", "Pay with the Maya app", "account_balance_wallet", pmSel))
+            If paySettings.IsChannelEnabled(PaymentSettingRepository.Gcash) Then
+                sb.Append(PayOption("GCASH", "GCash", "Pay instantly via the GCash app QR", "qr_code_2", pmSel))
+            End If
+            If paySettings.IsChannelEnabled(PaymentSettingRepository.Maya) Then
+                sb.Append(PayOption("MAYA", "Maya", "Pay with the Maya app", "account_balance_wallet", pmSel))
+            End If
             sb.Append(PayOption("COD", "Cash on Delivery / Claim", "Pay cash when your order arrives or at pick-up", "local_shipping", pmSel))
             sb.Append("<div class=""frow"">")
             sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">lock</span><span>Place Order</span></button>")
-            sb.Append(WebUi.BtnHref("/App/Cart.aspx", "Back to Cart", "ghost", "arrow_back"))
+            sb.Append("<button type=""button"" class=""btn ghost"" id=""btnCancelCheckout""><span class=""ic ms"">arrow_back</span><span>Back to Cart</span></button>")
             sb.Append("</div>")
             sb.Append("</div>")
             sb.Append("</form>")
             sb.Append("</div>")
 
-            ' Live total recalculation: switching fulfillment swaps the shipping fee
-            ' (₱0 at a stall) and shows/hides the address vs stall-picker fields.
+            ' Exit Confirmation Modal
+            sb.Append("<div class=""modal-backdrop"" id=""exitCheckoutModal"" aria-hidden=""true"">")
+            sb.Append("<div class=""modal-card"" role=""dialog"" aria-modal=""true"" style=""max-width:440px;text-align:center"">")
+            sb.Append("<div class=""modal-ic"" style=""margin:0 auto 14px;background:rgba(254,208,27,0.2);color:var(--ink)""><span class=""ms"">shopping_cart_checkout</span></div>")
+            sb.Append("<h3 style=""margin-bottom:8px"">Leave Checkout?</h3>")
+            sb.Append("<p class=""modal-msg"" style=""margin-bottom:20px"">Your cart items and saved choices will remain completely safe in your cart. You can come back and complete your order anytime.</p>")
+            sb.Append("<div class=""modal-actions"" style=""justify-content:center;gap:12px"">")
+            sb.Append("<button type=""button"" class=""btn ghost"" id=""btnStayCheckout"" style=""min-width:110px"">Stay Here</button>")
+            sb.Append("<a href=""/App/Cart.aspx"" class=""btn primary"" style=""min-width:130px;background:var(--primary)"">Return to Cart</a>")
+            sb.Append("</div>")
+            sb.Append("</div></div>")
+
+            ' Switching fulfillment & exit modal handling
             sb.Append("<script>")
             sb.Append("(function(){")
-            sb.Append("var sub=" & subtotal.ToString(System.Globalization.CultureInfo.InvariantCulture) & ";")
-            sb.Append("var disc=" & bundleDisc.ToString(System.Globalization.CultureInfo.InvariantCulture) & ";")
-            sb.Append("var fee=" & deliveryFee.ToString(System.Globalization.CultureInfo.InvariantCulture) & ";")
             sb.Append("var rads=document.getElementsByName('fulfillment');")
             sb.Append("var del=document.getElementById('deliveryFields');")
             sb.Append("var pick=document.getElementById('pickupFields');")
             sb.Append("var ship=document.getElementById('shipCell');")
-            sb.Append("var tot=document.getElementById('totalCell');")
-            sb.Append("function money(n){return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}")
             sb.Append("function isPickup(){for(var i=0;i<rads.length;i++){if(rads[i].checked&&rads[i].value==='PICKUP')return true;}return false;}")
             sb.Append("function refresh(){var p=isPickup();")
             sb.Append("del.style.display=p?'none':'';pick.style.display=p?'':'none';")
-            ' The address is now six separate inputs, so toggle every one of them
-            ' rather than a single id. Disabling is what stops the browser from
-            ' demanding a delivery address on a pick-up order.
             sb.Append("var as=del.getElementsByTagName('input');")
             sb.Append("for(var i=0;i<as.length;i++){as[i].disabled=p;as[i].required=!p;}")
-            sb.Append("var f=p?0:fee;")
-            sb.Append("ship.innerHTML=f>0?money(f):'<span style=""color:#15803d;font-weight:700"">FREE</span>';")
-            sb.Append("tot.innerHTML=money(Math.max(sub-disc+f,0));}")
+            sb.Append("ship.innerHTML=p?'None — collected at the stall':'Quoted after confirmation';}")
             sb.Append("for(var i=0;i<rads.length;i++){rads[i].addEventListener('change',refresh);}")
-            sb.Append("refresh();})();")
+            sb.Append("refresh();")
+            sb.Append("var modal=document.getElementById('exitCheckoutModal');")
+            sb.Append("var btnOpen=document.getElementById('btnCancelCheckout');")
+            sb.Append("var btnStay=document.getElementById('btnStayCheckout');")
+            sb.Append("function openModal(e){if(e)e.preventDefault();modal.classList.add('open');modal.setAttribute('aria-hidden','false');}")
+            sb.Append("function closeModal(){modal.classList.remove('open');modal.setAttribute('aria-hidden','true');}")
+            sb.Append("if(btnOpen)btnOpen.addEventListener('click',openModal);")
+            sb.Append("if(btnStay)btnStay.addEventListener('click',closeModal);")
+            sb.Append("if(modal)modal.addEventListener('click',function(e){if(e.target===modal)closeModal();});")
+            sb.Append("document.addEventListener('keydown',function(e){if(modal&&modal.classList.contains('open')&&e.key==='Escape')closeModal();});")
+            sb.Append("})();")
             sb.Append("</" & "script>")
 
             Out.Text = sb.ToString()

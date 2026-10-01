@@ -229,8 +229,7 @@ Namespace STAR_DOM.Web
             ' the return target, so the add completes the moment they sign in. The
             ' gate attributes let the premium popup explain that instead of just
             ' redirecting out from under them.
-            sb.Append(WebUi.BtnHref("/App/Cart.aspx?add=" & p.Id.ToString() & "&q=1&ret=/", "Add", "primary", "add_shopping_cart",
-                                   WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice)))
+            sb.Append(WebUi.AddCartButton(p, "/"))
             sb.Append("</div>")
             sb.Append(If(p.StockQuantity <= p.LowStockThreshold, "<span class=""stockline"" style=""color:var(--primary)"">Only " &
                         p.StockQuantity.ToString() & " remaining!</span>", "<span class=""stockline"">" &

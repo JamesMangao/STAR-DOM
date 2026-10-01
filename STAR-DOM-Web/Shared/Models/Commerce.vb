@@ -79,6 +79,20 @@ Namespace STAR_DOM.Models
         Public Property PickupCustomerConfirmed As Boolean
         Public Property PickupMerchantConfirmed As Boolean
 
+        ' Delivery shipping is merchant-quoted, not computed. ShippingFeeConfirmed flips
+        ' to True the moment the fee is entered, which is also the moment the order
+        ' becomes CONFIRMED and TotalAmount becomes final.
+        Public Property ShippingFeeConfirmed As Boolean
+        Public Property ShippingFeeConfirmedBy As Integer?
+        Public Property ShippingFeeConfirmedAt As Date?
+
+        ''' <summary>True once the order has a final, customer-facing total.</summary>
+        Public ReadOnly Property HasFinalTotal As Boolean
+            Get
+                Return IsPickup OrElse ShippingFeeConfirmed
+            End Get
+        End Property
+
         ' Joined display fields
         Public Property CustomerName As String
         Public Property CustomerEmail As String

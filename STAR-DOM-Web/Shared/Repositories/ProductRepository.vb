@@ -179,9 +179,9 @@ Return Db.ExecIdentity(
         End Function
 
         Public Function CreateBundle(b As Bundle) As Integer
-            Dim id As Integer = Db.ExecIdentity("INSERT INTO Bundles (Name, Description, DiscountPercent, IsActive, CreatedAt) VALUES (@n, @d, @dp, @a, NOW())",
+            Dim id As Integer = Db.ExecIdentity("INSERT INTO Bundles (Name, Description, DiscountPercent, GroupSize, BundlePrice, IsActive, CreatedAt) VALUES (@n, @d, @dp, @gs, @bp, @a, NOW())",
                     Db.P("@n", b.Name), Db.P("@d", b.Description), Db.P("@dp", b.DiscountPercent),
-                    Db.P("@a", b.IsActive))
+                    Db.P("@gs", b.GroupSize), Db.P("@bp", b.BundlePrice), Db.P("@a", b.IsActive))
             For Each item As BundleItem In b.Items
                 Db.Exec("INSERT INTO BundleItems (BundleId, ProductId, Quantity) VALUES (@b, @p, @q)",
                         Db.P("@b", id), Db.P("@p", item.ProductId), Db.P("@q", item.Quantity))
@@ -190,8 +190,9 @@ Return Db.ExecIdentity(
         End Function
 
         Public Sub UpdateBundle(b As Bundle)
-            Db.Exec("UPDATE Bundles SET Name = @n, Description = @d, DiscountPercent = @dp, IsActive = @a WHERE Id = @id",
+            Db.Exec("UPDATE Bundles SET Name = @n, Description = @d, DiscountPercent = @dp, GroupSize = @gs, BundlePrice = @bp, IsActive = @a WHERE Id = @id",
                     Db.P("@n", b.Name), Db.P("@d", b.Description), Db.P("@dp", b.DiscountPercent),
+                    Db.P("@gs", b.GroupSize), Db.P("@bp", b.BundlePrice),
                     Db.P("@a", b.IsActive), Db.P("@id", b.Id))
             Db.Exec("DELETE FROM BundleItems WHERE BundleId = @id", Db.P("@id", b.Id))
             For Each item As BundleItem In b.Items
@@ -251,6 +252,7 @@ Return Db.ExecIdentity(
             Return New Bundle With {
                 .Id = RowReader.AsInt(r, "Id"), .Name = RowReader.AsStr(r, "Name"), .Description = RowReader.AsStr(r, "Description"),
                 .DiscountPercent = RowReader.AsDec(r, "DiscountPercent"), .IsActive = RowReader.AsBool(r, "IsActive"),
+                .GroupSize = RowReader.AsInt(r, "GroupSize"), .BundlePrice = RowReader.AsDec(r, "BundlePrice"),
                 .CreatedAt = RowReader.AsDate(r, "CreatedAt")
             }
         End Function

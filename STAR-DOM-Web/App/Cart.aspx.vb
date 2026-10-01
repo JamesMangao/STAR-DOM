@@ -142,15 +142,18 @@ Namespace STAR_DOM.Web
                 Dim bundleDisc As Decimal = _cart.BundleDiscount(items)
                 Dim bundleNote As String = _cart.BundleNote()
                 sb.Append("<div class=""card"" style=""max-width:340px;margin-top:8px"">")
-                sb.Append("<div class=""kv""><dt>Subtotal</dt><dd>" & WebUi.Money(_cart.Subtotal()) & "</dd></div>")
+                Dim subTotal As Decimal = _cart.Subtotal()
+                Dim goodsTotal As Decimal = Math.Max(subTotal - bundleDisc, 0D)
+                sb.Append("<div class=""kv""><dt>Subtotal</dt><dd>" & WebUi.Money(subTotal) & "</dd></div>")
                 If bundleDisc > 0D Then
                     sb.Append("<div class=""kv""><dt>Bundle savings</dt><dd style=""color:#15803d;font-weight:700"">−" & WebUi.Money(bundleDisc) & "</dd></div>")
-                    sb.Append("<div class=""kv""><dt>Estimated total</dt><dd><b>" & WebUi.Money(_cart.Subtotal() - bundleDisc) & "</b></dd></div>")
                 End If
+                sb.Append("<div class=""kv""><dt>Goods total</dt><dd><b>" & WebUi.Money(goodsTotal) & "</b></dd></div>")
                 If bundleNote <> "" Then
                     sb.Append("<div class=""sub"" style=""font-size:11.5px;margin:6px 0""><span class=""ms sm"" style=""vertical-align:-3px;color:var(--primary)"">sell</span> " & WebUi.Esc(bundleNote) & "</div>")
                 End If
-                sb.Append("<div class=""kv""><dt>Shipping</dt><dd class=""sub"">Calculated at checkout</dd></div>")
+                sb.Append("<div class=""kv""><dt>Shipping</dt><dd class=""sub"">Quoted after confirmation</dd></div>")
+                sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:6px"">We quote the J&amp;T Express fee when your order is confirmed and send you the final total before it ships.</div>")
                 sb.Append("<div class=""frow"">" & WebUi.BtnHref("/App/Checkout.aspx", "Proceed to Checkout", "primary", "lock") & "</div>")
                 sb.Append("</div>")
             End If

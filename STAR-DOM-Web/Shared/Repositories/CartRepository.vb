@@ -102,23 +102,30 @@ Namespace STAR_DOM.Repositories
         ' ----- Bundles ----------------------------------------------------------
 
         ''' <summary>
-        ''' Active "N for ₱M" bundle rules for cart pricing. The deal is parsed from the
-        ''' bundle name — "(4 for 100)" — so merchandising can reprice a bundle by
-        ''' renaming it; bundles without that pattern (plain percentage promos) are
-        ''' skipped by the cart pricing engine.
+        ''' Active bundle rules for cart pricing: one group of GroupSize items from the
+        ''' bundle's products costs BundlePrice.
+        '''
+        ''' The deal is stored in Bundles.GroupSize / Bundles.BundlePrice as columns, NOT
+        ''' parsed out of the name. An earlier build read "(4 for 100)" out of Name, which
+        ''' meant renaming a bundle to "Stickers Bundle - 4 for 100" silently turned its
+        ''' pricing off — no discount, no error. The name is now only a display label and
+        ''' can be reworded freely.
+        '''
+        ''' A bundle with GroupSize &lt; 1 or BundlePrice &lt;= 0 is not a deal bundle
+        ''' (a plain percentage promo, say) and is skipped by the pricing engine.
         ''' </summary>
         Public Function ListBundleGroups() As List(Of BundleGroup)
             Dim rows As List(Of DataRow) = Db.Rows(
-                "SELECT bi.BundleId, b.Name, bi.ProductId FROM BundleItems bi " &
+                "SELECT bi.BundleId, b.Name, b.GroupSize, b.BundlePrice, bi.ProductId FROM BundleItems bi " &
                 "JOIN Bundles b ON b.Id = bi.BundleId WHERE b.IsActive = TRUE ORDER BY bi.BundleId, bi.Id")
             Dim map As New Dictionary(Of Integer, BundleGroup)()
             For Each r As DataRow In rows
                 Dim id As Integer = RowReader.AsInt(r, "BundleId")
                 Dim g As BundleGroup = Nothing
                 If Not map.TryGetValue(id, g) Then
-                    Dim size As Integer = 0
-                    Dim price As Decimal = 0D
-                    If Not ParseBundleDeal(RowReader.AsStr(r, "Name"), size, price) Then Continue For
+                    Dim size As Integer = RowReader.AsInt(r, "GroupSize")
+                    Dim price As Decimal = RowReader.AsDec(r, "BundlePrice")
+                    If size < 1 OrElse price <= 0D Then Continue For
                     g = New BundleGroup With {
                         .BundleId = id, .Name = RowReader.AsStr(r, "Name"),
                         .GroupSize = size, .GroupPrice = price, .ProductIds = New List(Of Integer)()}
@@ -127,21 +134,6 @@ Namespace STAR_DOM.Repositories
                 g.ProductIds.Add(RowReader.AsInt(r, "ProductId"))
             Next
             Return map.Values.ToList()
-        End Function
-
-        ''' <summary>"Stickers Bundle (4 for 100)" -> size 4, group price 100.</summary>
-        Private Shared Function ParseBundleDeal(name As String, ByRef size As Integer, ByRef price As Decimal) As Boolean
-            size = 0
-            price = 0D
-            If String.IsNullOrEmpty(name) Then Return False
-            Dim m As System.Text.RegularExpressions.Match =
-                System.Text.RegularExpressions.Regex.Match(name, "\((\d+)\s*for\s*([0-9.]+)\)",
-                                                           System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-            If Not m.Success Then Return False
-            If Not Integer.TryParse(m.Groups(1).Value, size) Then Return False
-            If Not Decimal.TryParse(m.Groups(2).Value, System.Globalization.NumberStyles.Any,
-                                    System.Globalization.CultureInfo.InvariantCulture, price) Then Return False
-            Return size > 0 AndAlso price > 0D
         End Function
 
         ' ----- Wishlist ---------------------------------------------------------

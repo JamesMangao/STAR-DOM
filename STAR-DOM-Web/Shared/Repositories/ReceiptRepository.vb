@@ -65,6 +65,44 @@ Namespace STAR_DOM.Repositories
             End Try
         End Function
 
+        ''' <summary>
+        ''' Rewrite an already-issued receipt's money columns from the order header.
+        ''' </summary>
+        ''' <remarks>
+        ''' A COD receipt is issued at checkout, before the merchant has quoted the courier
+        ''' fee, so it is born holding a total that is about to change. Receipts has a
+        ''' UNIQUE constraint on PaymentId, so a receipt can never be re-issued for the same
+        ''' payment — refreshing in place is the only option, and it has the side benefit
+        ''' of keeping the OR number and issue date the customer was already given.
+        '''
+        ''' Returns True when a receipt was found and updated.
+        ''' </remarks>
+        Public Function RefreshTotals(order As Order) As Boolean
+            If order Is Nothing Then Return False
+            Try
+                Dim subtotal As Decimal = order.Subtotal
+                Dim discount As Decimal = order.DiscountAmount
+                Dim shipping As Decimal = order.ShippingFee
+                Dim total As Decimal = order.TotalAmount
+                Dim vatable As Decimal = 0D
+                Dim vat As Decimal = 0D
+                If total > 0D Then
+                    vatable = Math.Round(total / 1.12D, 2)
+                    vat = Math.Round(total - vatable, 2)
+                End If
+                Dim touched As Integer = Db.Exec(
+                    "UPDATE Receipts SET Subtotal = @sub, DiscountAmount = @d, ShippingFee = @sf, " &
+                    "VatableAmount = @va, VatAmount = @vat, VatExemptAmount = 0, TotalAmount = @tot " &
+                    "WHERE OrderId = @o",
+                    Db.P("@sub", subtotal), Db.P("@d", discount), Db.P("@sf", shipping),
+                    Db.P("@va", vatable), Db.P("@vat", vat), Db.P("@tot", total), Db.P("@o", order.Id))
+                Return touched > 0
+            Catch ex As Exception
+                Db.LogError("RefreshReceiptTotals", ex)
+                Return False
+            End Try
+        End Function
+
         Public Function GetByPaymentId(paymentId As Integer) As Receipt
             Try
                 Dim rows As List(Of DataRow) = Db.Rows(ReceiptSelect & "WHERE r.PaymentId = @p", Db.P("@p", paymentId))
