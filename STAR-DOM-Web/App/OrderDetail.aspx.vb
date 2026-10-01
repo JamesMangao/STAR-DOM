@@ -139,6 +139,9 @@ Namespace STAR_DOM.Web
                     ' POST + password re-entry; e-wallet orders also carry the reference
                     ' number from the GCash/Maya receipt.
                     sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center"">")
+                    ' Nested inside the shell form, which the browser closes at this tag — so
+                    ' the shell's token is not submitted with this form. Carry its own.
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<input type=""hidden"" name=""payOrder"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<input name=""payRef"" placeholder=""" & If(method = "GCASH", "GCash", "Maya") & " reference no."" required style=""padding:8px;border:1px solid var(--line);border-radius:8px;width:180px"">")
@@ -148,6 +151,9 @@ Namespace STAR_DOM.Web
                 End If
                 If canConfirmPickup Then
                     sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:inline-flex"">")
+                    ' Same reason as the payment form above: the shell form's token stops
+                    ' being submitted once this nested form opens.
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<input type=""hidden"" name=""pickupOrder"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<button class=""btn primary"" type=""submit"" data-confirm=""Confirm you have received this order at the stall?""><span class=""ic ms"">task_alt</span><span>Confirm order received</span></button>")

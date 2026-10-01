@@ -76,7 +76,10 @@ Namespace STAR_DOM.Web
                 sb.Append("<td>" & WebUi.Esc(u.Username) & "</td>")
                 sb.Append("<td><span class=""pill yellow"">" & WebUi.Esc(u.RoleName) & "</span></td>")
                 sb.Append("<td>" & If(u.Status = "ACTIVE", WebUi.Badge("ACTIVE"), WebUi.Badge("SUSPENDED")) & "</td>")
+                ' The role form is nested inside the shell form, which the browser closes at this tag
+                ' — so the shell's token is not submitted with it. It carries its own.
                 sb.Append("<td><form method=""post"" style=""display:flex;gap:6px"">" &
+                          STAR_DOM.Web.Csrf.HiddenField() &
                           "<input type=""hidden"" name=""roleUserId"" value=""" & u.Id.ToString() & """>" &
                           "<select name=""newRole"" style=""padding:5px;border:1px solid var(--line);border-radius:7px"">")
                 ' Two-role model: offer only CUSTOMER and ADMIN. (The MERCHANT role

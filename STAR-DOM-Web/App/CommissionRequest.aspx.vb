@@ -119,6 +119,9 @@ Namespace STAR_DOM.Web
             If errorMsg <> "" Then sb.Append(WebUi.AlertBox(errorMsg))
 
             sb.Append("<form method=""post"" action=""/App/CommissionRequest.aspx"" enctype=""multipart/form-data"">")
+            ' Nested inside the shell form, which the browser closes at this tag — so the
+            ' shell's token is not submitted with this form. Carry its own.
+            sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<input type=""hidden"" name=""m"" value=""" & merchantId.ToString() & """>")
 
             ' 01 category

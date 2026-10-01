@@ -60,6 +60,9 @@ Namespace STAR_DOM.Web
             sb.Append("</div>")
 
             sb.Append("<form method=""post"" action=""/App/Profile.aspx"" style=""flex:1;min-width:300px"">")
+            ' Nested inside the shell form, which the browser closes at this tag — so the
+            ' shell's token is not submitted with this form. Carry its own.
+            sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<div class=""card""><h3 style=""margin-bottom:10px"">Change password</h3>")
             sb.Append("<div class=""field""><label for=""c"">Current password</label><input id=""c"" name=""current"" type=""password"" required></div>")
             sb.Append("<div class=""field""><label for=""n"">New password (min 6 chars)</label><input id=""n"" name=""np"" type=""password"" required></div>")

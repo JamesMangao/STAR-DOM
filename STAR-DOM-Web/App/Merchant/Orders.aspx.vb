@@ -213,6 +213,10 @@ Namespace STAR_DOM.Web
                           "<span class=""ms sm"">arrow_forward</span> " & nextState & "</a>")
             ElseIf nextState = "SHIPPED" Then
                 sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap"">")
+                ' Each of the per-order forms below is nested inside the shell form, which
+                ' the browser closes at this tag — so the shell's token is not submitted with
+                ' them. They each carry their own.
+                sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                 sb.Append("<input type=""hidden"" name=""shipOrderId"" value=""" & o.Id.ToString() & """>")
                 sb.Append("<input name=""tracking"" placeholder=""J&T tracking no."" style=""width:112px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
                 sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Book with J&T Express""><span class=""ms sm"">local_shipping</span>Book J&T</button>")
@@ -224,6 +228,7 @@ Namespace STAR_DOM.Web
             If o.IsPickup AndAlso o.Status <> "CANCELLED" AndAlso o.Status <> "DELIVERED" Then
                 If Not o.PickupMerchantConfirmed Then
                     sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:inline-flex;margin:2px 0"">")
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""pickupOrderId"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<button class=""btn ghost sm"" type=""submit"" data-confirm=""Confirm the customer has claimed this order at the stall?""><span class=""ms sm"">task_alt</span>Confirm hand-over</button>")
                     sb.Append("</form>")
@@ -237,6 +242,7 @@ Namespace STAR_DOM.Web
             If o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
                 Dim isEWallet As Boolean = o.PaymentMethod = "GCASH" OrElse o.PaymentMethod = "MAYA"
                 sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap"">")
+                sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                 sb.Append("<input type=""hidden"" name=""payOrderId"" value=""" & o.Id.ToString() & """>")
                 If isEWallet Then
                     sb.Append("<input name=""payRef"" placeholder=""Ref no."" required style=""width:86px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")

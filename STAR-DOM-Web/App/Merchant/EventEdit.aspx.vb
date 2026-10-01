@@ -105,6 +105,9 @@ Namespace STAR_DOM.Web
 
             sb.Append("<div class=""row"" style=""align-items:flex-start;gap:24px"">")
             sb.Append("<form method=""post"" action=""/App/Merchant/EventEdit.aspx" & If(_editingId > 0, "?id=" & _editingId.ToString(), "") & """ style=""flex:1.4;min-width:340px"">")
+            ' Nested inside the shell form, which the browser closes at this tag — so the
+            ' shell's token is not submitted with this form. Carry its own.
+            sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<div class=""card mb"">")
             sb.Append("<div class=""field""><label>Event name *</label><input name=""name"" required value=""" & WebUi.Attr(If(ev IsNot Nothing, ev.Name, "")) & """ placeholder=""e.g. SM City Santa Rosa""></div>")
             sb.Append("<div class=""field""><label>Mall / venue location</label><select name=""loc"">")

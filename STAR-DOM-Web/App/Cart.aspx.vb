@@ -112,6 +112,9 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""empty"">Your cart is empty. <a href=""/App/Catalog.aspx"" style=""color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:4px"">Browse the catalog <span class=""ms sm"">arrow_forward</span></a></div>")
             Else
                 sb.Append("<form method=""post"" action=""/App/Cart.aspx"">")
+                ' The shell form in Site.master is implicitly closed by this nested form, so
+                ' the token it carries never reaches this POST. Every nested form needs its own.
+                sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                 sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
                 For Each h As String In {"PRODUCT", "PRICE", "QUANTITY", "TOTAL", ""}
                     sb.Append("<th>" & h & "</th>")

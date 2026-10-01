@@ -104,7 +104,10 @@ Namespace STAR_DOM.Web
                               WebUi.Esc(p.BrandName) & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(p.CategoryName) & "</td>")
                     sb.Append("<td>" & WebUi.Money(p.EffectivePrice) & "</td>")
+                    ' The stock form is nested inside the shell form, which the browser closes at this
+                    ' tag — so the shell's token is not submitted with it. It carries its own.
                     sb.Append("<td><form method=""post"" style=""display:flex;gap:6px;align-items:center"">" &
+                              STAR_DOM.Web.Csrf.HiddenField() &
                               "<input type=""hidden"" name=""stockId"" value=""" & p.Id.ToString() & """>" &
                               "<input name=""stockQty"" type=""number"" value=""" & p.StockQuantity.ToString() & """ style=""width:64px;padding:5px;border:1px solid var(--line);border-radius:7px"">" &
                               "<button class=""btn ghost sm"" type=""submit""><span class=""ic ms"">save</span><span>Save</span></button></form>" &
@@ -131,6 +134,9 @@ Namespace STAR_DOM.Web
             Dim cats As List(Of Category) = _cats.ListAll()
             sb.Append("<div class=""sec-head"" style=""margin-top:26px""><div><h3>Categories (" & cats.Count.ToString() & ")</h3></div></div>")
             sb.Append("<form method=""post"" class=""card"" style=""margin-bottom:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"">")
+            ' Same reason as the stock form above: nested, so the shell's token is not
+            ' submitted with it.
+            sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<div class=""field"" style=""flex:1;min-width:180px;margin:0""><label>New category</label><input name=""catName"" required></div>")
             sb.Append("<div class=""field"" style=""flex:2;min-width:220px;margin:0""><label>Description</label><input name=""catDesc""></div>")
             sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">add</span><span>Add Category</span></button></form>")

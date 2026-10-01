@@ -106,6 +106,9 @@ Namespace STAR_DOM.Web
                                     "Name, price, stock and shelf flags sync to the marketplace and event booths."))
 
             sb.Append("<form method=""post"" action=""/App/Merchant/ProductEdit.aspx" & If(_editingId > 0, "?id=" & _editingId.ToString(), "") & """>")
+            ' Nested inside the shell form, which the browser closes at this tag — so the
+            ' shell's token is not submitted with this form. Carry its own.
+            sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<div class=""card"" style=""max-width:820px"">")
             sb.Append("<div class=""form-grid2"">")
             sb.Append(Field("name", "Product name *", If(p IsNot Nothing, p.Name, keepName), True))
