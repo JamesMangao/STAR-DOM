@@ -317,13 +317,15 @@ Namespace STAR_DOM.Web
             sb.Append(ProductImg(art, s.Seed, s.MerchantName, "height:170px"))
             sb.Append("<span class=""badge warn"" style=""position:absolute;top:8px;right:8px"">" & Esc(s.SlotsText) & "</span></div>")
             sb.Append("<div class=""pbody"">")
-            sb.Append("<span class=""brand"">" & Esc(s.MerchantTagline) & "</span>")
+            ' No style tagline row: the artist name is the identity, the style line was
+            ' noise above it. MerchantTagline is still stored and editable on the profile.
             sb.Append("<b style=""font-size:16px"">" & Esc(s.MerchantName) & "</b>")
             ' No starting price / deposit rows: commissions are quoted per request, and
             ' finished commissioned products can only be claimed via delivery.
+            ' No formats row either: the artist decides output per request, so a fixed
+            ' list on the card was misleading. CommissionFormats stays in the database.
             sb.Append("<div class=""kv"" style=""grid-template-columns:110px 1fr"">")
             sb.Append("<dt>Turnaround</dt><dd>" & Esc(s.Turnaround) & "</dd>")
-            sb.Append("<dt>Formats</dt><dd>" & Esc(s.Formats) & "</dd>")
             sb.Append("<dt>Claim via</dt><dd>Delivery only</dd>")
             sb.Append("</div>")
             sb.Append(BtnHref(target, label, "primary", "draw"))
