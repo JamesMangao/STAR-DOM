@@ -1,11 +1,17 @@
 @echo off
 rem ============================================================
 rem  STAR:DOM Website - share it publicly via a Cloudflare tunnel
-rem  Starts the local PostgreSQL database and IIS Express on port
+rem  Makes sure a database is available, runs IIS Express on port
 rem  8095, then opens a free
 rem  Cloudflare "quick tunnel" so anyone with the link can view
 rem  the site without installing anything on their side.
 rem  Close this window to stop sharing.
+rem
+rem  Database selection is identical to run-website.bat: Supabase when
+rem  tools\supabase-credentials.txt exists, otherwise the portable local
+rem  copy. Sharing a public tunnel pointed at a private local database
+rem  would show seed data to everyone; with Supabase the tunnel and every
+rem  other machine read the same thing.
 rem ============================================================
 setlocal
 title STAR:DOM - Share via Cloudflare
@@ -49,7 +55,21 @@ exit /b 1
 
 :cfd_found
 
-rem --- make sure the PostgreSQL database is running (starts it if needed) ---
+rem --- pick the database: Supabase when configured, else the local one ---
+rem Exported before IIS Express starts so the worker process inherits it.
+if not defined SD_LOCAL_DB (
+    if exist "%~dp0tools\supabase-credentials.txt" (
+        call "%~dp0tools\supabase-env.bat"
+        if errorlevel 1 (
+            echo Could not read the Supabase credentials - see the messages above.
+            pause
+            exit /b 1
+        )
+        echo Database: Supabase ^(shared - same data on every machine^)
+    )
+)
+
+rem --- make sure the database is available (starts the local one if needed) ---
 call "%~dp0start-db.bat"
 if errorlevel 1 (
     echo The database did not start - see the messages above.
@@ -79,6 +99,12 @@ if errorlevel 1 (
 
 echo [3/3] Opening Cloudflare tunnel - copy the trycloudflare.com link below.
 echo        Keep this window open. Close it any time to stop sharing.
+if not defined SUPABASE_DB_URL (
+    echo.
+    echo   NOTE: no Supabase credentials, so this link is showing the LOCAL
+    echo   database - seed data only. Add tools\supabase-credentials.txt to
+    echo   share the real data instead.
+)
 echo.
 "%CFD%" tunnel --url http://localhost:8095 --http-host-header localhost:8095
 

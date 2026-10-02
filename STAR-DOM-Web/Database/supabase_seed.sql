@@ -382,7 +382,7 @@ INSERT INTO EventInventory (EventId, ProductId, StartingStock, SoldQuantity, Rem
 -- ---------- Event sales (in-person POS for active run) ----------
 INSERT INTO EventSales (EventId, OrderId, ProductId, Quantity, UnitPrice, TotalAmount, SaleType, PaymentMethod, SaleDate, Notes) VALUES
 (1, NULL, 1, 2, 30.00, 60.00, 'IN_PERSON', 'GCASH', '2026-09-04 11:20:00', 'Walk-in'),
-(1, NULL, 25, 1, 120.00, 120.00, 'QR',       'MAYA',  '2026-09-04 13:05:00', 'QR scan'),
+(1, NULL, 25, 1, 120.00, 120.00, 'QR',       'GOTYME', '2026-09-04 13:05:00', 'QR scan'),
 (1, NULL, 30, 1, 100.00, 100.00, 'IN_PERSON', 'CASH', '2026-09-04 14:40:00', 'Art Print sale'),
 (1, NULL, 56, 1, 150.00, 150.00, 'PREORDER', 'GCASH', '2026-09-04 16:10:00', 'Booth pre-order');
 
@@ -438,7 +438,7 @@ INSERT INTO BundleItems (BundleId, ProductId, Quantity) VALUES
 -- without touching code or re-seeding.
 INSERT INTO PaymentSettings (Channel, AccountName, AccountNumber, QrDisplayMode, IsEnabled) VALUES
 ('GCASH', 'STAR:DOM ATELIER / JAMES M.', '0917 839 2041', 'BOTH', TRUE),
-('MAYA',  'STAR:DOM ATELIER / JAMES M.', '0998 552 1928', 'BOTH', TRUE)
+('GOTYME', 'STAR:DOM ATELIER / JAMES M.', '0998 552 1928', 'BOTH', TRUE)
 ON CONFLICT (Channel) DO NOTHING;
 
 -- Sync auto-increment sequences after explicit ID inserts

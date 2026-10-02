@@ -47,11 +47,12 @@ Namespace STAR_DOM.Services
 
             ' Orders are online-only: delivered via J&T Express, or claimed in person at
             ' a pop-up stall that is open now (or about to open). Card is not offered —
-            ' the accepted e-payments are GCash and Maya.
+            ' the accepted e-payments are GCash and GOtyme.
             Dim isPickup As Boolean = String.Equals(fulfillment, "PICKUP", StringComparison.OrdinalIgnoreCase)
             Dim method As String = paymentMethod.Trim().ToUpperInvariant()
-            If method <> "GCASH" AndAlso method <> "MAYA" AndAlso method <> "COD" Then
-                Return ServiceResult.Fail("Please choose GCash, Maya, or Cash on Delivery.")
+            If method = PaymentSettingRepository.LegacyMaya Then method = PaymentSettingRepository.Gotyme
+            If method <> "GCASH" AndAlso method <> "GOTYME" AndAlso method <> "COD" Then
+                Return ServiceResult.Fail("Please choose GCash, GOtyme, or Cash on Delivery.")
             End If
 
             Dim pickupEvent As PopUpEvent = Nothing
@@ -204,7 +205,7 @@ Namespace STAR_DOM.Services
         ''' <summary>
         ''' Payment confirmation is password-gated for whoever records it — the buyer
         ''' confirming their own e-wallet payment, or a merchant/admin recording one.
-        ''' GCash/Maya (the only accepted e-payments) must carry the reference number
+        ''' GCash/GOtyme (the only accepted e-payments) must carry the reference number
         ''' from the e-wallet receipt; COD / pay-on-pick-up need only the password.
         ''' </summary>
         Public Function ConfirmPayment(orderNumber As String, reference As String, password As String) As ServiceResult
@@ -231,9 +232,9 @@ Namespace STAR_DOM.Services
 
             Dim method As String = order.PaymentMethod.Trim().ToUpperInvariant()
             Dim ref As String = If(reference, "").Trim()
-            If method = "GCASH" OrElse method = "MAYA" Then
+            If PaymentSetting.IsEWallet(method) Then
                 If ref = "" Then
-                    Return ServiceResult.Fail("Enter the " & If(method = "GCASH", "GCash", "Maya") &
+                    Return ServiceResult.Fail("Enter the " & PaymentSetting.DisplayName(method) &
                                               " reference number from your payment receipt.")
                 End If
             End If

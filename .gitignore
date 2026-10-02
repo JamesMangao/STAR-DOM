@@ -16,6 +16,25 @@ UpgradeLog*.htm
 *.log
 .kilocode/
 
+# Admin-uploaded files are runtime artefacts. The QR images themselves now live in
+# the database (PaymentSettings.QrImageData), so a pg_dump carries them; only
+# pre-migration uploads that were still on disk land here. The directory is
+# created on demand, so it never needs to exist in the repo.
+STAR-DOM-Web/Uploads/
+
+# Supabase connection details. This file holds the DATABASE PASSWORD and the
+# sb_secret_ key -- both are full-credentials and must never be committed, even
+# to a private repo. Copy tools/supabase-credentials.example.txt, fill it in
+# locally, and it is ignored from then on.
+tools/supabase-credentials.txt
+
+# Database dumps. A .dump holds every order plus the QR images, which are the
+# real bank account numbers -- it is the whole database in one file. Keep it
+# outside the repo.
+*.dump
+*.backup
+tools/backup/
+
 # Packages / output
 # The WebForms project root is STAR-DOM-Web/ (it holds the .vbproj, Site.master,
 # App/, css/, packages/ and bin/), so these negations must sit at that level --

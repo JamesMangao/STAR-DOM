@@ -463,6 +463,56 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl .rowact { white-space: nowrap; }
 .tbl .rowact a { margin-right: 10px; font-weight: 700; color: var(--primary); font-size: 12.5px; }
 
+/* ---------- orders & payments table (merchant console) ----------
+   The rows carry several small forms (quote shipping, book J&T, confirm a
+   payment), so the actions column needs its own width and each form needs to
+   wrap tidily. Without this the inputs stacked on top of each other and the
+   helper text under the fee form spilled outside the table. */
+.tbl-orders { min-width: 1060px; }
+.tbl-orders td, .tbl-orders th { padding: 10px 12px; }
+.tbl-orders .ord-no {
+  font-family: var(--font-mono); font-size: 12.5px; font-weight: 700;
+  letter-spacing: -.03em; white-space: nowrap;
+}
+.tbl-orders .ord-when { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+.tbl-orders .cust { white-space: nowrap; font-weight: 600; }
+.tbl-orders .num { font-variant-numeric: tabular-nums; text-align: right; }
+.tbl-orders .total { white-space: nowrap; }
+.tbl-orders .tbc { font-size: 10.5px; color: var(--primary); font-weight: 700; white-space: nowrap; }
+.tbl-orders .pay { white-space: nowrap; }
+.tbl-orders .col-actions { min-width: 296px; }
+
+.act-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+.act-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.act-form input {
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px;
+  font-size: 12px; font-family: var(--font-body); background: #fff;
+  min-width: 0; transition: border-color .15s ease, box-shadow .15s ease;
+}
+.act-form input::placeholder { color: var(--ink-faint); }
+.act-form input:hover { border-color: var(--line-hi); }
+.act-form input:focus { outline: none; border-color: var(--ink); box-shadow: var(--focus-ring); }
+.act-form .i-fee { width: 84px; }
+.act-form .i-ref { width: 100px; }
+.act-form .i-pw { width: 124px; }
+.act-form .i-track { width: 124px; }
+/* The submit button always takes its own full-width line, so a row reads the
+   same way every time: the inputs sit together, the button sits below them.
+   Without this the button lands wherever the leftover width happens to run out. */
+.act-form .btn.sm { flex: 1 1 100%; justify-content: center; }
+.act-hint { font-size: 11px; color: var(--ink-soft); line-height: 1.4; }
+.act-links { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.act-links a { font-weight: 700; color: var(--primary); font-size: 12.5px; }
+.act-links a.danger-link { color: var(--ink-soft); }
+.act-links a.danger-link:hover { color: var(--primary); }
+.act-waiting { font-size: 11px; color: var(--ink-soft); font-style: italic; }
+
+/* payments ledger: keep the reference and date on one line each */
+.tbl-ledger { min-width: 860px; }
+.tbl-ledger .ref { font-family: var(--font-mono); font-size: 12px; word-break: break-all; }
+.tbl-ledger .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl-ledger .when { font-size: 11.5px; color: var(--ink-soft); white-space: nowrap; }
+
 /* ---------- forms ---------- */
 .formcard { max-width: 460px; }
 .field { margin-bottom: 13px; display: flex; flex-direction: column; gap: 5px; }
@@ -1097,15 +1147,24 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* ---------- app confirm modal ---------- */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 1000;
-  display: grid; place-items: center; padding: 20px;
+  display: grid; place-items: center;
+  /* `safe center` keeps a tall card reachable: when it no longer fits, the
+     browser falls back to start alignment instead of overflowing off both
+     edges, so only the card scrolls — never the page behind it. */
+  align-content: safe center; justify-items: center;
+  padding: 20px;
   background: rgba(24, 18, 16, .45);
   opacity: 0; visibility: hidden;
   transition: opacity .22s ease, visibility .22s ease;
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  overflow-y: auto;
 }
 .modal-backdrop.open { opacity: 1; visibility: visible; }
 .modal-card {
   width: 100%; max-width: 420px;
+  /* A card taller than the viewport (the payment QR popup on a short laptop
+     screen) scrolls inside itself instead of hanging off the bottom. */
+  max-height: calc(100vh - 40px); overflow-y: auto;
   background: var(--card); color: var(--ink);
   border: 1px solid var(--line-hi); border-radius: 18px;
   box-shadow: var(--sh-2), var(--stamp);
@@ -1324,7 +1383,14 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 }
 
 .main, .auth-shell {
-  animation: pageEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* Fill mode is `backwards`, NOT `both`, on purpose: `both` keeps the final
+     keyframe applied forever, and the final keyframe sets a transform — which
+     makes .main the containing block for every position:fixed descendant. That
+     silently anchored the Scan-to-Pay QR popup, the exit-checkout dialog and the
+     confirm modal to the page box instead of the viewport, so they could be
+     pushed below the fold on shorter screens. `backwards` plays the same
+     animation and then releases, leaving transform:none. */
+  animation: pageEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 @keyframes pageEnter {

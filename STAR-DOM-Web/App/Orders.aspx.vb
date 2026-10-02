@@ -84,13 +84,7 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Function DisplayPay(pm As String) As String
-            Select Case pm.ToUpperInvariant()
-                Case "GCASH" : Return "GCash"
-                Case "MAYA" : Return "Maya"
-                Case "CARD" : Return "Card"
-                Case "COD" : Return "Cash on Delivery"
-                Case Else : Return pm
-            End Select
+            Return WebUi.ChannelBrand(pm)
         End Function
 
     End Class

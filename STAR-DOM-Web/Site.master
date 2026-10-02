@@ -9,12 +9,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500..700,0..1,-50..200&amp;display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/site.css?v=20261001" />
+    <link rel="stylesheet" href="/css/site.css?v=20261003" />
     <link rel="icon" type="image/webp" href="/Assets/stardom-logo.webp" />
     <link rel="apple-touch-icon" href="/Assets/stardom-logo.webp" />
 </head>
 <body>
-    <form id="shell" runat="server" autocomplete="off">
+    <!-- One form for the whole page: nested <form> start tags are dropped by the
+         HTML parser, so any file input posted from page markup would otherwise ride
+         a url-encoded body and Request.Files would come back empty (that is what
+         silently killed the payment-settings QR upload). multipart/form-data lets
+         both file and field values post through this single form. -->
+    <form id="shell" runat="server" autocomplete="off" enctype="multipart/form-data">
     <%-- CSRF token for every POST on the site. Lives in the shell form so all
          page-rendered forms post it back; verified in Global.asax.vb. --%>
     <%= STAR_DOM.Web.Csrf.HiddenField() %>
@@ -79,7 +84,7 @@
                 <p>Trusted nationwide shipping with cashless checkout.</p>
                 <div class="pay-chips">
                     <span class="pay-chip">GCash</span>
-                    <span class="pay-chip">Maya</span>
+                    <span class="pay-chip">GOtyme</span>
                     <span class="pay-chip">J&amp;T Express</span>
                 </div>
                 <ul style="margin-top:14px">
@@ -159,7 +164,7 @@
                 <span class="ag-pmeta"><b id="authGateName"></b><span id="authGatePrice"></span></span>
             </div>
             <ul class="ag-benefits">
-                <li><span class="ms sm">check_circle</span> Check out in seconds with GCash, Maya, or COD</li>
+                <li><span class="ms sm">check_circle</span> Check out in seconds with GCash, GOtyme, or COD</li>
                 <li><span class="ms sm">check_circle</span> Follow nationwide delivery with live J&amp;T status</li>
                 <li><span class="ms sm">check_circle</span> Keep your wishlist and commissions in one place</li>
             </ul>

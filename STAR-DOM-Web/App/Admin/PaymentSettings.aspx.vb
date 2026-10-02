@@ -9,7 +9,7 @@ Imports STAR_DOM.Repositories
 Namespace STAR_DOM.Web
 
     ''' <summary>
-    ''' Admin console page for managing the GCash / Maya payment channels:
+    ''' Admin console page for managing the GCash / GOtyme payment channels:
     ''' QR code image, account number, account name, what the customer-facing
     ''' popup displays (QR only / number+name / both / name only), and whether
     ''' the channel is offered at checkout. Everything the order-detail QR
@@ -43,45 +43,53 @@ Namespace STAR_DOM.Web
                 Return
             End If
 
-            Dim channel As String = Convert.ToString(Request.Form("channel")).ToUpperInvariant()
-            If channel <> PaymentSettingRepository.Gcash AndAlso channel <> PaymentSettingRepository.Maya Then
+            Dim channel As String = PostedChannel()
+            If channel = "" Then
                 Out.Text = WebUi.AlertBox("Unknown payment channel.")
                 Render()
                 Return
             End If
-            Dim brand As String = If(channel = PaymentSettingRepository.Gcash, "GCash", "Maya")
+            Dim brand As String = WebUi.ChannelBrand(channel)
 
             ' Resolve the saved state so an untouched file input keeps the existing QR image.
             Dim current As PaymentSetting = _settings.GetByChannel(channel)
 
             Dim s As New PaymentSetting With {
                 .Channel = channel,
-                .AccountName = TrimTo(Convert.ToString(Request.Form("accountName")), 120),
-                .AccountNumber = TrimTo(Convert.ToString(Request.Form("accountNumber")), 60),
+                .AccountName = TrimTo(Posted(channel, "accountName"), 120),
+                .AccountNumber = TrimTo(Posted(channel, "accountNumber"), 60),
                 .QrImageFile = If(current IsNot Nothing, current.QrImageFile, ""),
-                .QrCaption = TrimTo(Convert.ToString(Request.Form("qrCaption")), 120),
-                .QrDisplayMode = PaymentSetting.NormalizeMode(Convert.ToString(Request.Form("qrDisplayMode"))),
-                .IsEnabled = (Convert.ToString(Request.Form("isEnabled")) = "1"),
+                .QrCaption = TrimTo(Posted(channel, "qrCaption"), 120),
+                .QrDisplayMode = PaymentSetting.NormalizeMode(Posted(channel, "qrDisplayMode")),
+                .IsEnabled = (Posted(channel, "isEnabled") = "1"),
                 .UpdatedBy = If(STAR_DOM.Helpers.Session.CurrentUser IsNot Nothing,
                                 STAR_DOM.Helpers.Session.CurrentUser.Username, "")
             }
 
             ' QR image upload (optional). JPEG/PNG/WebP only, up to 5 MB — these are
             ' screenshots of wallet QR codes, so anything larger is suspicious anyway.
+            ' The bytes only arrive here because the master page's single shell form
+            ' posts as multipart/form-data; a nested form tag cannot carry the
+            ' enctype, because browsers drop it.
             Dim uploadError As String = ""
-            Dim posted As HttpPostedFile = Request.Files("qrImage")
-            If posted IsNot Nothing AndAlso posted.ContentLength > 0 Then
+            Dim newQr As Byte() = Nothing
+            Dim newQrMime As String = ""
+            Dim upload As HttpPostedFile = Request.Files(Field(channel, "qrImage"))
+            If upload IsNot Nothing AndAlso upload.ContentLength > 0 Then
                 Dim err As String = Nothing
-                Dim stored As String = SaveQrImage(posted, err)
-                If stored <> "" Then
-                    s.QrImageFile = stored
+                ' The image goes into the database, not onto disk, so a pg_dump
+                ' carries it and the QR survives a move to another machine.
+                newQr = ReadQrImage(upload, err)
+                If newQr IsNot Nothing AndAlso newQr.Length > 0 Then
+                    newQrMime = MimeFor(IO.Path.GetExtension(upload.FileName))
                 Else
                     ' Surface the failure instead of silently keeping the old image —
                     ' the admin would otherwise believe the QR was replaced.
                     uploadError = If(err, "Could not save the QR image.")
                 End If
             End If
-            If Request.Form("removeQr") = "1" Then s.QrImageFile = ""
+            Dim removeQr As Boolean = (Posted(channel, "removeQr") = "1")
+            If removeQr Then s.QrImageFile = ""
 
             If uploadError <> "" Then
                 Session("flash_msg") = uploadError
@@ -92,7 +100,8 @@ Namespace STAR_DOM.Web
 
             ' Warn (not block) when the display mode needs something that is missing.
             Dim warnings As New List(Of String)()
-            If (s.QrDisplayMode = "BOTH" OrElse s.QrDisplayMode = "QR_ONLY") AndAlso s.QrImageFile = "" Then
+            If (s.QrDisplayMode = "BOTH" OrElse s.QrDisplayMode = "QR_ONLY") AndAlso
+               Not s.HasQrImage AndAlso (newQr Is Nothing) Then
                 warnings.Add("no QR code image uploaded yet — customers will only see the " &
                              "account details until you upload one")
             End If
@@ -107,6 +116,14 @@ Namespace STAR_DOM.Web
                 Return
             End If
 
+            ' Applied after Save so the row exists — UpdateQrImage is an UPDATE and
+            ' would silently match nothing on a brand-new channel.
+            If newQr IsNot Nothing AndAlso newQr.Length > 0 Then
+                _settings.UpdateQrImage(s.Channel, newQr, newQrMime, s.UpdatedBy)
+            ElseIf removeQr Then
+                _settings.UpdateQrImage(s.Channel, Nothing, "", s.UpdatedBy)
+            End If
+
             Dim flash As String = brand & " payment settings saved."
             If warnings.Count > 0 Then
                 flash &= " Note: " & String.Join("; ", warnings) & "."
@@ -115,6 +132,48 @@ Namespace STAR_DOM.Web
             Session("flash_ok") = True
             Response.Redirect("/App/Admin/PaymentSettings.aspx", True)
         End Sub
+
+        ''' <summary>
+        ''' Every input on this page lives in the master page's single form, one card per
+        ''' channel. Input names are therefore namespaced by channel: with plain names
+        ''' both cards post "accountName", Request.Form hands back a String[], and the
+        ''' saved value silently becomes "gcashName,gotymeName". Worse, one card's
+        ''' "isEnabled" or "removeQr" would act on the other wallet's row.
+        ''' </summary>
+        Private Shared Function Field(channel As String, name As String) As String
+            Return channel & "_" & name
+        End Function
+
+        ''' <summary>
+        ''' One namespaced value from the POST, trimmed; "" when the card sent none.
+        ''' Read through GetValues rather than Convert.ToString(Request.Form(...)):
+        ''' an unchecked box is simply absent from the POST, and an unchecked box on
+        ''' the card being saved must read as "" rather than blowing up mid-save.
+        ''' </summary>
+        Private Function Posted(channel As String, name As String) As String
+            Dim values As String() = Request.Form.GetValues(Field(channel, name))
+            If values Is Nothing OrElse values.Length = 0 Then Return ""
+            Return If(values(0), "").Trim()
+        End Function
+
+        ''' <summary>
+        ''' The channel comes from the "Save &lt;brand&gt; Settings" button that was
+        ''' clicked: each card posts its own name/value pair, because one page renders
+        ''' every channel inside the master's single form. Scanned instead of read
+        ''' straight off Request.Form so pressing Enter in a text box — which submits
+        ''' the first submit button on the page — cannot hand back a mangled value.
+        ''' </summary>
+        Private Function PostedChannel() As String
+            Dim values As String() = Request.Form.GetValues("channel")
+            If values Is Nothing Then Return ""
+            For Each raw As String In values
+                Dim c As String = If(raw, "").Trim().ToUpperInvariant()
+                If c = PaymentSettingRepository.Gcash OrElse c = PaymentSettingRepository.Gotyme Then
+                    Return c
+                End If
+            Next
+            Return ""
+        End Function
 
         Private Function TrimTo(value As String, max As Integer) As String
             Dim v As String = If(value, "").Trim()
@@ -127,28 +186,36 @@ Namespace STAR_DOM.Web
         ''' root-relative path. Returns "" when the file is rejected, with a
         ''' customer-readable reason in <paramref name="err"/>.
         ''' </summary>
-        Private Function SaveQrImage(f As HttpPostedFile, ByRef err As String) As String
+        Private Function ReadQrImage(f As HttpPostedFile, ByRef err As String) As Byte()
             err = ""
             Dim allowed As String() = {".png", ".jpg", ".jpeg", ".webp"}
             Dim ext As String = IO.Path.GetExtension(f.FileName).ToLowerInvariant()
             If Array.IndexOf(allowed, ext) < 0 Then
                 err = "QR image must be a PNG, JPG, or WebP file."
-                Return ""
+                Return Nothing
             End If
             If f.ContentLength > 5 * 1024 * 1024 Then
                 err = "QR image is too large — keep it under 5 MB."
-                Return ""
+                Return Nothing
             End If
             Try
-                Dim dirPath As String = Server.MapPath("~/Uploads/payments")
-                IO.Directory.CreateDirectory(dirPath)
-                Dim stored As String = Guid.NewGuid().ToString("N") & ext
-                f.SaveAs(IO.Path.Combine(dirPath, stored))
-                Return "Uploads/payments/" & stored
+                Dim buf As New IO.MemoryStream()
+                f.InputStream.CopyTo(buf)
+                Return buf.ToArray()
             Catch ex As Exception
-                err = "Could not save the QR image: " & ex.Message
-                Return ""
+                err = "Could not read the QR image: " & ex.Message
+                Return Nothing
             End Try
+        End Function
+
+        Private Function MimeFor(ext As String) As String
+            Select Case If(ext, "").ToLowerInvariant()
+                Case ".png" : Return "image/png"
+                Case ".jpg", ".jpeg" : Return "image/jpeg"
+                Case ".gif" : Return "image/gif"
+                Case ".webp" : Return "image/webp"
+                Case Else : Return "application/octet-stream"
+            End Select
         End Function
 
         ' ---------------- GET: the editor ----------------
@@ -159,7 +226,7 @@ Namespace STAR_DOM.Web
             Dim sb As New StringBuilder()
             sb.Append(WebUi.Section("Payment Settings",
                                     "SYSTEM ADMIN · E-WALLET QR MANAGEMENT",
-                                    "Control what customers see when they pay with GCash or Maya: the QR code, " &
+                                    "Control what customers see when they pay with GCash or GOtyme: the QR code, " &
                                     "the account number, the account name, and how much of it is displayed."))
             sb.Append(Flash())
 
@@ -188,6 +255,8 @@ Namespace STAR_DOM.Web
             Dim isGcash As Boolean = String.Equals(s.Channel, PaymentSettingRepository.Gcash, StringComparison.OrdinalIgnoreCase)
             Dim brandColor As String = If(isGcash, "#007dfe", "#00a651")
             Dim brand As String = s.DisplayChannel
+            ' Prefers the image stored in the database; falls back to an old file path.
+            Dim qrFile As String = WebUi.QrImageUrl(s, s.Channel)
 
             Dim sb As New StringBuilder()
             sb.Append("<div class=""card"">")
@@ -199,48 +268,60 @@ Namespace STAR_DOM.Web
             sb.Append("<span style=""margin-left:auto"">" & If(s.IsEnabled, WebUi.Badge("ACTIVE"), WebUi.Badge("HIDDEN")) & "</span>")
             sb.Append("</div>")
 
-            sb.Append("<form method=""post"" action=""/App/Admin/PaymentSettings.aspx"" enctype=""multipart/form-data"">")
+            ' No <form> of its own: everything on this page posts through the master
+            ' page's shell form, which is what carries enctype=multipart/form-data.
             sb.Append(Csrf.HiddenField())
-            sb.Append("<input type=""hidden"" name=""channel"" value=""" & WebUi.Attr(s.Channel) & """>")
 
             ' toggle
             sb.Append("<label class=""card"" style=""display:flex;gap:10px;align-items:center;margin-bottom:12px;cursor:pointer;background:var(--surface-low)"">")
-            sb.Append("<input type=""checkbox"" name=""isEnabled"" value=""1""" & If(s.IsEnabled, " checked", "") & " style=""width:18px;height:18px"">")
+            sb.Append("<input type=""checkbox"" name=""" & Field(s.Channel, "isEnabled") & """ value=""1""" & If(s.IsEnabled, " checked", "") & " style=""width:18px;height:18px"">")
             sb.Append("<span><b>Show " & WebUi.Esc(brand) & " at checkout</b><br><span class=""sub"" style=""font-size:11.5px"">" &
                       "When off, customers cannot choose " & WebUi.Esc(brand) & " as a payment method.</span></span>")
             sb.Append("</label>")
 
             ' account name
             sb.Append("<div class=""field""><label for=""an-" & WebUi.Attr(s.Channel) & """>Account name</label>")
-            sb.Append("<input id=""an-" & WebUi.Attr(s.Channel) & """ name=""accountName"" maxlength=""120"" placeholder=""e.g. STAR:DOM ATELIER / JAMES M."" value=""" & WebUi.Attr(s.AccountName) & """></div>")
+            sb.Append("<input id=""an-" & WebUi.Attr(s.Channel) & """ name=""" & Field(s.Channel, "accountName") & """ maxlength=""120"" placeholder=""e.g. STAR:DOM ATELIER / JAMES M."" value=""" & WebUi.Attr(s.AccountName) & """></div>")
 
             ' account number
             sb.Append("<div class=""field""><label for=""num-" & WebUi.Attr(s.Channel) & """>" & WebUi.Esc(brand) & " number (QR number)</label>")
-            sb.Append("<input id=""num-" & WebUi.Attr(s.Channel) & """ name=""accountNumber"" maxlength=""60"" inputmode=""tel"" placeholder=""09xx xxx xxxx"" value=""" & WebUi.Attr(s.AccountNumber) & """></div>")
+            sb.Append("<input id=""num-" & WebUi.Attr(s.Channel) & """ name=""" & Field(s.Channel, "accountNumber") & """ maxlength=""60"" inputmode=""tel"" placeholder=""09xx xxx xxxx"" value=""" & WebUi.Attr(s.AccountNumber) & """></div>")
 
             ' QR image upload + current state
-            sb.Append("<div class=""field""><label>QR code image</label>")
-            If s.QrImageFile <> "" Then
+            sb.Append("<div class=""field""><label for=""qr-" & WebUi.Attr(s.Channel) & """>QR code image</label>")
+            If s.HasQrImage Then
                 sb.Append("<div style=""display:flex;gap:12px;align-items:center;margin-bottom:8px"">")
-                sb.Append("<img src=""" & WebUi.Attr("/" & s.QrImageFile.TrimStart("/"c)) & """ alt=""" & WebUi.Attr(brand & " QR code") & """ " &
-                          "style=""width:84px;height:84px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#fff;padding:4px"">")
+                ' An image stored as a file by an older install can still be absent
+                ' here (Uploads is not in Git), so it is flagged rather than rendered
+                ' as a broken image. An image in the database cannot go missing.
+                If qrFile = "" Then
+                    sb.Append("<span class=""ph-ic"" style=""width:84px;height:84px;background:#ffe0de;color:var(--primary);border-radius:10px"">" &
+                              WebUi.Ic("broken_image", "sm") & "</span>")
+                    sb.Append("<span class=""sub"" style=""font-size:11.5px"">This QR is stored as a file from an older " &
+                              "install and the file is not on this machine. Re-upload it to move it into the database.<br>" &
+                              "<label class=""sub"" style=""font-size:11.5px;cursor:pointer;display:flex;gap:6px;align-items:center"">" &
+                              "<input type=""checkbox"" name=""" & Field(s.Channel, "removeQr") & """ value=""1"" style=""width:16px;height:16px""> Clear the stale path</label></span>")
+                Else
+                    sb.Append("<img src=""" & WebUi.Attr(qrFile) & """ alt=""" & WebUi.Attr(brand & " QR code") & """ " &
+                              "style=""width:84px;height:84px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#fff;padding:4px"">")
+                End If
                 sb.Append("<label class=""sub"" style=""font-size:11.5px;cursor:pointer;display:flex;gap:6px;align-items:center"">" &
-                          "<input type=""checkbox"" name=""removeQr"" value=""1"" style=""width:16px;height:16px""> Remove current QR image</label>")
+                          "<input type=""checkbox"" name=""" & Field(s.Channel, "removeQr") & """ value=""1"" style=""width:16px;height:16px""> Remove current QR image</label>")
                 sb.Append("</div>")
             Else
                 sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-bottom:8px"">No QR image uploaded yet — the popup will fall back to the stylized placeholder.</div>")
             End If
-            sb.Append("<input type=""file"" name=""qrImage"" accept=""image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"">")
+            sb.Append("<input id=""qr-" & WebUi.Attr(s.Channel) & """ type=""file"" name=""" & Field(s.Channel, "qrImage") & """ accept=""image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"">")
             sb.Append("<div class=""sub"" style=""font-size:11px;margin-top:4px"">PNG / JPG / WebP up to 5 MB. Leave empty to keep the current image.</div>")
             sb.Append("</div>")
 
             ' caption
             sb.Append("<div class=""field""><label for=""cap-" & WebUi.Attr(s.Channel) & """>Caption under the QR (optional)</label>")
-            sb.Append("<input id=""cap-" & WebUi.Attr(s.Channel) & """ name=""qrCaption"" maxlength=""120"" placeholder=""e.g. Scan using the GCash app"" value=""" & WebUi.Attr(s.QrCaption) & """></div>")
+            sb.Append("<input id=""cap-" & WebUi.Attr(s.Channel) & """ name=""" & Field(s.Channel, "qrCaption") & """ maxlength=""120"" placeholder=""e.g. Scan using the GCash app"" value=""" & WebUi.Attr(s.QrCaption) & """></div>")
 
             ' display mode
             sb.Append("<div class=""field""><label for=""dm-" & WebUi.Attr(s.Channel) & """>What customers see</label>")
-            sb.Append("<select id=""dm-" & WebUi.Attr(s.Channel) & """ name=""qrDisplayMode"">")
+            sb.Append("<select id=""dm-" & WebUi.Attr(s.Channel) & """ name=""" & Field(s.Channel, "qrDisplayMode") & """>")
             For Each opt As String() In {New String() {"BOTH", "Everything — QR code + number + name"},
                                          New String() {"QR_ONLY", "QR code only"},
                                          New String() {"NUMBER_NAME", "Number + name only (no QR image)"},
@@ -254,8 +335,8 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""sub"" style=""font-size:11px;margin-bottom:8px"">Last updated " & s.UpdatedAt.ToString("MMM d, yyyy h:mm tt") &
                           If(s.UpdatedBy <> "", " by " & WebUi.Esc(s.UpdatedBy), "") & "</div>")
             End If
-            sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">save</span><span>Save " & WebUi.Esc(brand) & " Settings</span></button>")
-            sb.Append("</form>")
+            sb.Append("<button class=""btn primary"" type=""submit"" name=""channel"" value=""" & WebUi.Attr(s.Channel) & """>" &
+                      "<span class=""ic ms"">save</span><span>Save " & WebUi.Esc(brand) & " Settings</span></button>")
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -272,14 +353,15 @@ Namespace STAR_DOM.Web
             Dim showQr As Boolean = (s.QrDisplayMode = "BOTH" OrElse s.QrDisplayMode = "QR_ONLY")
             Dim showNumber As Boolean = (s.QrDisplayMode = "BOTH" OrElse s.QrDisplayMode = "NUMBER_NAME")
             Dim showName As Boolean = (s.QrDisplayMode = "BOTH" OrElse s.QrDisplayMode = "NUMBER_NAME" OrElse s.QrDisplayMode = "NAME_ONLY")
+            Dim qrFile As String = WebUi.QrImageUrl(s, s.Channel)
 
             Dim sb As New StringBuilder()
             sb.Append("<div style=""display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;padding:12px 0" & If(Not compact, "", ";border-top:1px solid var(--line)") & """>")
             sb.Append("<div style=""min-width:150px;text-align:center"">")
 
             If showQr Then
-                If s.QrImageFile <> "" Then
-                    sb.Append("<img src=""" & WebUi.Attr("/" & s.QrImageFile.TrimStart("/"c)) & """ alt=""" & WebUi.Attr(brand & " QR code") & """ " &
+                If qrFile <> "" Then
+                    sb.Append("<img src=""" & WebUi.Attr(qrFile) & """ alt=""" & WebUi.Attr(brand & " QR code") & """ " &
                               "style=""width:150px;height:150px;object-fit:contain;border:2px solid var(--line);border-radius:14px;background:#fff;padding:8px"">")
                 Else
                     ' Same stylized fallback the order page uses while no image is uploaded.

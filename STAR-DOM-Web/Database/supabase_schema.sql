@@ -246,7 +246,7 @@ CREATE TABLE IF NOT EXISTS Orders (
     DiscountAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
     ShippingFee DECIMAL(12,2) NOT NULL DEFAULT 0,
     TotalAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
-    PaymentMethod VARCHAR(20) NOT NULL DEFAULT 'COD', -- GCASH/MAYA/CARD/COD
+    PaymentMethod VARCHAR(20) NOT NULL DEFAULT 'COD', -- GCASH/GOTYME/CARD/COD
     PaymentStatus VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/PAID/REFUNDED/FAILED
     ShippingAddress VARCHAR(255) NOT NULL DEFAULT '',
     ContactPhone VARCHAR(30) NOT NULL DEFAULT '',
@@ -452,13 +452,13 @@ CREATE TABLE IF NOT EXISTS AppErrors (
 -- ------------------------------------------------------------
 -- Payment settings (admin-managed e-wallet QR details)
 -- ------------------------------------------------------------
--- One row per accepted e-wallet channel (GCASH, MAYA). The admin edits
+-- One row per accepted e-wallet channel (GCASH, GOTYME). The admin edits
 -- everything — QR code image, account number, and account name — from
 -- App/Admin/PaymentSettings.aspx, and the order-detail QR popup renders
 -- whatever is configured here.
 CREATE TABLE IF NOT EXISTS PaymentSettings (
     Id SERIAL PRIMARY KEY,
-    Channel VARCHAR(20) NOT NULL UNIQUE,            -- 'GCASH' | 'MAYA'
+    Channel VARCHAR(20) NOT NULL UNIQUE,            -- 'GCASH' | 'GOTYME'
     AccountName VARCHAR(120) NOT NULL DEFAULT '',
     AccountNumber VARCHAR(60) NOT NULL DEFAULT '',
     QrImageFile VARCHAR(255) NOT NULL DEFAULT '',   -- uploaded QR image, root-relative path
@@ -483,6 +483,23 @@ ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS QrCaption VARCHAR(120) NOT 
 ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS QrDisplayMode VARCHAR(20) NOT NULL DEFAULT 'BOTH';
 ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS IsEnabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS UpdatedBy VARCHAR(120) NOT NULL DEFAULT '';
+
+-- The QR image itself lives in the database as BYTEA, not as a file under
+-- Uploads\. Files are not in Git, so a file-backed QR is missing on any other
+-- machine and needs re-uploading; a pg_dump carries the bytes with everything
+-- else and the image restores itself. QrImageFile is kept only so a pre-migration
+-- row that still points at an uploaded file keeps working.
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS QrImageData BYTEA;
+ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS QrImageMime VARCHAR(50) NOT NULL DEFAULT '';
+
+-- Pre-rename installs stored the second e-wallet as 'MAYA'; it is Gotyme now.
+-- Renamed in place so the configured account number and uploaded QR image carry
+-- over. Channel is UNIQUE, so this only lands while no 'GOTYME' row exists yet.
+-- Historical Orders/Payments rows keep their stored method and are labelled
+-- Gotyme at display time. PaymentSettingRepository runs the same statement on
+-- demand, so either path ends with one row per channel.
+UPDATE PaymentSettings SET Channel = 'GOTYME' WHERE Channel = 'MAYA'
+    AND NOT EXISTS (SELECT 1 FROM PaymentSettings WHERE Channel = 'GOTYME');
 
 -- PaymentSettings trigger lives with the other UpdatedAt triggers further below,
 -- after trg_star_dom_touch_updated_at() is defined.

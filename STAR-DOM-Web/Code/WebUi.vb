@@ -1,6 +1,7 @@
 Imports System.Text
 Imports System.Web
 Imports STAR_DOM.Helpers
+Imports STAR_DOM.Models
 
 Namespace STAR_DOM.Web
 
@@ -15,6 +16,255 @@ Namespace STAR_DOM.Web
         Public Function Attr(value As Object) As String
             If value Is Nothing OrElse value Is DBNull.Value Then Return ""
             Return HttpUtility.HtmlAttributeEncode(Convert.ToString(value))
+        End Function
+
+        ''' <summary>
+        ''' An admin-uploaded file path, but only when the file really exists.
+        ''' Returns "" otherwise, so the caller falls back to its placeholder.
+        ''' The stored path lives in the database while the bytes live under
+        ''' Uploads\payments: restoring or re-seeding the database (a fresh clone, a
+        ''' pg_dump onto another machine) can bring the path without the file, and a
+        ''' missing QR must not render as a broken image icon.
+        ''' </summary>
+        Public Function UploadedFile(rootRelative As String) As String
+            Dim rel As String = Convert.ToString(rootRelative).Trim()
+            If rel = "" Then Return ""
+            rel = rel.TrimStart("/"c).Replace("\", "/")
+            If rel.Contains("..") Then Return ""
+            Dim ctx As HttpContext = HttpContext.Current
+            If ctx Is Nothing Then Return ""
+            Try
+                If IO.File.Exists(ctx.Server.MapPath("~/" & rel)) Then Return "/" & rel
+            Catch
+                ' Unmapped virtual path or no request context — treat as missing.
+            End Try
+            Return ""
+        End Function
+
+        ' ---- payment channel branding -------------------------------------------------
+        ' The wallet logos live in Assets\Payment, as real WebP files so IIS sends a
+        ' Content-Type that matches the bytes and browsers load them smaller.
+        Public Const GcashLogo As String = "/Assets/Payment/GCash.webp"
+        Public Const GotymeLogo As String = "/Assets/Payment/GOtyme.webp"
+
+        ''' <summary>
+        ''' The brand as customers must read it, from any stored channel key. 'MAYA' is
+        ''' the pre-rename key for the second wallet and still resolves here. Every page
+        ''' that names a wallet goes through this, so the capitalisation is decided once.
+        ''' </summary>
+        Public Function ChannelBrand(channel As String) As String
+            Select Case Convert.ToString(channel).ToUpperInvariant()
+                Case "GCASH" : Return "GCash"
+                Case "GOTYME", "MAYA" : Return "GOtyme"
+                Case "CARD" : Return "Card"
+                Case "COD" : Return "Cash on Delivery"
+                Case Else : Return Convert.ToString(channel)
+            End Select
+        End Function
+
+        ''' <summary>Brand colour used for the QR tile, the account number and the logo ring.</summary>
+        Public Function ChannelColor(channel As String) As String
+            Select Case Convert.ToString(channel).ToUpperInvariant()
+                Case "GCASH" : Return "#007dfe"
+                Case "GOTYME", "MAYA" : Return "#00a651"
+                Case Else : Return "#7c3aed"
+            End Select
+        End Function
+
+        ''' <summary>
+        ''' Where to point the popup's img tag for this channel. Prefers the bytes
+        ''' held in the database — those travel with a pg_dump and restore intact —
+        ''' and otherwise falls back to an image still sitting under Uploads\. Empty
+        ''' when neither is available, which is the caller's cue to draw the
+        ''' placeholder.
+        ''' </summary>
+        Public Function QrImageUrl(ps As PaymentSetting, method As String) As String
+            If ps Is Nothing Then Return ""
+            If ps.QrImageData IsNot Nothing AndAlso ps.QrImageData.Length > 0 Then
+                Return "/App/PaymentQr.aspx?ch=" & HttpUtility.UrlEncode(ChannelKey(method))
+            End If
+            ' Pre-migration row: the image is a file and UploadedFile answers "" when
+            ' that file is not on this machine.
+            Return UploadedFile(ps.QrImageFile)
+        End Function
+
+        ''' <summary>The storage key for a channel, keeping the legacy MAYA value mapped.</summary>
+        Public Function ChannelKey(channel As String) As String
+            Select Case Convert.ToString(channel).ToUpperInvariant()
+                Case "GCASH" : Return "GCASH"
+                Case "GOTYME", "MAYA" : Return "GOTYME"
+                Case Else : Return Convert.ToString(channel).ToUpperInvariant()
+            End Select
+        End Function
+
+        Public Function ChannelLogo(channel As String) As String
+            Select Case Convert.ToString(channel).ToUpperInvariant()
+                Case "GCASH" : Return GcashLogo
+                Case "GOTYME", "MAYA" : Return GotymeLogo
+                Case Else : Return ""
+            End Select
+        End Function
+
+        ''' <summary>
+        ''' The wallet's logo as an img tag, or "" when the channel has no logo (COD).
+        ''' Used in Checkout's payment picker and in the Scan to Pay popup header.
+        ''' </summary>
+        Public Function PayLogo(channel As String, size As Integer) As String
+            Dim src As String = ChannelLogo(channel)
+            If src = "" Then Return ""
+            Return "<img class=""pay-logo"" src=""" & Attr(src) & """ alt=""" & Attr(ChannelBrand(channel)) &
+                   """ width=""" & size.ToString() & """ height=""" & size.ToString() & """ style=""width:" & size.ToString() & "px;height:" & size.ToString() & "px;object-fit:contain;flex:0 0 auto"">"
+        End Function
+
+        ''' <summary>
+        ''' The "Scan to Pay" popup for an e-wallet order, shared by Checkout (before
+        ''' the order exists) and Order Detail (after it does) so both look identical.
+        ''' Every value shown comes from the admin-managed PaymentSettings row.
+        '''
+        ''' submitProceed decides what the primary button does. On Checkout it is a real
+        ''' submit button inside the checkout form: that POST is what finally creates
+        ''' the order. On Order Detail the order already exists, so the same button just
+        ''' closes the popup and focuses the reference field.
+        ''' </summary>
+        Public Function QrPaymentModal(ps As PaymentSetting, method As String, amount As Decimal,
+                                       openNow As Boolean, submitProceed As Boolean) As String
+            Dim brand As String = ChannelBrand(method)
+            Dim color As String = ChannelColor(method)
+            Dim showQrImg As Boolean = (ps.QrDisplayMode = "BOTH" OrElse ps.QrDisplayMode = "QR_ONLY")
+            Dim showNumber As Boolean = (ps.QrDisplayMode = "BOTH" OrElse ps.QrDisplayMode = "NUMBER_NAME")
+            Dim showName As Boolean = (ps.QrDisplayMode = "BOTH" OrElse ps.QrDisplayMode = "NUMBER_NAME" OrElse ps.QrDisplayMode = "NAME_ONLY")
+            ' Resolved to the streaming endpoint, which prefers the copy stored in
+            ' the database and falls back to the old file when there is one. Empty
+            ' when neither exists, so the placeholder is drawn instead of a broken
+            ' image.
+            Dim qrFile As String = QrImageUrl(ps, method)
+            Dim sb As New StringBuilder()
+
+            sb.Append("<div class=""modal-backdrop" & If(openNow, " open", "") & """ id=""qrPaymentModal"" aria-hidden=""" & If(openNow, "false", "true") & """>")
+            sb.Append("<div class=""modal-card"" role=""dialog"" aria-modal=""true"" style=""max-width:440px;text-align:center;padding:24px 26px"">")
+            sb.Append("<div style=""display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"">")
+            sb.Append("<div style=""display:flex;align-items:center;gap:10px"">")
+            sb.Append(PayLogo(method, 32))
+            If ChannelLogo(method) = "" Then
+                sb.Append("<span class=""ph-ic"" style=""width:32px;height:32px;font-size:16px;background:" & color & ";color:#fff;border-radius:8px"">" & Ic("account_balance_wallet", "sm") & "</span>")
+            End If
+            sb.Append("<b style=""font-size:15px;color:var(--ink)"">Scan to Pay with " & Esc(brand) & "</b></div>")
+            sb.Append("<button type=""button"" id=""qrModalCloseX"" style=""background:none;border:none;cursor:pointer;color:var(--ink-soft);padding:4px""><span class=""ms"">close</span></button>")
+            sb.Append("</div>")
+
+            ' QR graphic — the admin-uploaded image when the display mode includes it.
+            If showQrImg Then
+                sb.Append("<div style=""background:#fff;border:2px solid var(--line);border-radius:16px;padding:16px;margin:12px auto;display:inline-block;box-shadow:var(--sh-1)"">")
+                If qrFile <> "" Then
+                    sb.Append("<img src=""" & Attr(qrFile) & """ alt=""" & Attr(brand & " QR code") & """ width=""180"" height=""180"" style=""display:block;margin:0 auto;object-fit:contain;background:#fff"">")
+                Else
+                    sb.Append(QrPlaceholder(color, method))
+                End If
+                If ps.QrCaption <> "" Then
+                    sb.Append("<div class=""sub"" style=""font-size:10.5px;text-align:center;margin-top:6px"">" & Esc(ps.QrCaption) & "</div>")
+                End If
+                sb.Append("</div>")
+            End If
+
+            ' Account details — a row appears only when the display mode allows it.
+            sb.Append("<div class=""card"" style=""background:var(--surface-low);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0 16px;text-align:left"">")
+            If showName AndAlso ps.AccountName <> "" Then
+                sb.Append("<div class=""row space-between"" style=""margin-bottom:4px""><span class=""sub"" style=""font-size:11px"">Account Name</span><b style=""font-size:12px"">" & Esc(ps.AccountName) & "</b></div>")
+            End If
+            If showNumber AndAlso ps.AccountNumber <> "" Then
+                sb.Append("<div class=""row space-between"" style=""margin-bottom:4px""><span class=""sub"" style=""font-size:11px"">" & Esc(brand) & " Number</span><b style=""font-size:13px;color:" & color & ";font-family:var(--font-mono)"">" & Esc(ps.AccountNumber) & "</b></div>")
+            End If
+            sb.Append("<div class=""row space-between""><span class=""sub"" style=""font-size:11px"">Amount Due</span><b style=""font-size:14px;color:var(--primary)"">" & Money(amount) & "</b></div>")
+            sb.Append("</div>")
+
+            sb.Append("<p class=""sub"" style=""margin:0 0 16px;font-size:11.5px;line-height:1.4"">1. Open your " & Esc(brand) & " app &amp; ")
+            If showQrImg AndAlso showNumber Then
+                sb.Append("scan the QR code above or send to the number.")
+            ElseIf showQrImg Then
+                sb.Append("scan the QR code above.")
+            ElseIf showNumber Then
+                sb.Append("send to the " & Esc(brand) & " number.")
+            Else
+                sb.Append("send to the account name shown.")
+            End If
+            sb.Append("<br>2. Save your receipt reference number.")
+            If submitProceed Then
+                sb.Append("<br>3. Tap the button below to finish your order.</p>")
+            Else
+                sb.Append("<br>3. Enter the reference number below to verify payment.</p>")
+            End If
+
+            ' Back first, primary second. On Checkout Back simply closes the popup —
+            ' the order was never created, and every field they typed is still on the
+            ' form underneath, so changing the payment method costs them nothing.
+            sb.Append("<div style=""display:flex;gap:10px;align-items:center"">")
+            sb.Append("<button type=""button"" class=""btn ghost"" id=""qrModalBackBtn"" style=""flex:0 0 auto""><span class=""ms sm"">arrow_back</span><span>Back</span></button>")
+            If submitProceed Then
+                sb.Append("<button type=""submit"" name=""scanConfirmed"" value=""1"" class=""btn primary"" id=""qrModalProceedBtn"" style=""flex:1 1 auto;justify-content:center;border-radius:10px;padding:10px;font-weight:700"">I Have Scanned &amp; Sent Payment</button>")
+            Else
+                sb.Append("<button type=""button"" class=""btn primary"" id=""qrModalProceedBtn"" style=""flex:1 1 auto;justify-content:center;border-radius:10px;padding:10px;font-weight:700"">I Have Scanned &amp; Sent Payment</button>")
+            End If
+            sb.Append("</div>")
+            sb.Append("</div></div>")
+
+            sb.Append("<" & "script>")
+            sb.Append("(function(){")
+            sb.Append("var qrM=document.getElementById('qrPaymentModal');")
+            sb.Append("var qrClose=document.getElementById('qrModalCloseX');")
+            sb.Append("var qrBack=document.getElementById('qrModalBackBtn');")
+            sb.Append("var qrBtn=document.getElementById('qrModalProceedBtn');")
+            sb.Append("function hideQr(){if(qrM){qrM.classList.remove('open');qrM.setAttribute('aria-hidden','true');}}")
+            sb.Append("function showQr(){if(qrM){qrM.classList.add('open');qrM.setAttribute('aria-hidden','false');}}")
+            sb.Append("if(qrClose)qrClose.addEventListener('click',hideQr);")
+            sb.Append("if(qrBack)qrBack.addEventListener('click',hideQr);")
+            sb.Append("if(qrBtn)qrBtn.addEventListener('click',function(e){")
+            If Not submitProceed Then
+                ' Nothing to submit here — the order already exists. Just close the
+                ' popup and put the cursor in the reference field.
+                sb.Append("e.preventDefault();")
+                sb.Append("var refIn=document.querySelector('input[name=""payRef""]');hideQr();if(refIn)refIn.focus();")
+            End If
+            ' On Checkout the button is a real submit: do not interfere, or the order
+            ' is never created.
+            sb.Append("});")
+            sb.Append("if(qrM)qrM.addEventListener('click',function(e){if(e.target===qrM)hideQr();});")
+            sb.Append("document.addEventListener('keydown',function(e){if(qrM&&qrM.classList.contains('open')&&e.key==='Escape')hideQr();});")
+            ' Lets Order Detail's "Scan to Pay" button reopen this popup.
+            sb.Append("window.openQrPayModal=showQr;")
+            sb.Append("})();")
+            sb.Append("</" & "script>")
+            Return sb.ToString()
+        End Function
+
+        ''' <summary>
+        ''' Stylized SVG QR stand-in used when the admin has not uploaded a real QR image
+        ''' but the display mode still calls for one. Kept from the original design so
+        ''' the popup never renders an empty box.
+        ''' </summary>
+        Private Function QrPlaceholder(qrColor As String, method As String) As String
+            Dim sb As New StringBuilder()
+            sb.Append("<svg width=""180"" height=""180"" viewBox=""0 0 180 180"" xmlns=""http://www.w3.org/2000/svg"" style=""display:block;margin:0 auto"">")
+            sb.Append("<rect width=""180"" height=""180"" fill=""#ffffff""/>")
+            sb.Append("<rect x=""10"" y=""10"" width=""46"" height=""46"" rx=""6"" fill=""none"" stroke=""" & qrColor & """ stroke-width=""5""/>")
+            sb.Append("<rect x=""22"" y=""22"" width=""22"" height=""22"" rx=""3"" fill=""" & qrColor & """/>")
+            sb.Append("<rect x=""124"" y=""10"" width=""46"" height=""46"" rx=""6"" fill=""none"" stroke=""" & qrColor & """ stroke-width=""5""/>")
+            sb.Append("<rect x=""136"" y=""22"" width=""22"" height=""22"" rx=""3"" fill=""" & qrColor & """/>")
+            sb.Append("<rect x=""10"" y=""124"" width=""46"" height=""46"" rx=""6"" fill=""none"" stroke=""" & qrColor & """ stroke-width=""5""/>")
+            sb.Append("<rect x=""22"" y=""136"" width=""22"" height=""22"" rx=""3"" fill=""" & qrColor & """/>")
+            For Each r As String In {
+                "66,16,14,14", "90,16,20,10", "66,38,10,24", "86,38,24,12",
+                "16,66,12,18", "38,66,18,12", "66,66,16,16", "124,66,20,12", "152,66,18,18",
+                "16,94,24,18", "124,90,14,24", "148,94,22,14",
+                "66,124,20,14", "94,124,16,24", "124,124,14,14", "148,124,22,20",
+                "66,148,18,22", "124,148,18,22"}
+                Dim p As String() = r.Split(","c)
+                sb.Append("<rect x=""" & p(0) & """ y=""" & p(1) & """ width=""" & p(2) & """ height=""" & p(3) & """ fill=""#1e1b19""/>")
+            Next
+            sb.Append("<rect x=""68"" y=""68"" width=""44"" height=""44"" rx=""8"" fill=""#ffffff"" stroke=""" & qrColor & """ stroke-width=""2""/>")
+            sb.Append("<circle cx=""90"" cy=""90"" r=""16"" fill=""" & qrColor & """/>")
+            sb.Append("<text x=""90"" y=""95"" font-size=""13"" font-weight=""800"" fill=""#ffffff"" text-anchor=""middle"" font-family=""sans-serif"">" & ChannelBrand(method).Substring(0, 1).ToUpperInvariant() & "</text>")
+            sb.Append("</svg>")
+            Return sb.ToString()
         End Function
 
         Private ReadOnly _palettes As String() = {

@@ -138,7 +138,7 @@ Namespace STAR_DOM.Web
             sb.Append(StepCard("2", "local_shipping", "Choose delivery or booth claim",
                                "Nationwide J&amp;T Express for ₱80 &mdash; free over ₱1,500 &mdash; or claim at an active pop-up booth with no shipping fee."))
             sb.Append(StepCard("3", "account_balance_wallet", "Pay your way",
-                               "GCash, Maya, or Cash on Delivery / Claim. Sign in once and your cart carries straight through to checkout."))
+                               "GCash, GOtyme, or Cash on Delivery / Claim. Sign in once and your cart carries straight through to checkout."))
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -283,7 +283,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div><div class=""eyebrow"">PAYMENTS &amp; DELIVERY</div><h2>Trusted Nationwide Checkout</h2></div>")
             sb.Append("</div>")
             sb.Append("<div class=""grid"" style=""grid-template-columns:repeat(auto-fit,minmax(220px,1fr))"">")
-            sb.Append(TrustCard("storefront", "GCash &amp; Maya",
+            sb.Append(TrustCard("storefront", "GCash &amp; GOtyme",
                                 "Pay from your e-wallet and record the reference number &mdash; no card details stored."))
             sb.Append(TrustCard("local_shipping", "J&amp;T Express",
                                 "Flat ₱80 nationwide shipping, free over ₱1,500. Track every parcel from My Orders."))

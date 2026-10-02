@@ -23,7 +23,7 @@ Namespace STAR_DOM.Database
             ' 1. A ready-made URI (Supabase's "connection string" / add-on databases).
             Dim uri As String = FirstEnv("SUPABASE_DB_URL", "POSTGRES_URL", "DATABASE_URL")
             If Not String.IsNullOrWhiteSpace(uri) Then
-                Return uri
+                Return UriToConnString(uri)
             End If
 
             Dim host As String = FirstEnv("SUPABASE_DB_HOST", "DB_HOST", "PGHOST")
@@ -58,6 +58,120 @@ Namespace STAR_DOM.Database
             ' 4. Local Postgres default.
             Return "Host=localhost;Port=5432;Database=stardom;Username=postgres;Password=postgres;" &
                    "SSL Mode=Disable;Timeout=15;Command Timeout=30;Timezone=" & AppTimeZone()
+        End Function
+
+        ''' <summary>
+        ''' Rewrites a postgresql:// URI into the keyword/value form Npgsql expects.
+        '''
+        ''' Supabase, Heroku, Vercel and Railway all hand out a URI, but the Npgsql
+        ''' build vendored here only understands "Host=...;Password=...". Passing the
+        ''' URI straight through fails with "Keyword not supported:
+        ''' postgresql://..." on every query, which reads like a credentials problem
+        ''' rather than a format one.
+        '''
+        ''' Written by hand rather than with System.Uri because a non-http scheme is
+        ''' not guaranteed to populate Port, and silently defaulting it would hide a
+        ''' wrong port. Anything that is not a URI is returned untouched so a
+        ''' hand-written keyword string still works.
+        ''' </summary>
+        Private Function UriToConnString(uri As String) As String
+            Dim s As String = uri.Trim()
+            Dim scheme As Integer = s.IndexOf("://", StringComparison.Ordinal)
+            If scheme <= 0 Then Return s
+            s = s.Substring(scheme + 3)
+
+            Dim sslMode As String = "Require"
+            Dim q As Integer = s.IndexOf("?"c)
+            If q >= 0 Then
+                For Each kv As String In s.Substring(q + 1).Split("&"c)
+                    Dim eq As Integer = kv.IndexOf("="c)
+                    If eq > 0 Then
+                        Dim key As String = kv.Substring(0, eq).Trim().ToLowerInvariant()
+                        Dim val As String = kv.Substring(eq + 1)
+                        If key = "sslmode" OrElse key = "ssl-mode" Then sslMode = val
+                    End If
+                Next
+                s = s.Substring(0, q)
+            End If
+
+            ' The password may legitimately contain "@", so split at the LAST one.
+            Dim user As String = "postgres"
+            Dim pass As String = ""
+            Dim at As Integer = s.LastIndexOf("@", StringComparison.Ordinal)
+            If at >= 0 Then
+                Dim userInfo As String = s.Substring(0, at)
+                s = s.Substring(at + 1)
+                Dim colon As Integer = userInfo.IndexOf(":", StringComparison.Ordinal)
+                If colon >= 0 Then
+                    user = Unescape(userInfo.Substring(0, colon))
+                    pass = Unescape(userInfo.Substring(colon + 1))
+                Else
+                    user = Unescape(userInfo)
+                End If
+            End If
+
+            Dim database As String = "postgres"
+            Dim slash As Integer = s.IndexOf("/", StringComparison.Ordinal)
+            If slash >= 0 Then
+                If slash < s.Length - 1 Then database = Unescape(s.Substring(slash + 1))
+                s = s.Substring(0, slash)
+            End If
+
+            Dim port As String = "5432"
+            Dim hp As Integer = s.LastIndexOf(":", StringComparison.Ordinal)
+            If hp >= 0 Then
+                If s.Length - 1 > hp Then port = s.Substring(hp + 1)
+                s = s.Substring(0, hp)
+            End If
+
+            If String.IsNullOrWhiteSpace(s) Then Return uri
+
+            ' Built through the builder's own properties rather than by writing
+            ' "Key=Value" text by hand. The keyword spelling that this Npgsql
+            ' accepts is not the one its docs lead you to expect, and a wrong
+            ' guess fails on every query with "Couldn't set <key>" while reading
+            ' exactly like a bad password. Letting the builder emit the string
+            ' means the keywords always match whatever this build expects.
+            Dim b As New Npgsql.NpgsqlConnectionStringBuilder()
+            b.Host = s
+            b.Port = Integer.Parse(port)
+            b.Database = database
+            b.Username = user
+            b.Password = pass
+            b.SslMode = SslModeOf(sslMode)
+            b.Timeout = 15
+            b.CommandTimeout = 30
+            b.Pooling = True
+            b.MaxPoolSize = 50
+            b.Timezone = AppTimeZone()
+            Return b.ConnectionString
+        End Function
+
+        ''' <summary>
+        ''' Maps an sslmode query value onto Npgsql's enum. This build only
+        ''' defines Disable/Prefer/Require, so the stricter verify values fall
+        ''' back to Require -- still encrypted, just without the extra
+        ''' certificate pinning. An unrecognised value also lands on Require
+        ''' rather than throwing out of connection-string construction.
+        ''' </summary>
+        Private Function SslModeOf(value As String) As Npgsql.SslMode
+            Select Case If(value, "").Trim().ToLowerInvariant()
+                Case "disable", "allow" : Return Npgsql.SslMode.Disable
+                Case "prefer" : Return Npgsql.SslMode.Prefer
+                Case Else : Return Npgsql.SslMode.Require
+            End Select
+        End Function
+
+        ''' <summary>
+        ''' Percent-decoding, falling back to the raw text when the value is not
+        ''' valid escaping -- a password with a stray % should still connect.
+        ''' </summary>
+        Private Function Unescape(value As String) As String
+            Try
+                Return System.Uri.UnescapeDataString(value)
+            Catch
+                Return value
+            End Try
         End Function
 
         ''' <summary>
@@ -357,6 +471,27 @@ Namespace STAR_DOM.Database
                 Return Convert.ToDecimal(o)
             Catch
                 Return def
+            End Try
+        End Function
+
+        ''' <summary>
+        ''' A BYTEA column as a byte array. Npgsql returns bytea as a plain
+        ''' Byte(), so a direct cast normally works; the conversions cover the
+        ''' shapes a different provider or an empty cell can hand back.
+        ''' Nothing() means "no image stored", which is not an error.
+        ''' </summary>
+        Public Function AsBytes(row As DataRow, col As String) As Byte()
+            If row Is Nothing OrElse Not row.Table.Columns.Contains(col) Then Return Nothing
+            Dim o As Object = row(col)
+            If o Is Nothing OrElse o Is DBNull.Value Then Return Nothing
+            Try
+                Dim b As Byte() = TryCast(o, Byte())
+                If b IsNot Nothing Then Return b
+                Dim s As String = TryCast(o, String)
+                If s IsNot Nothing AndAlso s.Length > 0 Then Return System.Convert.FromBase64String(s)
+                Return Nothing
+            Catch
+                Return Nothing
             End Try
         End Function
 

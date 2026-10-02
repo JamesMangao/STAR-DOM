@@ -18,7 +18,7 @@ Namespace STAR_DOM.Web
             Try
                 ' ----- POST actions ---------------------------------------------
                 ' Payment recording is password-gated: merchant/admin re-enters their
-                ' own password; GCash/Maya also require the reference number.
+                ' own password; GCash/GOtyme also require the reference number.
                 If Guard.IsPost() AndAlso Request.Form("payOrderId") <> "" Then
                     Dim id As Integer = 0
                     Integer.TryParse(Request.Form("payOrderId"), id)
@@ -154,28 +154,31 @@ Namespace STAR_DOM.Web
             Else
                 sb.Append(WebUi.Pager(totalOrders, PageSize, page, If(statusFilter = "", "/App/Merchant/Orders.aspx?p={P}",
                                                                     "/App/Merchant/Orders.aspx?st=" & statusFilter & "&p={P}")))
-                sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
+                sb.Append("<div class=""tblwrap""><table class=""tbl tbl-orders""><colgroup>" &
+                              "<col style=""width:140px""><col style=""width:120px""><col style=""width:44px"">" &
+                              "<col style=""width:116px""><col style=""width:112px""><col style=""width:104px"">" &
+                              "<col style=""width:116px""><col style=""width:302px""></colgroup><thead><tr>")
                 For Each h As String In {"ORDER", "CUSTOMER", "ITEMS", "TOTAL", "PAYMENT", "PAY STATE", "STATUS", "ACTIONS"}
-                    sb.Append("<th>" & h & "</th>")
+                    sb.Append("<th" & If(h = "ACTIONS", " class=""col-actions""", "") & ">" & h & "</th>")
                 Next
                 sb.Append("</tr></thead><tbody>")
                 For Each o As Order In shown
                     sb.Append("<tr>")
-                    sb.Append("<td><b>" & WebUi.Esc(o.OrderNumber) & "</b><br><span class=""sub"" style=""font-size:11px"">" &
-                              WebUi.Esc(o.CreatedAt.ToString("MMM d, h:mm tt")) & "</span></td>")
-                    sb.Append("<td>" & WebUi.Esc(o.CustomerName) & "</td>")
-                    sb.Append("<td>" & o.ItemCount.ToString() & "</td>")
+                    sb.Append("<td><span class=""ord-no"">" & WebUi.Esc(o.OrderNumber) & "</span><br>" &
+                              "<span class=""ord-when"">" & WebUi.Esc(o.CreatedAt.ToString("MMM d, h:mm tt")) & "</span></td>")
+                    sb.Append("<td class=""cust"">" & WebUi.Esc(o.CustomerName) & "</td>")
+                    sb.Append("<td class=""num"">" & o.ItemCount.ToString() & "</td>")
                     ' A delivery order with no fee yet is showing a goods total, not the amount the
                     ' customer owes — flag it so the figure is never misread as final.
-                    sb.Append("<td>" & WebUi.Money(o.TotalAmount) &
-                              If(o.HasFinalTotal, "", "<br><span class=""sub"" style=""font-size:10.5px;color:var(--primary)"">+ shipping TBC</span>") & "</td>")
-                    sb.Append("<td>" & WebUi.Esc(DisplayPay(o.PaymentMethod)) &
-                              If(o.IsPickup, "<br><span class=""sub"" style=""font-size:10.5px"">PICK-UP @ stall</span>", "") & "</td>")
+                    sb.Append("<td class=""total"">" & WebUi.Money(o.TotalAmount) &
+                              If(o.HasFinalTotal, "", "<br><span class=""tbc"">+ shipping TBC</span>") & "</td>")
+                    sb.Append("<td class=""pay"">" & WebUi.Esc(DisplayPay(o.PaymentMethod)) &
+                              If(o.IsPickup, "<br><span class=""ord-when"">PICK-UP @ stall</span>", "") & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.PaymentStatus) & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.Status) &
                               If(o.IsPickup AndAlso o.PickupEventName <> "",
-                                 "<br><span class=""sub"" style=""font-size:10.5px"">" & WebUi.Esc(o.PickupEventName) & "</span>", "") & "</td>")
-                    sb.Append("<td class=""rowact"">")
+                                 "<br><span class=""ord-when"">" & WebUi.Esc(o.PickupEventName) & "</span>", "") & "</td>")
+                    sb.Append("<td class=""col-actions"">")
                     RenderActions(sb, o)
                     sb.Append("</td></tr>")
                 Next
@@ -189,7 +192,10 @@ Namespace STAR_DOM.Web
             If pays.Count = 0 Then
                 sb.Append(WebUi.EmptyRow("No payments recorded yet."))
             Else
-                sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
+                sb.Append("<div class=""tblwrap""><table class=""tbl tbl-ledger""><colgroup>" &
+                              "<col style=""width:74px""><col style=""width:128px""><col style=""width:120px"">" &
+                              "<col><col style=""width:110px""><col style=""width:170px""><col style=""width:190px"">" &
+                              "</colgroup><thead><tr>")
                 For Each h As String In {"ORDER", "METHOD", "AMOUNT", "REFERENCE", "STATUS", "DATE", "RECEIPT"}
                     sb.Append("<th>" & h & "</th>")
                 Next
@@ -211,12 +217,12 @@ Namespace STAR_DOM.Web
                     Else
                         orLink = "<span class=""sub"" style=""font-size:11px"">—</span>"
                     End If
-                    sb.Append("<tr><td><b>#" & p.OrderId.ToString() & "</b></td>")
+                    sb.Append("<tr><td><span class=""ord-no"">#" & p.OrderId.ToString() & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(p.DisplayMethod) & "</td>")
-                    sb.Append("<td>" & WebUi.Money(p.Amount) & "</td>")
-                    sb.Append("<td>" & WebUi.Esc(p.ReferenceNumber) & "</td>")
+                    sb.Append("<td class=""amt"">" & WebUi.Money(p.Amount) & "</td>")
+                    sb.Append("<td class=""ref"">" & WebUi.Esc(p.ReferenceNumber) & "</td>")
                     sb.Append("<td>" & WebUi.Badge(p.Status) & "</td>")
-                    sb.Append("<td>" & WebUi.Esc(p.CreatedAt.ToString("MMM d, yyyy h:mm tt")) & "</td>")
+                    sb.Append("<td class=""when"">" & WebUi.Esc(p.CreatedAt.ToString("MMM d, yyyy h:mm tt")) & "</td>")
                     sb.Append("<td class=""rowact"">" & orLink & "</td></tr>")
                 Next
                 sb.Append("</tbody></table></div>")
@@ -228,6 +234,12 @@ Namespace STAR_DOM.Web
         Private Sub RenderActions(sb As StringBuilder, o As Order)
             Dim nextState As String = MapNextState(o.Status)
             If o.IsPickup AndAlso (nextState = "SHIPPED" OrElse nextState = "DELIVERED") Then nextState = ""
+
+            sb.Append("<div class=""act-stack"">")
+
+            ' Plain links (advance / cancel / view) collect here and land as one tidy
+            ' row under the forms instead of floating between the inputs.
+            Dim links As New StringBuilder()
 
             ' A delivery order awaiting a quote: the fee input replaces the CONFIRMED
             ' link entirely, because there is no honest way to confirm without a number.
@@ -242,18 +254,18 @@ Namespace STAR_DOM.Web
                     ' handled above by RenderShippingQuoteForm
                 Else
                     Dim confirmMsg As String = "Advance this order to " & nextState & "?"
-                    sb.Append("<a href=""/App/Merchant/Orders.aspx?advance=" & o.Id.ToString() & """" &
-                              " data-confirm=""" & WebUi.Attr(confirmMsg) & """>" &
-                              "<span class=""ms sm"">arrow_forward</span> " & nextState & "</a>")
+                    links.Append("<a href=""/App/Merchant/Orders.aspx?advance=" & o.Id.ToString() & """" &
+                                 " data-confirm=""" & WebUi.Attr(confirmMsg) & """>" &
+                                 "<span class=""ms sm"">arrow_forward</span> " & nextState & "</a>")
                 End If
             ElseIf nextState = "SHIPPED" Then
-                sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap"">")
+                sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
                 ' Each of the per-order forms below is nested inside the shell form, which
                 ' the browser closes at this tag — so the shell's token is not submitted with
                 ' them. They each carry their own.
                 sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                 sb.Append("<input type=""hidden"" name=""shipOrderId"" value=""" & o.Id.ToString() & """>")
-                sb.Append("<input name=""tracking"" placeholder=""J&T tracking no."" style=""width:112px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+                sb.Append("<input class=""i-track"" name=""tracking"" placeholder=""J&T tracking no."">")
                 sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Book with J&T Express"" " +
                           "data-confirm=""Hand this parcel to J&T and lock the order to SHIPPED? This cannot be undone from here."">" +
                           "<span class=""ms sm"">local_shipping</span>Book J&T</button>")
@@ -264,27 +276,27 @@ Namespace STAR_DOM.Web
             ' receipt. When both sides have confirmed, the order closes as DELIVERED.
             If o.IsPickup AndAlso o.Status <> "CANCELLED" AndAlso o.Status <> "DELIVERED" Then
                 If Not o.PickupMerchantConfirmed Then
-                    sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:inline-flex;margin:2px 0"">")
+                    sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""pickupOrderId"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<button class=""btn ghost sm"" type=""submit"" data-confirm=""Confirm the customer has claimed this order at the stall?""><span class=""ms sm"">task_alt</span>Confirm hand-over</button>")
                     sb.Append("</form>")
                 ElseIf Not o.PickupCustomerConfirmed Then
-                    sb.Append("<span class=""sub"" style=""font-size:10.5px"">waiting for customer…</span>")
+                    sb.Append("<span class=""act-waiting"">waiting for customer…</span>")
                 End If
             End If
 
-            ' Payment recording — password always; e-wallet reference for GCash/Maya.
+            ' Payment recording — password always; e-wallet reference for GCash/GOtyme.
             ' COD / pay-on-claim payments are recorded the same way when the cash comes in.
             If o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
-                Dim isEWallet As Boolean = o.PaymentMethod = "GCASH" OrElse o.PaymentMethod = "MAYA"
-                sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap"">")
+                Dim isEWallet As Boolean = PaymentSetting.IsEWallet(o.PaymentMethod)
+                sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
                 sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                 sb.Append("<input type=""hidden"" name=""payOrderId"" value=""" & o.Id.ToString() & """>")
                 If isEWallet Then
-                    sb.Append("<input name=""payRef"" placeholder=""Ref no."" required style=""width:86px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+                    sb.Append("<input class=""i-ref"" name=""payRef"" placeholder=""Ref no."" required>")
                 End If
-                sb.Append("<input type=""password"" name=""payPassword"" placeholder=""Your password"" required autocomplete=""current-password"" style=""width:104px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+                sb.Append("<input class=""i-pw"" type=""password"" name=""payPassword"" placeholder=""Your password"" required autocomplete=""current-password"">")
                 sb.Append("<button class=""btn ghost sm"" type=""submit"" title=""Record this payment"" " +
                               "data-confirm=""Record this payment as received? An official receipt will be issued."">" +
                               "<span class=""ms sm"">payments</span>Confirm pay</button>")
@@ -292,9 +304,11 @@ Namespace STAR_DOM.Web
             End If
 
             If o.Status = "PENDING" Then
-                sb.Append("<a href=""/App/Merchant/Orders.aspx?cancel=" & o.Id.ToString() & """ data-confirm=""Cancel this order?"" data-confirm-danger"">Cancel</a>")
+                links.Append("<a class=""danger-link"" href=""/App/Merchant/Orders.aspx?cancel=" & o.Id.ToString() & """ data-confirm=""Cancel this order?"" data-confirm-danger"">Cancel</a>")
             End If
-            sb.Append("<a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View</a>")
+            links.Append("<a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View</a>")
+            sb.Append("<div class=""act-links"">" & links.ToString() & "</div>")
+            sb.Append("</div>")
         End Sub
 
         ''' <summary>
@@ -314,33 +328,24 @@ Namespace STAR_DOM.Web
         ''' </summary>
         Private Function RenderShippingQuoteForm(o As Order) As String
             Dim sb As New StringBuilder()
-            sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" " &
-                      "style=""display:flex;gap:4px;margin:2px 0;flex-wrap:wrap;align-items:center"">")
+            sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<input type=""hidden"" name=""feeOrderId"" value=""" & o.Id.ToString() & """>")
-            sb.Append("<input name=""shipFee"" type=""number"" min=""0"" max=""10000"" step=""1"" " &
+            sb.Append("<input class=""i-fee"" name=""shipFee"" type=""number"" min=""0"" max=""10000"" step=""1"" " &
                       "placeholder=""J&amp;T fee"" aria-label=""J&amp;T shipping fee in pesos"" " &
-                      "value=""" & WebUi.Attr(Fmt.Num(o.ShippingFee)) & """ " &
-                      "style=""width:78px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
-            sb.Append("<input name=""feePassword"" type=""password"" placeholder=""Your password"" required " &
-                      "autocomplete=""current-password"" " &
-                      "style=""width:104px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:11px"">")
+                      "value=""" & WebUi.Attr(Fmt.Num(o.ShippingFee)) & """>")
+            sb.Append("<input class=""i-pw"" name=""feePassword"" type=""password"" placeholder=""Your password"" required " &
+                      "autocomplete=""current-password"">")
             sb.Append("<button class=""btn ghost sm"" type=""submit"" " &
                       "data-confirm=""Confirm this order and send the customer the final total, including shipping?"">" &
                       "<span class=""ms sm"">sell</span>Confirm &amp; quote shipping</button>")
             sb.Append("</form>")
-            sb.Append("<span class=""sub"" style=""font-size:10.5px"">Enter the J&amp;T fee to confirm this order</span>")
+            sb.Append("<span class=""act-hint"">Enter the J&amp;T fee to confirm this order</span>")
             Return sb.ToString()
         End Function
 
         Private Function DisplayPay(pm As String) As String
-            Select Case pm.ToUpperInvariant()
-                Case "GCASH" : Return "GCash"
-                Case "MAYA" : Return "Maya"
-                Case "CARD" : Return "Card"
-                Case "COD" : Return "Cash on Delivery"
-                Case Else : Return pm
-            End Select
+            Return WebUi.ChannelBrand(pm)
         End Function
 
     End Class

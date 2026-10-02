@@ -109,6 +109,7 @@
     <Compile Include="App\Checkout.aspx.vb" />
     <Compile Include="App\Orders.aspx.vb" />
     <Compile Include="App\OrderDetail.aspx.vb" />
+    <Compile Include="App\PaymentQr.aspx.vb" />
     <Compile Include="App\CommissionHub.aspx.vb" />
     <Compile Include="App\CommissionRequest.aspx.vb" />
     <Compile Include="App\CommissionDetail.aspx.vb" />
@@ -157,6 +158,7 @@
     <Content Include="App\Checkout.aspx" />
     <Content Include="App\Orders.aspx" />
     <Content Include="App\OrderDetail.aspx" />
+    <Content Include="App\PaymentQr.aspx" />
     <Content Include="App\CommissionHub.aspx" />
     <Content Include="App\CommissionRequest.aspx" />
     <Content Include="App\CommissionDetail.aspx" />

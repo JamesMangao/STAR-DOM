@@ -192,7 +192,7 @@ Namespace STAR_DOM.Models
     Public Class Payment
         Public Property Id As Integer
         Public Property OrderId As Integer
-        Public Property PaymentMethod As String    ' GCASH / MAYA / CARD / COD
+        Public Property PaymentMethod As String    ' GCASH / GOTYME / CARD / COD
         Public Property Amount As Decimal
         Public Property ReferenceNumber As String
         Public Property Status As String          ' PENDING / PAID / FAILED / REFUNDED
@@ -204,7 +204,7 @@ Namespace STAR_DOM.Models
             Get
                 Select Case PaymentMethod.ToUpperInvariant()
                     Case "GCASH" : Return "GCash"
-                    Case "MAYA" : Return "Maya"
+                    Case "GOTYME", "MAYA" : Return "GOtyme"
                     Case "CARD" : Return "Card"
                     Case "COD" : Return "Cash on Delivery"
                     Case Else : Return PaymentMethod

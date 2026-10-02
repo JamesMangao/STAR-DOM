@@ -1,8 +1,20 @@
 @echo off
 rem ============================================================
 rem  STAR:DOM Website - quick launcher (no Visual Studio needed)
-rem  Starts the local PostgreSQL database, runs the site under
-rem  IIS Express, and opens your browser.
+rem  Makes sure a database is available, runs the site under IIS
+rem  Express, and opens your browser.
+rem
+rem  Which database depends on one file:
+rem
+rem    tools\supabase-credentials.txt present  ->  Supabase. Everyone
+rem        sees the same data, and the QR codes come back with it. This is
+rem        the intended setup; see tools\supabase-credentials.example.txt.
+rem
+rem    absent  ->  the portable PostgreSQL in tools\pgdata, created on
+rem        first run. Keeps a fresh clone working with no setup at all.
+rem
+rem  Set SD_LOCAL_DB=1 to force the local database even when Supabase is
+rem  configured, which is handy when comparing the two.
 rem ============================================================
 setlocal
 title STAR:DOM Website
@@ -22,6 +34,21 @@ if not exist "%IISEXE%" (
     echo double-click it, or download from https://www.microsoft.com/en-us/download/details.aspx?id=48264
     pause
     exit /b 1
+)
+
+rem Exported before IIS Express starts so the worker process inherits it:
+rem Code\Db.vb reads SUPABASE_DB_URL first and only falls back to the
+rem localhost connection string in web.config when it is not set.
+if not defined SD_LOCAL_DB (
+    if exist "%~dp0tools\supabase-credentials.txt" (
+        call "%~dp0tools\supabase-env.bat"
+        if errorlevel 1 (
+            echo Could not read the Supabase credentials - see the messages above.
+            pause
+            exit /b 1
+        )
+        echo [0/3] Database: Supabase ^(shared - same data on every machine^)
+    )
 )
 
 echo [1/3] Starting the STAR:DOM database on localhost:5432 ...
@@ -58,5 +85,11 @@ if not defined SD_NO_BROWSER start http://localhost:8095
 echo.
 echo IIS Express is running minimized in the background.
 echo Close its window (or Ctrl+C in it) to stop the website.
+if defined SUPABASE_DB_URL (
+    echo.
+    echo This site is reading and writing Supabase, so orders placed here
+    echo are visible from every machine. To use a private local copy
+    echo instead, start it with:  set SD_LOCAL_DB=1 ^&^& run-website.bat
+)
 echo.
 endlocal

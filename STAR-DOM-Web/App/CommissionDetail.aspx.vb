@@ -286,7 +286,7 @@ Namespace STAR_DOM.Web
                                         "<div class=""field""><label>Your reply / updated details</label><textarea name=""message"" required style=""min-height:100px""></textarea></div>"))
                 Case "pay"
                     sb.Append(PanelForm(cm, "pay", "Record deposit payment (simulated)",
-                                        "<div class=""field""><label>Payment reference (GCash/Maya transaction no.)</label><input name=""ref"" placeholder=""Optional — auto-generated if blank""></div>"))
+                                        "<div class=""field""><label>Payment reference (GCash/GOtyme transaction no.)</label><input name=""ref"" placeholder=""Optional — auto-generated if blank""></div>"))
             End Select
             Return sb.ToString()
         End Function

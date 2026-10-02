@@ -29,15 +29,16 @@ Namespace STAR_DOM.Web
         Private Sub RenderDashboard()
             Dim sb As New StringBuilder()
 
-            ' ---- Console header (context bar) ----
-            sb.Append("<div class=""page-head"">")
-            sb.Append("<div><div class=""ph-title""><span class=""ph-ic"">" & WebUi.Ic("storefront", "lg") & "</span>")
-            sb.Append("<div><h1>Merchant Master Console</h1>")
-            sb.Append("<p class=""ph-sub"">Synchronized Physical Bazaar Nodes &amp; Digital Commerce Gateway</p></div><span class=""sys-rev"">SYS_REV::2026.09.WIN32</span></div></div>")
-            sb.Append("<div class=""ph-actions"">")
+            ' ---- Page header ----
+            ' Standard WebUi.Section header, like every other Merchant Studio page
+            ' (Events, Products, Orders, Reviews). The bespoke "Merchant Master
+            ' Console" console bar is gone.
+            sb.Append(WebUi.Section("Merchant Dashboard", "MERCHANT STUDIO / OVERVIEW",
+                                    "Your pop-up booths, marketplace sales and studio queue at a glance."))
+            sb.Append("<div class=""ph-actions"" style=""margin:-6px 0 18px"">")
             sb.Append("<span class=""term-pill""><span class=""pulse""></span>Terminal POS Link: Active</span>")
             sb.Append(WebUi.BtnHref("/App/Merchant/Reports.aspx", "X-Read POS Snapshot", "ghost", "receipt_long"))
-            sb.Append("</div></div>")
+            sb.Append("</div>")
 
             ' ---- Current location controller ----
             Dim current As PopUpEvent = _events.CurrentEvent()
@@ -110,7 +111,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""booth-pulse""><div style=""display:flex;gap:14px;flex-wrap:wrap"">")
             sb.Append("<span>" & WebUi.Ic("wifi_tethering", "sm") & " <b style=""color:var(--ink)"">Cellular Mesh:</b> 99.4% · 18ms</span>")
             sb.Append("<span>Cash Drawer: <b style=""color:var(--ink)"">₱6,400.00 Float</b></span>")
-            sb.Append("<span>GCash / Maya Soundbox: <b style=""color:var(--ink)"">Online</b></span>")
+            sb.Append("<span>GCash / GOtyme Soundbox: <b style=""color:var(--ink)"">Online</b></span>")
             sb.Append("</div><span class=""sync"">LAST SYNC: 14:18 PHT</span></div>")
             sb.Append("</div>")
             Return sb.ToString()

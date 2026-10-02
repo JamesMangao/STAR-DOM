@@ -1,19 +1,29 @@
 @echo off
 rem ============================================================
-rem  STAR:DOM local PostgreSQL - start / stop helper
+rem  STAR:DOM database - start / stop helper
 rem
 rem  Lives in the REPOSITORY ROOT and is called by run-website.bat and
-rem  share-website.bat, which sit next to it. The website talks
-rem  PostgreSQL via Npgsql. This helper runs a portable PostgreSQL
-rem  (tools\pgsql, committed to the repo) with its data directory in
-rem  tools\pgdata, listening on localhost:5432 - exactly what
-rem  STAR-DOM-Web\web.config's fallback connection string expects:
-rem      Host=localhost;Port=5432;Database=stardom;Username=postgres;Password=postgres
+rem  share-website.bat, which sit next to it.
 rem
-rem  One-time bootstrap (fully automatic on a fresh clone):
+rem  Two databases, and this script only ever manages one of them:
+rem
+rem    Supabase   the real one. Used whenever SUPABASE_DB_URL is set, which
+rem                run-website.bat and share-website.bat do by loading
+rem                tools\supabase-credentials.txt. It is already running
+rem                in the cloud, so there is nothing to start.
+rem
+rem    Local      a portable PostgreSQL (tools\pgsql, committed to the repo)
+rem                with its data directory in tools\pgdata on
+rem                localhost:5432 - the fallback connection string in
+rem                STAR-DOM-Web\web.config. Used on a fresh clone that has no
+rem                credentials file, so the site works before any setup.
+rem
+rem  One-time bootstrap for the local copy (fully automatic):
 rem    - tools\pgdata missing            -> initdb it (user postgres / pw postgres)
 rem    - database "stardom" missing      -> createdb + load supabase_schema.sql
 rem                                         and supabase_seed.sql
+rem
+rem  Set SD_LOCAL_DB=1 to ignore Supabase and force the local copy.
 rem
 rem  Usage:
 rem    start-db.bat          start the database if it is not running
@@ -38,6 +48,14 @@ if not exist "%PGBIN%\pg_ctl.exe" (
 
 if "%~1"=="stop" goto :stop
 if "%~1"=="status" goto :status
+
+rem Supabase is a managed service, so there is no local process to start and
+rem no data directory of ours to initialise. Both are wasted work when the
+rem app is pointed at the cloud, so bail out early.
+if defined SUPABASE_DB_URL if not defined SD_LOCAL_DB (
+    echo Using Supabase - no local database to start.
+    goto :done
+)
 
 :ensure-running
 if not exist "%PGDATA%\PG_VERSION" call :initdb
@@ -96,7 +114,10 @@ if errorlevel 1 (
     )
     echo Database ready: stardom - 28 tables, seeded.
 )
-exit /b 0
+goto :done
+
+:done
+endlocal & exit /b 0
 
 :initdb
 echo First run: initialising the PostgreSQL data directory ...
@@ -117,5 +138,9 @@ echo Stopped.
 exit /b 0
 
 :status
+if defined SUPABASE_DB_URL if not defined SD_LOCAL_DB (
+    echo Configured database: Supabase ^(hosted - no local process^)
+    exit /b 0
+)
 "%PGBIN%\pg_isready.exe" -h localhost -p 5432
 exit /b 0

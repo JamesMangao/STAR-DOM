@@ -48,7 +48,7 @@ Namespace STAR_DOM.Web
                         RenderForm(d, problem)
                         Return
                     End If
-                    PlaceOrder(d)
+                    PlaceOrder(d, Posted("scanConfirmed") <> "")
                     Return
                 End If
                 RenderForm(Nothing, Nothing)
@@ -156,12 +156,22 @@ Namespace STAR_DOM.Web
             Return sb.ToString()
         End Function
 
-        Private Sub PlaceOrder(d As CheckoutDraft)
+        Private Sub PlaceOrder(d As CheckoutDraft, scanConfirmed As Boolean)
             Dim items As List(Of CartItem) = _cart.ListItems()
             If items.Count = 0 Then
                 Session("flash_msg") = "Your cart is empty."
                 Session("flash_ok") = False
                 Response.Redirect("/App/Cart.aspx", True)
+            End If
+
+            ' An e-wallet order does not exist until the customer confirms they sent
+            ' the money. "Place Order" only opens the QR popup — re-rendering the form
+            ' with every field they typed still in it, so the popup's Back button
+            ' simply closes it and they can switch payment method for free. COD has
+            ' nothing to confirm, so it is recorded straight away.
+            If Not scanConfirmed AndAlso PaymentSetting.IsEWallet(d.PaymentMethod) Then
+                RenderForm(d, Nothing, True)
+                Return
             End If
 
             Dim addr As String = If(d.Fulfillment = "DELIVERY", ComposeAddress(d), "")
@@ -174,7 +184,7 @@ Namespace STAR_DOM.Web
                 Session("flash_msg") = result.Message
                 Session("flash_ok") = True
                 If fresh IsNot Nothing Then
-                    Response.Redirect("/App/OrderDetail.aspx?id=" & fresh.Id.ToString() & "&new=1", True)
+                    Response.Redirect("/App/OrderDetail.aspx?id=" & fresh.Id.ToString(), True)
                 Else
                     Response.Redirect("/App/Orders.aspx", True)
                 End If
@@ -186,7 +196,7 @@ Namespace STAR_DOM.Web
             End If
         End Sub
 
-        Private Sub RenderForm(d As CheckoutDraft, problem As String)
+        Private Sub RenderForm(d As CheckoutDraft, problem As String, Optional showQrModal As Boolean = False)
             Dim sb As New StringBuilder()
             Dim flash As String = Convert.ToString(Session("flash_msg"))
             Dim ok As Boolean = Session("flash_ok") IsNot Nothing AndAlso CBool(Session("flash_ok"))
@@ -338,8 +348,8 @@ Namespace STAR_DOM.Web
             If paySettings.IsChannelEnabled(PaymentSettingRepository.Gcash) Then
                 sb.Append(PayOption("GCASH", "GCash", "Pay instantly via the GCash app QR", "qr_code_2", pmSel))
             End If
-            If paySettings.IsChannelEnabled(PaymentSettingRepository.Maya) Then
-                sb.Append(PayOption("MAYA", "Maya", "Pay with the Maya app", "account_balance_wallet", pmSel))
+            If paySettings.IsChannelEnabled(PaymentSettingRepository.Gotyme) Then
+                sb.Append(PayOption("GOTYME", "GOtyme", "Pay with the GOtyme app", "account_balance_wallet", pmSel))
             End If
             sb.Append(PayOption("COD", "Cash on Delivery / Claim", "Pay cash when your order arrives or at pick-up", "local_shipping", pmSel))
             sb.Append("<div class=""frow"">")
@@ -347,6 +357,14 @@ Namespace STAR_DOM.Web
             sb.Append("<button type=""button"" class=""btn ghost"" id=""btnCancelCheckout""><span class=""ic ms"">arrow_back</span><span>Back to Cart</span></button>")
             sb.Append("</div>")
             sb.Append("</div>")
+
+            ' The Scan to Pay popup lives inside the checkout form on purpose: its
+            ' primary button is a real submit carrying scanConfirmed=1, and that POST
+            ' is what finally creates the order. Nothing is written before then.
+            If showQrModal AndAlso PaymentSetting.IsEWallet(d.PaymentMethod) Then
+                sb.Append(WebUi.QrPaymentModal(paySettings.GetByChannel(d.PaymentMethod),
+                                               d.PaymentMethod, goodsTotal, True, True))
+            End If
             sb.Append("</form>")
             sb.Append("</div>")
 
@@ -395,9 +413,14 @@ Namespace STAR_DOM.Web
         Private Function PayOption(value As String, title As String, hint As String, icon As String,
                                         selected As String) As String
             Dim checkedAttr As String = If(value = selected, " checked", "")
-            Return "<label class=""card"" style=""display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;cursor:pointer"">" &
+            ' The wallet's own logo when we have one, the Material icon otherwise (COD).
+            Dim mark As String = WebUi.PayLogo(value, 34)
+            If mark = "" Then
+                mark = "<span class=""ms"" style=""color:var(--primary);font-size:24px;line-height:1"">" & WebUi.Esc(icon) & "</span>"
+            End If
+            Return "<label class=""card"" style=""display:flex;gap:12px;align-items:center;margin-bottom:8px;cursor:pointer"">" &
                    "<input type=""radio"" name=""pm"" value=""" & value & """" & checkedAttr & " style=""margin-top:3px"">" &
-                   "<span class=""ms"" style=""color:var(--primary)"">" & WebUi.Esc(icon) & "</span>" &
+                   mark &
                    "<span><b>" & WebUi.Esc(title) & "</b><br><span class=""sub"" style=""font-size:12px"">" & WebUi.Esc(hint) & "</span></span></label>"
         End Function
 

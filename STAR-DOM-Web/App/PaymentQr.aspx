@@ -1,0 +1,1 @@
+<%@ Page Language="VB" CodeBehind="PaymentQr.aspx.vb" Inherits="STAR_DOM.Web.PaymentQrPage" %>

@@ -196,9 +196,14 @@ Namespace STAR_DOM.Repositories
         End Function
 
         Public Function PaymentMethodBreakdown() As List(Of ChartSeries)
+            ' MAYA is still mapped: payments recorded before the GOtyme rename keep
+            ' grouping under that key, so they hold the brand colour instead of
+            ' falling back to grey. (No comments inside the initializer below — VB
+            ' joins those lines and a comment would swallow the rest of it.)
             Dim colors As New Dictionary(Of String, Color)() From {
                 {"GCASH", ColorTranslator.FromHtml("#007DFE")},
-                {"MAYA", ColorTranslator.FromHtml("#00B7FF")},
+                {"GOTYME", ColorTranslator.FromHtml("#00A651")},
+                {"MAYA", ColorTranslator.FromHtml("#00A651")},
                 {"CARD", Helpers.AppColors.TertiaryContainer},
                 {"COD", Helpers.AppColors.SecondaryContainer}
             }
