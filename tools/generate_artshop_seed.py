@@ -1,8 +1,27 @@
 import json
 import re
 import os
+import sys
 
-with open('d:/STARDOM/design/assets/extracted_products.json', 'r', encoding='utf-8') as f:
+# Every path below is derived from this file's own location, so the repo can
+# live on any drive under any folder name. Nothing here is absolute.
+# tools/generate_artshop_seed.py  ->  <repo>/tools/generate_artshop_seed.py
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WEB = os.path.join(REPO, 'STAR-DOM-Web')
+
+CATALOG_JSON = os.path.join(REPO, 'design', 'assets', 'extracted_products.json')
+
+if not os.path.isfile(CATALOG_JSON):
+    sys.exit(
+        "Missing input: %s\n"
+        "This is a one-time generator for the original Artshop catalogue import.\n"
+        "That design/assets folder is not part of the repo, so the script cannot\n"
+        "run from a fresh clone. The catalogue it produced is already committed as\n"
+        "STAR-DOM-Web/Database/supabase_seed.sql -- use that instead.\n"
+        % CATALOG_JSON
+    )
+
+with open(CATALOG_JSON, 'r', encoding='utf-8') as f:
     raw_lines = json.load(f)
 
 # Types pattern
@@ -29,13 +48,13 @@ cat_map = {
 }
 
 # Scan Assets folder
-assets_root = r'D:\STARDOM\STAR-DOM-Web\STAR-DOM-Web\Assets'
+assets_root = os.path.join(WEB, 'Assets')
 asset_files = []
 for root, dirs, files in os.walk(assets_root):
     for fn in files:
         if fn.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
             full_path = os.path.join(root, fn)
-            rel_path = '/' + os.path.relpath(full_path, r'D:\STARDOM\STAR-DOM-Web\STAR-DOM-Web').replace('\\', '/')
+            rel_path = '/' + os.path.relpath(full_path, WEB).replace('\\', '/')
             cat_folder = os.path.basename(root).upper()
             asset_files.append({
                 'filename': fn,
@@ -253,7 +272,7 @@ sql_lines = [
     "-- ============================================================",
     "-- STAR:DOM — Seed data from ARTSHOP DATABASE (100 items)",
     "-- Replaces previous demo catalog with official 100 Artshop items",
-    "-- Includes image wiring from D:\\STARDOM\\STAR-DOM-Web\\STAR-DOM-Web\\Assets",
+    "-- Includes image wiring from STAR-DOM-Web\\Assets",
     "-- ============================================================",
     "USE stardom;",
     "",
@@ -347,7 +366,8 @@ sql_lines.extend([
 
 full_sql = "\n".join(sql_lines)
 
-with open('d:/STARDOM/STAR-DOM-Web/STAR-DOM-Web/Database/seed_products_artshop.sql', 'w', encoding='utf-8') as f:
+out_sql = os.path.join(WEB, 'Database', 'seed_products_artshop.sql')
+with open(out_sql, 'w', encoding='utf-8') as f:
     f.write(full_sql)
 
 print("Generated seed_products_artshop.sql successfully!")

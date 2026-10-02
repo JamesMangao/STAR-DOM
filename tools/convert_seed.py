@@ -1,9 +1,29 @@
 import re
+import os
+import sys
 
-with open(r'd:\STARDOM\STAR-DOM-Web\STAR-DOM-Web\Database\seed.sql', 'r', encoding='utf-8') as f:
+# Paths are derived from this file's own location, so the repo can live on any
+# drive under any folder name. tools/convert_seed.py -> <repo>/tools/convert_seed.py
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_DIR = os.path.join(REPO, 'STAR-DOM-Web', 'Database')
+
+seed_path = os.path.join(DB_DIR, 'seed.sql')
+artshop_path = os.path.join(DB_DIR, 'seed_products_artshop.sql')
+
+for _p in (seed_path, artshop_path):
+    if not os.path.isfile(_p):
+        sys.exit(
+            "Missing input: %s\n"
+            "This is the one-time MySQL -> PostgreSQL seed converter. Its MySQL\n"
+            "inputs are not part of the repo, so it cannot run from a fresh clone.\n"
+            "The result it produced is already committed as\n"
+            "STAR-DOM-Web/Database/supabase_seed.sql -- edit that instead.\n" % _p
+        )
+
+with open(seed_path, 'r', encoding='utf-8') as f:
     seed_sql = f.read()
 
-with open(r'd:\STARDOM\STAR-DOM-Web\STAR-DOM-Web\Database\seed_products_artshop.sql', 'r', encoding='utf-8') as f:
+with open(artshop_path, 'r', encoding='utf-8') as f:
     artshop_sql = f.read()
 
 def clean_sql(sql):
@@ -159,7 +179,7 @@ SELECT setval(pg_get_serial_sequence('orders', 'id'), COALESCE(MAX(Id), 1)) FROM
 
 final_seed = seed_sql.strip() + '\n\n' + artshop_sql.strip() + '\n\n' + seq_fix.strip() + '\n'
 
-with open(r'd:\STARDOM\STAR-DOM-Web\STAR-DOM-Web\Database\supabase_seed.sql', 'w', encoding='utf-8') as f:
+with open(os.path.join(DB_DIR, 'supabase_seed.sql'), 'w', encoding='utf-8') as f:
     f.write(final_seed)
 
 print('SUCCESS')

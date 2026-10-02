@@ -1,6 +1,7 @@
 # STAR:DOM build state (website only — desktop app removed on request)
 
-Workspace root (bash cwd): `/d/STARDOM`  (Windows: `D:\STARDOM`)
+Workspace root: the repo folder, wherever it is cloned. No script or documented
+command hardcodes a drive or path any more, so this is not fixed to one location.
 
 ## What this is now
 VB.NET **ASP.NET Web Forms** website + **Supabase (PostgreSQL 15+) via Npgsql**.
@@ -13,9 +14,11 @@ The database was ported from MySQL 8.x to Supabase/PostgreSQL — see
 full dialect map and the traps that bite if you forget them.
 
 ```
-D:\STARDOM
+<your clone folder>
 ├── STAR-DOM-Web.sln                 <- optional, for Visual Studio
 ├── Dockerfile, render.yaml          <- Render deploy (Mono/XSP4 in Ubuntu 20.04)
+├── setup.bat                        <- one-time new-machine setup
+├── build.bat                        <- compile; finds MSBuild and its own paths
 ├── start-db.bat                     <- local PostgreSQL start/stop (the launchers call it)
 ├── tools\                            <- build notes, refasm, scratch scripts
 └── STAR-DOM-Web\                    <- the website project root
@@ -39,17 +42,27 @@ sent the Docker build looking for vendored DLLs in a directory that no longer
 existed. Both are fixed.
 
 ## Toolchain (verified)
-- MSBuild: `"C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe"`
-- Build command (no VS installed on the machine):
-  `MSBuild STAR-DOM-Web.sln -t:Rebuild -p:Configuration=Debug -p:FrameworkPathOverride=D:/STARDOM/tools/refasm/build/.NETFramework/v4.8`
-  → compiles clean (0 errors) into `STAR-DOM-Web\bin\STAR_DOM_Web.dll`
+- Build: just run `build.bat` from the repo root. It derives every path from
+  `%~dp0` and locates MSBuild by itself — `vswhere` first, then the Build Tools
+  install, then whatever is on `PATH` — so no absolute path is needed anywhere.
+  `build.bat Release` builds Release.
+- Under the hood: `MSBuild STAR-DOM-Web.sln -t:Build -p:Configuration=Debug
+  -p:FrameworkPathOverride=<repo>\tools\refasm\build\.NETFramework\v4.8`
+  → compiles clean (0 errors) into `STAR-DOM-Web\bin\STAR_DOM_Web.dll`, leaving
+  all 16 files in `bin\`.
+- **Never `-t:Rebuild`.** Clean deletes the four vendored Npgsql dependency
+  DLLs from `bin\` because nothing references them as build outputs.
+- `tools\refasm` supplies the .NET Framework 4.8 reference assemblies so the
+  build works with only the runtime installed. `build.bat` drops the override
+  when that folder is absent, letting a real Visual Studio supply its own.
 - ASP.NET runtime: IIS Express 10 installed at `C:\Program Files\IIS Express`
   (official MSI from download.microsoft.com GUID C/E/8/CE8D18F5-…; installer kept
   in tools/downloads). Machine also has .NET Framework 4.8 runtime + Build Tools.
 
 ## Runtime (verified end-to-end via curl, October 2026)
-- `iisexpress.exe /path:"D:\STARDOM\STAR-DOM-Web" /port:8095 /clr:v4.0`
-  (double-click `run-website.bat`, which now also boots the local PostgreSQL first)
+- `iisexpress.exe /path:"<repo>\STAR-DOM-Web" /port:8095 /clr:v4.0`
+  (double-click `run-website.bat`, which resolves that path itself and boots the
+  database first)
 - Login POST → 302 → role home; marketplace + merchant dashboard return 200 with
   seeded data. Bind note: IIS Express ad-hoc binds `localhost` only — browse
   http://localhost:8095, NOT 127.0.0.1 (400).

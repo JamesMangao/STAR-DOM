@@ -1,7 +1,7 @@
 -- ============================================================
 -- STAR:DOM — Seed data from ARTSHOP DATABASE (100 items)
 -- Replaces previous demo catalog with official 100 Artshop items
--- Includes image wiring from D:\STARDOM\STAR-DOM-Web\STAR-DOM-Web\Assets
+-- Includes image wiring from STAR-DOM-Web\Assets
 -- ============================================================
 USE stardom;
 

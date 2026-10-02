@@ -1,6 +1,6 @@
 -- ============================================================
 -- STAR:DOM — Product artwork wiring (obsolete)
--- The demo catalog artwork under D:\STARDOM\design\products (and
+-- The demo catalog artwork under design\products (and
 -- img/products/*.png) belonged to the removed demo products (SKU-MV/SKU-PF/
 -- SKU-RF/SKU-GC). Those products no longer exist — the catalog now uses the
 -- official 100-item ARTSHOP inventory (see seed_products_artshop.sql).
