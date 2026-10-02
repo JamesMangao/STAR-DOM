@@ -1,7 +1,7 @@
 /* =====================================================================
    STAR:DOM design system v2
-   Structured Pop-Brutalism meets Utility Desktop (Modern POS / WinForms
-   evolution). Deep crimson + electric gold on warm stone. Sora display
+   Structured Pop-Brutalism meets Utility Desktop. Deep crimson + electric
+   gold on warm stone. Sora display
    face, Plus Jakarta Sans body, Material Symbols icons.
    ===================================================================== */
 :root {
@@ -291,25 +291,6 @@ img { max-width: 100%; }
   letter-spacing: .06em;
   box-shadow: 1px 1px 0 rgba(0,0,0,0.2);
 }
-.pos-card {
-  margin-top: auto;
-  border: 1.5px solid var(--primary);
-  border-radius: 13px;
-  background: linear-gradient(145deg, #fff7ea 0%, #ffedd5 100%);
-  padding: 13px 15px;
-  display: flex; flex-direction: column; gap: 4px;
-  box-shadow: 2px 2px 0 var(--primary);
-  transition: transform .15s ease;
-}
-.pos-card:hover { transform: translateY(-2px); }
-.pos-card div { font-size: 9.5px; letter-spacing: .12em; color: var(--ink-soft); font-weight: 800; font-family: var(--font-display); }
-.pos-card span { font-size: 13px; color: var(--primary); font-weight: 800; font-family: var(--font-mono); }
-.pos-card b {
-  align-self: flex-start; margin-top: 6px; background: var(--primary); color: #fff;
-  border-radius: 6px; padding: 4px 10px; font-size: 10.5px; letter-spacing: .06em; font-family: var(--font-display);
-  font-weight: 800; box-shadow: 1px 1px 0 rgba(0,0,0,0.3);
-}
-
 /* ---------- typographic primitives ---------- */
 .eyebrow {
   display: inline-block; font-family: var(--font-display); font-size: 10.5px; font-weight: 800; letter-spacing: .12em;
@@ -722,7 +703,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   padding: 3px 9px; border-radius: 6px; letter-spacing: .02em; display: inline-block;
 }
 .page-head .ph-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
-.ph-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 /* terminal live pill */
 .term-pill {
@@ -766,16 +746,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 }
 .photo-frame .ph-overlay .ph-eyebrow { font-size: 9px; letter-spacing: .14em; text-transform: uppercase; opacity: .92; font-family: var(--font-display); }
 .photo-frame .ph-overlay .ph-title { font-size: 15px; font-weight: 700; line-height: 1.2; font-family: var(--font-display); }
-
-/* booth pulse strip */
-.booth-pulse {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
-  background: var(--surface-low); padding: 10px 16px; border-top: 1px solid var(--line);
-  font-size: 12px; color: var(--ink-soft);
-}
-.booth-pulse .sync {
-  font-family: var(--font-mono); font-size: 11px; color: var(--tertiary); font-weight: 700; letter-spacing: .03em;
-}
 
 /* ---------- data grid tables (WinForms feel) ---------- */
 .board {
@@ -940,7 +910,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .layout { flex-direction: column; }
   .sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); flex-direction: row; flex-wrap: wrap; gap: 12px; }
   .sidebar .nav-group { flex: 1 1 44%; }
-  .sidebar .pos-card { margin: 4px 0 0; flex: 1 1 100%; }
   .main { padding: 18px 16px 50px; }
   .topbar-inner { gap: 12px; }
   .grid.kpis { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }

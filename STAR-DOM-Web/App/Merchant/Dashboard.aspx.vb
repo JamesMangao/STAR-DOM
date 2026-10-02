@@ -35,10 +35,8 @@ Namespace STAR_DOM.Web
             ' Console" console bar is gone.
             sb.Append(WebUi.Section("Merchant Dashboard", "MERCHANT STUDIO / OVERVIEW",
                                     "Your pop-up booths, marketplace sales and studio queue at a glance."))
-            sb.Append("<div class=""ph-actions"" style=""margin:-6px 0 18px"">")
-            sb.Append("<span class=""term-pill""><span class=""pulse""></span>Terminal POS Link: Active</span>")
-            sb.Append(WebUi.BtnHref("/App/Merchant/Reports.aspx", "X-Read POS Snapshot", "ghost", "receipt_long"))
-            sb.Append("</div>")
+            ' No POS terminal status strip and no X-Read button here: sales figures come
+            ' from Event Sales Reports, which is the one place in-person takings are read.
 
             ' ---- Current location controller ----
             Dim current As PopUpEvent = _events.CurrentEvent()
@@ -100,19 +98,14 @@ Namespace STAR_DOM.Web
             sb.Append("<h2 style=""font-size:22px;font-weight:800;letter-spacing:-.5px;margin:4px 0"">STAR:DOM @ " & WebUi.Esc(ev.Name) & "</h2>")
             sb.Append("<div style=""display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--ink-soft);font-size:13px;margin-top:6px"">")
             sb.Append("<span>" & WebUi.Ic("schedule", "sm") & " Daily Hours: <b style=""color:var(--ink)"">" & WebUi.Esc(ev.HoursText) & "</b></span>")
-            sb.Append("<span>" & WebUi.Ic("event_available", "sm") & " Active Term: <b style=""color:var(--ink)"">" & WebUi.Esc(ev.WindowText) & "</b></span>")
             sb.Append(closing)
             sb.Append("</div></div></div>")
             ' quick controls
             sb.Append("<div class=""btn-row"" style=""margin-top:14px"">")
             sb.Append(WebUi.BtnHref("/App/Merchant/EventEdit.aspx?id=" & ev.Id.ToString(), "Configure " & WebUi.Esc(ev.BoothNumber), "ghost", "grid_view"))
             sb.Append("</div></div></div>")
-            ' booth pulse (full-bleed footer strip, outside .panel-bd)
-            sb.Append("<div class=""booth-pulse""><div style=""display:flex;gap:14px;flex-wrap:wrap"">")
-            sb.Append("<span>" & WebUi.Ic("wifi_tethering", "sm") & " <b style=""color:var(--ink)"">Cellular Mesh:</b> 99.4% · 18ms</span>")
-            sb.Append("<span>Cash Drawer: <b style=""color:var(--ink)"">₱6,400.00 Float</b></span>")
-            sb.Append("<span>GCash / GOtyme Soundbox: <b style=""color:var(--ink)"">Online</b></span>")
-            sb.Append("</div><span class=""sync"">LAST SYNC: 14:18 PHT</span></div>")
+            ' No booth-pulse footer strip: the cash-drawer float, cellular mesh and
+            ' soundbox readouts were POS terminal status, not anything the app tracks.
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -201,7 +194,7 @@ Namespace STAR_DOM.Web
             Dim current As PopUpEvent = _events.CurrentEvent()
             sb.Append("<div class=""panel""><div class=""panel-hd"">")
             sb.Append("<h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--yellow)"">" & WebUi.Ic("history", "sm") & "</span> Pop-up Historical Performance Register <span class=""htag"">ARCHIVED AUDIT TRAILS</span></h3>")
-            sb.Append("</div><div class=""board""><table><thead><tr><th>Venue &amp; Run Name</th><th>Term Window</th><th>Gross Take</th><th>Completed Orders</th><th>Top Selling SKU</th><th>Register State</th></tr></thead><tbody>")
+            sb.Append("</div><div class=""board""><table><thead><tr><th>Venue &amp; Run Name</th><th>Term Window</th><th>Gross Take</th><th>Completed Orders</th><th>Top Selling SKU</th></tr></thead><tbody>")
             Dim evs As List(Of PopUpEvent) = _events.ListEvents()
             Dim firstRow As Boolean = True
             For Each ev As PopUpEvent In evs
@@ -221,8 +214,7 @@ Namespace STAR_DOM.Web
                 sb.Append("<td class=""mono"">" & WebUi.Esc(ev.WindowText) & "</td>")
                 sb.Append("<td class=""mono"" style=""color:var(--primary);font-weight:800"">" & Fmt_Php(rev) & "</td>")
                 sb.Append("<td style=""font-weight:700"">" & orders.ToString() & " Orders</td>")
-                sb.Append("<td>" & WebUi.Esc(LastOrEmpty(ev.BoothNumber)) & "</td>")
-                sb.Append("<td>" & EventStateChip(ev.Status) & "</td></tr>")
+                sb.Append("<td>" & WebUi.Esc(LastOrEmpty(ev.BoothNumber)) & "</td></tr>")
                 firstRow = False
             Next
             sb.Append("</tbody></table></div></div>")

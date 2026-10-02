@@ -128,7 +128,8 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Product removed from event inventory.")
         End Function
 
-        ' ----- In-person POS sale -------------------------------------------------
+        ' ----- In-person event sale (booth takings) ---------------------------------
+        ' This is the write path behind Event Sales Reports, not a POS terminal.
 
         Public Function RecordInPersonSale(eventId As Integer, productId As Integer, quantity As Integer,
                                            paymentMethod As String, saleType As String, notes As String) As ServiceResult

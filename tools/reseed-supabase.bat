@@ -95,7 +95,7 @@ echo   What is in there now:
 "%PGBIN%\psql.exe" "%SUPABASE_DSN%" -tAc "SELECT '    orders:  ' || count(*) FROM orders;"
 "%PGBIN%\psql.exe" "%SUPABASE_DSN%" -tAc "SELECT '    ' || channel || ' QR image bytes: ' || coalesce(length(qrimagedata),0) FROM paymentsettings ORDER BY channel;"
 echo.
-echo   Done. Start the site with connect-supabase.bat so it uses this database.
+echo   Done. Start the site with run-website.bat so it uses this database.
 echo.
 pause
 exit /b 0

@@ -140,7 +140,7 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.BtnHref("/App/Merchant/Events.aspx", "Cancel", "ghost", "close"))
             sb.Append("</div></div></form>")
 
-            ' right column: inventory + POS (only when editing)
+            ' right column: event inventory (only when editing)
             sb.Append("<div style=""flex:1.2;min-width:320px"">")
             If _editingId > 0 Then
                 ' add inventory

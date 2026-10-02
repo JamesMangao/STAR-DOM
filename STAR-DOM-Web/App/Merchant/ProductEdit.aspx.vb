@@ -102,7 +102,7 @@ Namespace STAR_DOM.Web
             Dim sb As New StringBuilder()
             If errorMsg <> "" Then sb.Append(WebUi.AlertBox(errorMsg))
             sb.Append("<a href=""/App/Merchant/Products.aspx"" class=""sub"">← Products</a>")
-            sb.Append(WebUi.Section(If(p Is Nothing, "Add Product", "Edit Product — " & p.Name), "PRODUCT & STOCK POS",
+            sb.Append(WebUi.Section(If(p Is Nothing, "Add Product", "Edit Product — " & p.Name), "PRODUCT & STOCK",
                                     "Name, price, stock and shelf flags sync to the marketplace and event booths."))
 
             sb.Append("<form method=""post"" action=""/App/Merchant/ProductEdit.aspx" & If(_editingId > 0, "?id=" & _editingId.ToString(), "") & """>")

@@ -169,7 +169,7 @@ INSERT INTO Notifications (UserId, Title, Message, NotificationType, LinkPath, I
 (1, 'Welcome to STAR:DOM!', 'Your CUSTOMER account is ready. Explore the marketplace!', 'SYSTEM', 'marketplace', TRUE, '2026-08-20 09:00:00'),
 (1, 'Commission submitted', 'Your request REQ-2026-084 is now PENDING REVIEW.', 'COMMISSION', 'commission-hub', FALSE, '2026-09-01 10:30:00'),
 (5, 'New commission', 'Bella Santos submitted a new request (REQ-2026-084).', 'COMMISSION', 'commission-pipeline', FALSE, '2026-09-01 10:30:00'),
-(5, 'Event node live', 'Galleria South is NOW OPEN. POS terminal active.', 'EVENT', 'merchant-dashboard', TRUE, '2026-09-04 09:00:00'),
+(5, 'Event node live', 'Galleria South is NOW OPEN. Booth is trading.', 'EVENT', 'merchant-dashboard', TRUE, '2026-09-04 09:00:00'),
 (6, 'Commission update', 'Your request REQ-2026-081 is IN PRODUCTION.', 'COMMISSION', 'commission-hub', FALSE, '2026-08-27 14:00:00');
 
 -- ============================================================
@@ -379,7 +379,7 @@ INSERT INTO EventInventory (EventId, ProductId, StartingStock, SoldQuantity, Rem
 (1, 56, 12, 8, 4, FALSE, TRUE),
 (1, 65, 8, 5, 3, FALSE, TRUE);
 
--- ---------- Event sales (in-person POS for active run) ----------
+-- ---------- Event sales (in-person booth takings for the active run) ----------
 INSERT INTO EventSales (EventId, OrderId, ProductId, Quantity, UnitPrice, TotalAmount, SaleType, PaymentMethod, SaleDate, Notes) VALUES
 (1, NULL, 1, 2, 30.00, 60.00, 'IN_PERSON', 'GCASH', '2026-09-04 11:20:00', 'Walk-in'),
 (1, NULL, 25, 1, 120.00, 120.00, 'QR',       'GOTYME', '2026-09-04 13:05:00', 'QR scan'),
