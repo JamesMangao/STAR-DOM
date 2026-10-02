@@ -5,9 +5,9 @@ rem
 rem  Do the three things a fresh clone cannot do for itself:
 rem    1. install IIS Express, from the MSI already in the repo
 rem    2. trust the Supabase root CA in your USER certificate
-rem       store, so the pooler handshake is not rejected
-rem    3. create tools\supabase-credentials.txt from the
-rem       template and let you paste the database password
+rem       store, so the pooler handshake is not rejectedrem  3. create tools\supabase-credentials.txt from the
+rem       template, asking for the password behind a masked
+rem       prompt so it never appears on screen
 rem
 rem  Then it verifies the database really answers.
 rem
@@ -29,6 +29,7 @@ set "CREDS=%ROOT%tools\supabase-credentials.txt"
 set "TEMPLATE=%ROOT%tools\supabase-credentials.example.txt"
 set "IISEXE=%ProgramFiles%\IIS Express\iisexpress.exe"
 set "PSQL=%ROOT%tools\pgsql\bin\psql.exe"
+set "PS1=%ROOT%tools\set-credentials.ps1"
 
 set "CA_NAME=Supabase Root 2021 CA"
 set "OKCOUNT=0"
@@ -121,35 +122,42 @@ echo.
 rem ---------- step 3: credentials file ---------------------------
 echo [3/4] Database credentials ...
 
-if exist "%CREDS%" goto :creds_exist
-
 if not exist "%TEMPLATE%" goto :creds_notemplate
 
-copy "%TEMPLATE%" "%CREDS%" >nul
-if errorlevel 1 goto :creds_copyfail
+if not exist "%CREDS%" goto :creds_enter
 
-echo       Created tools\supabase-credentials.txt from the template.
-echo       Notepad is opening. Paste your database password in place of
-echo       PASTE_PASSWORD_HERE, save, then come back here.
-echo.
-start "" notepad "%CREDS%"
-pause
-
-:creds_exist
+rem A file already exists. Is the password still the placeholder?
 findstr /c:"PASTE_PASSWORD_HERE" "%CREDS%" >nul
 if errorlevel 1 goto :creds_ready
-echo       Still says PASTE_PASSWORD_HERE - edit the file before running.
-echo         notepad "%CREDS%"
+
+echo       Found the file but the password is still the placeholder.
+goto :creds_enter
+
+:creds_enter
+echo       Type your password when asked. It is hidden, not echoed, and is
+echo       written straight into the file - no Notepad, nothing left on
+echo       screen.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Target "%CREDS%"
+if errorlevel 1 goto :creds_failed
+goto :creds_verify
+
+:creds_verify
+findstr /c:"PASTE_PASSWORD_HERE" "%CREDS%" >nul
+if errorlevel 1 goto :creds_ready
+echo       The file still has the placeholder. Try setup.bat again.
 set "TODO=1"
 goto :next3
 
 :creds_notemplate
-echo       Neither the template nor the credentials file exists here.
+echo       The template tools\supabase-credentials.example.txt is missing,
+echo       so there is nothing to build the credentials file from.
 set "TODO=1"
 goto :next3
 
-:creds_copyfail
-echo       Could not create the file. Check folder permissions.
+:creds_failed
+echo       Could not write the file. If PowerShell is blocked on this
+echo       machine, edit it by hand:
+echo         notepad "%CREDS%"
 set "TODO=1"
 goto :next3
 

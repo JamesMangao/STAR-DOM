@@ -106,6 +106,7 @@ it is the surrounding flavour text that is illustrative.
 ├── tools\                        <- PostgreSQL runtime (committed) + Supabase scripts
 │   ├── BUILD_STATE.md            <- build/runtime notes for whoever is next
 │   ├── supabase-env.bat          <- loads SUPABASE_DB_URL into the environment
+│   ├── set-credentials.ps1       <- masked password prompt used by setup.bat
 │   ├── reseed-supabase.bat       <- wipes + reloads Supabase from schema/seed
 │   ├── supabase-credentials.example.txt
 │   ├── supabase\prod-ca-2021.crt <- Supabase root CA (must be installed)
@@ -257,8 +258,9 @@ git clone https://github.com/JamesMangao/STAR-DOM.git
 cd STAR-DOM
 setup.bat
 ```
-Installs IIS Express, trusts the Supabase CA, creates the credentials file, and
-proves the database answers. Safe to re-run — it skips whatever is already done.
+Installs IIS Express, trusts the Supabase CA, asks for your database password
+behind a masked prompt, writes the credentials file, and proves the database
+answers. Safe to re-run — it skips whatever is already done.
 
 **Start the site**
 ```bat
@@ -307,10 +309,11 @@ A Cloudflare tunnel; the URL it prints works on any device.
 ## Requirements
 
 **On a brand-new machine, run [`setup.bat`](setup.bat) once.** It installs IIS
-Express from the bundled MSI, trusts the Supabase CA in your user store,
-creates the credentials file from the template, and then proves Supabase
-answers. Everything it needs is in the repo, and every path is derived from its
-own folder, so it works from any drive or folder. Re-run it any time — it skips
+Express from the bundled MSI, trusts the Supabase CA in your user store, asks
+for the database password behind a masked prompt (so it never appears on
+screen), writes the credentials file, and then proves Supabase answers.
+Everything it needs is in the repo, and every path is derived from its own
+folder, so it works from any drive or folder. Re-run it any time — it skips
 whatever is already done.
 
 | Requirement | Status |
@@ -498,7 +501,7 @@ It walks the four steps and skips whatever is already in place:
 |---|---|---|
 | 1 | Installs IIS Express from the bundled MSI | only if not already installed |
 | 2 | Trusts the Supabase CA in your **user** store | no |
-| 3 | Copies the credentials template and opens Notepad so you can paste the password | no |
+| 3 | Copies the credentials template and asks for the password **behind a masked prompt** | no |
 | 4 | Connects to Supabase and runs `SELECT 1` to prove it works | no |
 
 Exit code `0` means every step passed. If it reports INCOMPLETE, fix the named
