@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS Orders (
     OrderNumber VARCHAR(40) NOT NULL UNIQUE,
     UserId INT NOT NULL,
     EventId INT NULL,
-    Status VARCHAR(30) NOT NULL DEFAULT 'PENDING', -- PENDING/CONFIRMED/PROCESSING/SHIPPED/DELIVERED/CANCELLED
+    Status VARCHAR(30) NOT NULL DEFAULT 'PENDING', -- PENDING/CONFIRMED/PROCESSING/SHIPPED/DELIVERED/RECEIVED/CANCELLED
     Subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,
     DiscountAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
     ShippingFee DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -251,25 +251,21 @@ CREATE TABLE IF NOT EXISTS Orders (
     ShippingAddress VARCHAR(255) NOT NULL DEFAULT '',
     ContactPhone VARCHAR(30) NOT NULL DEFAULT '',
     Notes VARCHAR(500) NOT NULL DEFAULT '',
-    -- Fulfilment: DELIVERY (J&T) or PICKUP (claim at an active/upcoming stall).
-    Fulfillment VARCHAR(10) NOT NULL DEFAULT 'DELIVERY',
-    PickupEventId INT NULL,
-    -- A pick-up order is complete only when BOTH sides confirm the handover.
-    PickupCustomerConfirmed BOOLEAN NOT NULL DEFAULT FALSE,
-    PickupMerchantConfirmed BOOLEAN NOT NULL DEFAULT FALSE,
-    -- Delivery shipping is quoted by the merchant, not computed: the courier fee is
+    -- Shipping is quoted by the merchant, not computed: the courier fee is
     -- only known once J&T weighs the parcel, so the order cannot reach CONFIRMED
     -- until someone enters it. ShippingFee stays 0 and ShippingFeeConfirmed FALSE
     -- from checkout until then, and TotalAmount is finalised at that moment.
-    -- Pick-up orders never set this and never carry a fee.
     ShippingFeeConfirmed BOOLEAN NOT NULL DEFAULT FALSE,
     ShippingFeeConfirmedBy INT NULL,
     ShippingFeeConfirmedAt TIMESTAMPTZ NULL,
+    -- When the customer confirmed the parcel arrived. Only ever written from
+    -- DELIVERED, so a non-null value is proof the buyer saw it land rather
+    -- than the store merely recording that it handed the parcel to J&T.
+    ReceivedAt TIMESTAMPTZ NULL,
     CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP ,
     CONSTRAINT FK_Orders_User FOREIGN KEY (UserId) REFERENCES Users(Id),
     CONSTRAINT FK_Orders_Event FOREIGN KEY (EventId) REFERENCES PopUpEvents(Id),
-    CONSTRAINT FK_Orders_PickupEvent FOREIGN KEY (PickupEventId) REFERENCES PopUpEvents(Id),
     CONSTRAINT FK_Orders_ShippingFeeBy FOREIGN KEY (ShippingFeeConfirmedBy) REFERENCES Users(Id)
 );
 

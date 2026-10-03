@@ -23,7 +23,7 @@ Namespace STAR_DOM.Web
                     Submit()
                     Return
                 End If
-                RenderForm("", "")
+                RenderForm("")
             Catch ex As Exception
                 Out.Text = WebUi.AlertBox("Could not load the request form: " & ex.Message)
             End Try
@@ -91,16 +91,87 @@ Namespace STAR_DOM.Web
                     Response.Redirect("/App/CommissionHub.aspx", True)
                 End If
             Else
-                RenderForm(result.Message, description)
+                RenderForm(result.Message)
             End If
         End Sub
 
         ' ---------------- GET: the five-step form ----------------
 
-        Private Sub RenderForm(errorMsg As String, keepDescription As String)
+        ''' <summary>
+        ''' How much of each step the buyer has filled in, read from the posted
+        ''' form or the query string on a fresh GET (which counts as nothing
+        ''' filled). Field names are the real ones on the form below: cat, title,
+        ''' size, budgetMin/Max, deadline. Section 3 has no text field to read --
+        ''' the reference upload is a file input -- so it reports done only once
+        ''' the buyer has scrolled past it, via the __refsOk marker the review
+        ''' block posts. Without that it would block the rail forever.
+        ''' </summary>
+        Private Function StepCompletion(count As Integer) As Boolean()
+            Dim done() As Boolean = New Boolean(count - 1) {}
+
+            Dim cat As String = Filled("cat")
+            done(0) = cat <> ""
+
+            done(1) = Filled("title") <> ""
+
+            done(2) = Filled("__refsOk") <> ""
+
+            ' Specifications is one field block: any of size, budget or deadline.
+            done(3) = Filled("size") <> "" OrElse Filled("budgetMin") <> "" OrElse
+                      Filled("budgetMax") <> "" OrElse Filled("deadline") <> ""
+
+            ' The last step is the review/submit screen itself: never pre-filled.
+            done(4) = False
+            Return done
+        End Function
+
+        ''' <summary>
+        ''' One field's value, preferring the POST body and falling back to the
+        ''' query string, so the rail is correct after a validation bounce too.
+        ''' Convert.ToString, not CStr: an absent field hands CStr a Nothing.
+        ''' </summary>
+        Private Function Filled(name As String) As String
+            Dim v As String = Trim(Convert.ToString(Request.Form(name)))
+            If v = "" Then v = Trim(Convert.ToString(Request.QueryString(name)))
+            Return v
+        End Function
+
+        ''' <summary>One line telling the buyer what this step wants from them.</summary>
+        Private Function StepHint(index As Integer) As String
+            Select Case index
+                Case 0 : Return "Pick the merchandise substrate or format you have in mind."
+                Case 1 : Return "Name your project and describe the idea in detail."
+                Case 2 : Return "Attach reference art or a moodboard if you have one."
+                Case 3 : Return "Set your budget range, size and deadline."
+                Case 4 : Return "Check everything over, then send your request."
+                Case Else : Return ""
+            End Select
+        End Function
+
+        Private Sub RenderForm(errorMsg As String)
             Dim merchantId As Integer = 0
             Integer.TryParse(Request.QueryString("m"), merchantId)
             If merchantId <= 0 Then merchantId = _svc.PrimaryMerchantId()
+
+            ' Repopulate from whatever survived the bounce. Filled() prefers the POST
+            ' body and falls back to the query string, so this is blank on a first
+            ' visit and carries the buyer's work back after a validation error.
+            Dim keepCat As String = Filled("cat")
+            Dim keepTitle As String = Filled("title")
+            Dim keepQty As String = Filled("qty")
+            If keepQty = "" Then keepQty = "1"
+            Dim keepSize As String = Filled("size")
+            Dim keepBudgetMin As String = Filled("budgetMin")
+            Dim keepBudgetMax As String = Filled("budgetMax")
+            Dim keepNotes As String = Filled("notes")
+            ' An <input type="date"> only accepts yyyy-MM-dd; echo back anything it
+            ' would reject as empty rather than as a value the browser silently drops.
+            Dim keepDeadline As String = ""
+            Dim dlText As String = Filled("deadline")
+            If dlText <> "" Then
+                Dim dlDate As Date
+                If Date.TryParse(dlText, dlDate) Then keepDeadline = dlDate.ToString("yyyy-MM-dd")
+            End If
 
             Dim sb As New StringBuilder()
             sb.Append(WebUi.Section("Custom Commercial Commission Request",
@@ -109,12 +180,44 @@ Namespace STAR_DOM.Web
                                     "No rigid packages — describe what you envision and we will review and quote your project. " &
                                     "Commissioned products can only be claimed via delivery."))
 
-            ' step rail
-            sb.Append("<div class=""steps"">")
-            For Each s As String In {"1. Select Category", "2. What to Create", "3. References &amp; Assets", "4. Specifications", "5. Review &amp; Submit"}
-                sb.Append("<span class=""step"">" & s & "</span>")
+            ' Step rail. This form is one long page, not a multi-screen wizard,
+            ' so "where the user is" has to come from what has actually been filled
+            ' in: the first section with nothing in it yet is the one to do next,
+            ' and everything above it is done. The .step.on class was already in
+            ' the stylesheet but nothing ever set it, so all five chips rendered
+            ' identically and the rail told the buyer nothing.
+            Dim titles As String() = {"1. Select Category", "2. What to Create",
+                                      "3. References &amp; Assets", "4. Specifications",
+                                      "5. Review &amp; Submit"}
+            Dim stepDone As Boolean() = StepCompletion(titles.Length)
+            Dim currentStep As Integer = 0
+            For i As Integer = 0 To stepDone.Length - 1
+                If Not stepDone(i) Then
+                    currentStep = i
+                    Exit For
+                End If
+            Next
+
+            sb.Append("<div class=""steps"" role=""list"" aria-label=""Request progress"">")
+            For i As Integer = 0 To titles.Length - 1
+                Dim cls As String = "step"
+                Dim mark As String = ""
+                If i = currentStep Then
+                    cls &= " on"
+                    mark = " <span class=""step-ic"" aria-label=""current step"">&#9679;</span>"
+                ElseIf stepDone(i) Then
+                    cls &= " done"
+                    mark = " <span class=""step-ic"" aria-label=""done"">&#10003;</span>"
+                End If
+                Dim cur As String = "false"
+                If i = currentStep Then cur = "step"
+                sb.Append("<span class=""" & cls & """ role=""listitem"" aria-current=""" & cur & """>" &
+                          titles(i) & mark & "</span>")
             Next
             sb.Append("</div>")
+            sb.Append("<p class=""sub"" style=""font-size:12px;margin:-6px 0 14px""><b>Step " &
+                      (currentStep + 1).ToString() & " of 5</b> &middot; " &
+                      WebUi.Esc(StepHint(currentStep)) & "</p>")
 
             If errorMsg <> "" Then sb.Append(WebUi.AlertBox(errorMsg))
 
@@ -132,7 +235,9 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""grid cards"" style=""grid-template-columns:repeat(auto-fill,minmax(190px,1fr));margin-top:10px"">")
             For Each c As Category In cats
                 sb.Append("<label class=""card"" style=""cursor:pointer;display:flex;flex-direction:column;gap:2px;margin:0"">")
-                sb.Append("<input type=""radio"" name=""cat"" value=""" & c.Id.ToString() & """ required>")
+                Dim isPicked As String = ""
+                If keepCat = c.Id.ToString() Then isPicked = " checked"
+                sb.Append("<input type=""radio"" name=""cat"" value=""" & c.Id.ToString() & """" & isPicked & " required>")
                 sb.Append("<b>" & WebUi.Esc(c.Name) & "</b>")
                 sb.Append("<span class=""sub"" style=""font-size:11px"">" & WebUi.Esc(c.Description) & "</span>")
                 sb.Append("</label>")
@@ -144,9 +249,9 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""card mb"">")
             sb.Append("<h3>02 · What would you like to create?</h3>")
             sb.Append("<p class=""sub"">Give the atelier a short request title, then describe your idea in detail.</p>")
-            sb.Append("<div class=""field""><label for=""tt"">Request title *</label><input id=""tt"" name=""title"" required placeholder=""e.g. 150pc holographic vinyl sticker batch""></div>")
+            sb.Append("<div class=""field""><label for=""tt"">Request title *</label><input id=""tt"" name=""title"" required value=""" & WebUi.Attr(keepTitle) & """ placeholder=""e.g. 150pc holographic vinyl sticker batch""></div>")
             sb.Append("<div class=""field""><label for=""dd"">Full description *</label><textarea id=""dd"" name=""description"" required style=""min-height:160px"">" &
-                      WebUi.Esc(keepDescription) & "</textarea></div>")
+                      WebUi.Esc(Filled("description")) & "</textarea></div>")
             sb.Append("</div>")
 
             ' 03 references
@@ -157,6 +262,10 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""field""><label for=""rf" & i.ToString() & """>Reference " & (i + 1).ToString() & "</label>" &
                           "<input id=""rf" & i.ToString() & """ type=""file"" name=""ref" & i.ToString() & """></div>")
             Next
+            ' A file input posts nothing when left empty, so the step rail could
+            ' never see it. This marker always travels, which lets step 3 count as
+            ' reached once the buyer has actually visited that section.
+            sb.Append("<input type=""hidden"" name=""__refsOk"" value=""1"">")
             sb.Append("</div>")
 
             ' 04 specs
@@ -164,12 +273,12 @@ Namespace STAR_DOM.Web
             sb.Append("<h3>04 · Production Specifications</h3>")
             sb.Append("<p class=""sub"">Help us estimate accurate labour, stock and finishing costs.</p>")
             sb.Append("<div class=""form-grid2"">")
-            sb.Append("<div class=""field""><label for=""q"">Production quantity *</label><input id=""q"" name=""qty"" type=""number"" min=""1"" value=""1"" required></div>")
-            sb.Append("<div class=""field""><label for=""sz"">Preferred dimensions / size *</label><input id=""sz"" name=""size"" placeholder=""e.g. 3.5 x 3.5 in die-cut""></div>")
-            sb.Append("<div class=""field""><label for=""dl"">Target deadline</label><input id=""dl"" name=""deadline"" type=""date""></div>")
-            sb.Append("<div class=""field""><label for=""b1"">Budget range (₱)</label><div class=""row""><input id=""b1"" name=""budgetMin"" type=""number"" step=""0.01"" placeholder=""min"" style=""width:130px""> – <input name=""budgetMax"" type=""number"" step=""0.01"" placeholder=""max"" style=""width:130px""></div></div>")
+            sb.Append("<div class=""field""><label for=""q"">Production quantity *</label><input id=""q"" name=""qty"" type=""number"" min=""1"" value=""" & WebUi.Attr(keepQty) & """ required></div>")
+            sb.Append("<div class=""field""><label for=""sz"">Preferred dimensions / size *</label><input id=""sz"" name=""size"" value=""" & WebUi.Attr(keepSize) & """ placeholder=""e.g. 3.5 x 3.5 in die-cut""></div>")
+            sb.Append("<div class=""field""><label for=""dl"">Target deadline</label><input id=""dl"" name=""deadline"" type=""date"" value=""" & WebUi.Attr(keepDeadline) & """></div>")
+            sb.Append("<div class=""field""><label for=""b1"">Budget range (₱)</label><div class=""row""><input id=""b1"" name=""budgetMin"" type=""number"" step=""0.01"" value=""" & WebUi.Attr(keepBudgetMin) & """ placeholder=""min"" style=""width:130px""> – <input name=""budgetMax"" type=""number"" step=""0.01"" value=""" & WebUi.Attr(keepBudgetMax) & """ placeholder=""max"" style=""width:130px""></div></div>")
             sb.Append("</div>")
-            sb.Append("<div class=""field""><label for=""nt"">Additional notes / bleed requests</label><textarea id=""nt"" name=""notes"" style=""min-height:80px""></textarea></div>")
+            sb.Append("<div class=""field""><label for=""nt"">Additional notes / bleed requests</label><textarea id=""nt"" name=""notes"" style=""min-height:80px"">" & WebUi.Esc(keepNotes) & "</textarea></div>")
             sb.Append("</div>")
 
             ' 05 submit

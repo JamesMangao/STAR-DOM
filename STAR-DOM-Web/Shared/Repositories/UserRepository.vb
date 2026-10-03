@@ -114,6 +114,19 @@ Namespace STAR_DOM.Repositories
             Db.Exec("UPDATE Users SET Status = @s, UpdatedAt = NOW() WHERE Id = @id", Db.P("@s", status), Db.P("@id", userId))
         End Sub
 
+        ''' <summary>
+        ''' Commission slots this artist is taking. 0 is meaningful, not a no-op:
+        ''' ListMerchants filters on capacity > 0, so setting 0 quietly takes the
+        ''' artist out of the Commission Hub without suspending the account or
+        ''' touching the commissions already in flight.
+        ''' </summary>
+        Public Sub SetCommissionSlotCapacity(userId As Integer, capacity As Integer)
+            If capacity < 0 Then capacity = 0
+            If capacity > 999 Then capacity = 999
+            Db.Exec("UPDATE Users SET CommissionSlotCapacity = @c, UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@c", capacity), Db.P("@id", userId))
+        End Sub
+
         Public Sub SetRole(userId As Integer, roleId As Integer)
             Db.Exec("UPDATE Users SET RoleId = @r, UpdatedAt = NOW() WHERE Id = @id", Db.P("@r", roleId), Db.P("@id", userId))
         End Sub

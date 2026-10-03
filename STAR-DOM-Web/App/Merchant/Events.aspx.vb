@@ -19,7 +19,7 @@ Namespace STAR_DOM.Web
                 If Request.QueryString("setstatus") <> "" AndAlso Request.QueryString("to") <> "" Then
                     Dim id As Integer = 0
                     Integer.TryParse(Request.QueryString("setstatus"), id)
-                    Dim toStatus As String = CStr(Request.QueryString("to")).ToUpperInvariant()
+                    Dim toStatus As String = Trim(Convert.ToString(Request.QueryString("to"))).ToUpperInvariant()
                     ' Manual overrides are intentionally limited to cancellation: NOW OPEN / UPCOMING /
                     ' ENDED are derived live from the Asia/Manila clock and event date+houring window.
                     If toStatus = "CANCELLED" AndAlso id > 0 Then _events.SetStatus(id, "CANCELLED")
@@ -95,7 +95,7 @@ Namespace STAR_DOM.Web
             ' the venue names (the VENUE column above already shows the event's own
             ' VenueDetail) and it had no add/edit/delete UI, so it read as a dead
             ' table. The addresses themselves are still used -- PopupLocations shows
-            ' LocationAddress and RegionLabel, and the pick-up shipping address on an
+            ' LocationAddress and RegionLabel, and the shipping address on an
             ' order is the event name plus LocationName.
             Out.Text = sb.ToString()
         End Sub

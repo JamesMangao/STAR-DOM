@@ -31,7 +31,12 @@ Namespace STAR_DOM.Web
                 End If
                 _svc.MarkRead(id)
 
-                Dim act As String = CStr(Request.QueryString("act")).ToLowerInvariant()
+                ' Wrap in Trim(), VB's null-safe String trim. Convert.ToString(Nothing)
+                ' hands back Nothing on this runtime, so an instance method chained
+                ' straight onto it throws NullReferenceException - and a plain
+                ' "View / Reply" link arrives with no ?act at all, which is exactly
+                ' the case that used to blank this page.
+                Dim act As String = Trim(Convert.ToString(Request.QueryString("act"))).ToLowerInvariant()
                 If Guard.IsPost() Then
                     Dim result As ServiceResult = HandlePost(cm)
                     Session("flash_msg") = result.Message
@@ -48,6 +53,7 @@ Namespace STAR_DOM.Web
 
                 Render(cm)
             Catch ex As Exception
+                STAR_DOM.Database.Db.LogError("CommissionDetail", ex)
                 Out.Text = WebUi.AlertBox("Could not load this commission: " & ex.Message)
             End Try
         End Sub
@@ -228,7 +234,7 @@ Namespace STAR_DOM.Web
             Dim st As String = cm.Status.ToUpperInvariant()
             Dim isMerchant As Boolean = _svc.CanManageCommission(cm)
             Dim isOwner As Boolean = cm.CustomerId = STAR_DOM.Helpers.Session.CurrentUser.Id
-            Dim showPanel As String = CStr(Request.QueryString("panel")).ToLowerInvariant()
+            Dim showPanel As String = Trim(Convert.ToString(Request.QueryString("panel"))).ToLowerInvariant()
 
             sb.Append("<h3 style=""margin-bottom:8px"">Actions</h3>")
             sb.Append("<div class=""frow"">")

@@ -30,15 +30,6 @@ Namespace STAR_DOM.Web
                     End If
                     Response.Redirect("/App/Merchant/Orders.aspx", True)
                 End If
-                ' Merchant side of the pick-up claim: "handed to the customer".
-                If Guard.IsPost() AndAlso Request.Form("pickupOrderId") <> "" Then
-                    Dim pid As Integer = 0
-                    Integer.TryParse(Request.Form("pickupOrderId"), pid)
-                    Dim r2 As ServiceResult = _orders.ConfirmPickup(pid, False)
-                    Session("flash_msg") = r2.Message
-                    Session("flash_ok") = r2.Success
-                    Response.Redirect("/App/Merchant/Orders.aspx", True)
-                End If
                 ' Book a delivery order with J&T — merchant enters the real tracking
                 ' number; when left blank a placeholder booking number is generated.
                 If Guard.IsPost() AndAlso Request.Form("shipOrderId") <> "" Then
@@ -73,7 +64,6 @@ Namespace STAR_DOM.Web
                     Dim o As Order = _orders.GetOrder(id)
                     If o IsNot Nothing Then
                         Dim nextState As String = MapNextState(o.Status)
-                        If o.IsPickup AndAlso (nextState = "SHIPPED" OrElse nextState = "DELIVERED") Then nextState = ""
                         If nextState <> "" Then
                             Dim tracking As String = ""
                             If nextState = "SHIPPED" Then tracking = "JT" & Date.Now.ToString("yyMMddHHmm")
@@ -130,7 +120,7 @@ Namespace STAR_DOM.Web
             If flash <> "" Then sb.Append(WebUi.AlertBox(flash, If(ok, "ok", "err")))
 
             sb.Append(WebUi.Section("Orders & Payments", "MERCHANT STUDIO / FULFILMENT",
-                                    "Confirm orders, prepare them, then book J&T delivery or hand over at the stall. Recording a payment requires your password."))
+                                    "Confirm orders, prepare them, then book J&T delivery. Recording a payment requires your password."))
 
             Dim statusFilter As String = Convert.ToString(Request.QueryString("st"))
             Dim page As Integer = 1
@@ -173,11 +163,10 @@ Namespace STAR_DOM.Web
                     sb.Append("<td class=""total"">" & WebUi.Money(o.TotalAmount) &
                               If(o.HasFinalTotal, "", "<br><span class=""tbc"">+ shipping TBC</span>") & "</td>")
                     sb.Append("<td class=""pay"">" & WebUi.Esc(DisplayPay(o.PaymentMethod)) &
-                              If(o.IsPickup, "<br><span class=""ord-when"">PICK-UP @ stall</span>", "") & "</td>")
+                              "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.PaymentStatus) & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.Status) &
-                              If(o.IsPickup AndAlso o.PickupEventName <> "",
-                                 "<br><span class=""ord-when"">" & WebUi.Esc(o.PickupEventName) & "</span>", "") & "</td>")
+                              "</td>")
                     sb.Append("<td class=""col-actions"">")
                     RenderActions(sb, o)
                     sb.Append("</td></tr>")
@@ -233,7 +222,6 @@ Namespace STAR_DOM.Web
         ''' <summary>Per-row actions: quote shipping and confirm, advance status, book J&amp;T, confirm hand-over, record payment.</summary>
         Private Sub RenderActions(sb As StringBuilder, o As Order)
             Dim nextState As String = MapNextState(o.Status)
-            If o.IsPickup AndAlso (nextState = "SHIPPED" OrElse nextState = "DELIVERED") Then nextState = ""
 
             sb.Append("<div class=""act-stack"">")
 
@@ -272,20 +260,6 @@ Namespace STAR_DOM.Web
                 sb.Append("</form>")
             End If
 
-            ' Pick-up orders: the stall confirms the hand-over; the customer confirms
-            ' receipt. When both sides have confirmed, the order closes as DELIVERED.
-            If o.IsPickup AndAlso o.Status <> "CANCELLED" AndAlso o.Status <> "DELIVERED" Then
-                If Not o.PickupMerchantConfirmed Then
-                    sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
-                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
-                    sb.Append("<input type=""hidden"" name=""pickupOrderId"" value=""" & o.Id.ToString() & """>")
-                    sb.Append("<button class=""btn ghost sm"" type=""submit"" data-confirm=""Confirm the customer has claimed this order at the stall?""><span class=""ms sm"">task_alt</span>Confirm hand-over</button>")
-                    sb.Append("</form>")
-                ElseIf Not o.PickupCustomerConfirmed Then
-                    sb.Append("<span class=""act-waiting"">waiting for customer…</span>")
-                End If
-            End If
-
             ' Payment recording — password always; e-wallet reference for GCash/GOtyme.
             ' COD / pay-on-claim payments are recorded the same way when the cash comes in.
             If o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
@@ -312,11 +286,10 @@ Namespace STAR_DOM.Web
         End Sub
 
         ''' <summary>
-        ''' True when a delivery order is waiting on its courier fee. Pick-up never
-        ''' quotes, and neither does an order that already has one on record.
+        ''' True when an order is waiting on its courier fee. An order that already
+        ''' has one on record never needs quoting again.
         ''' </summary>
         Private Function NeedsShippingQuote(o As Order) As Boolean
-            If o.IsPickup Then Return False
             If o.ShippingFeeConfirmed Then Return False
             Return o.Status = "PENDING" OrElse o.Status = "CONFIRMED" OrElse o.Status = "PROCESSING"
         End Function

@@ -46,9 +46,13 @@ Namespace STAR_DOM.Services
 
             ' CommissionNumber is a unique placeholder; the real number is set after the
             ' auto-increment id is known, so concurrent submissions can never collide.
+            ' "REQ-P" plus a 32-char GUID is 37 characters, which fits the
+            ' commissions.commissionnumber column (varchar 40). The longer
+            ' "REQ-PLACEHOLDER-" prefix was 48 characters, so every new submission
+            ' died on a 22001 value-too-long error before it could be created.
             Dim number As String = ""
             Dim cm As New Commission() With {
-                .CommissionNumber = "REQ-PLACEHOLDER-" & Guid.NewGuid().ToString("N"),
+                .CommissionNumber = "REQ-P" & Guid.NewGuid().ToString("N"),
                 .CustomerId = Session.CurrentUser.Id,
                 .MerchantId = merchantId,
                 .CategoryId = categoryId,

@@ -109,7 +109,7 @@ Namespace STAR_DOM.Web
         ''' folder it exists for.
         ''' </summary>
         Private Function Normalize(raw As String) As String
-            Dim p As String = Convert.ToString(raw).Trim()
+            Dim p As String = Trim(Convert.ToString(raw))
             If p = "" Then Return ""
             p = p.Replace("\", "/")
             ' Accept both a bare filename and the full root-relative path, since

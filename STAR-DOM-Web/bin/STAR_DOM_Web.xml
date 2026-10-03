@@ -244,6 +244,20 @@ STAR_DOM_Web
 <member name="P:STAR_DOM.Web.RegisterPage.ReturnQuery">
  <summary>Query string that carries the return target to Login or the form.</summary>
 </member>
+<member name="T:STAR_DOM.Web.LogoutPage">
+ <summary>
+ Ends the session. The page markup in Logout.aspx then shows a "you're signed
+ out" modal and returns the visitor to the public storefront at /.
+
+ This used to redirect straight to /Login.aspx, which reads as "you were never
+ signed in" and asks for a password again right after the visitor deliberately
+ signed out. Saying what happened, then landing them somewhere that needs no
+ account, is the honest version of the same flow.
+
+ No Site.master here on purpose: a master renders the signed-in chrome (avatar,
+ cart count, admin nav) that this very request has just invalidated.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.PopupLocationsPage.CurrentHero(STAR_DOM.Models.PopUpEvent)">
  <summary>Split hero stage for the current active location (4.html).</summary>
 </member>
@@ -260,7 +274,7 @@ STAR_DOM_Web
  <summary>One posted value, trimmed, or "" when the field was not sent.</summary>
  <remarks>
  Convert.ToString hands back Nothing for a missing field, and a disabled
- input (the whole address block while pick-up is selected) is never posted
+ input is never posted
  at all — so the value has to be coalesced before it is trimmed, not after.
  Named Posted rather than Form: Page already has a Form property, and
  shadowing it would be a trap for anyone editing this page later.
@@ -343,16 +357,44 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.CommissionHubPage.MerchantBridge">
  <summary>Bridges the customer-facing hub to the merchant pipeline, which used to be unreachable from here.</summary>
 </member>
+<member name="M:STAR_DOM.Web.CommissionRequestPage.StepCompletion(System.Int32)">
+ <summary>
+ How much of each step the buyer has filled in, read from the posted
+ form or the query string on a fresh GET (which counts as nothing
+ filled). Field names are the real ones on the form below: cat, title,
+ size, budgetMin/Max, deadline. Section 3 has no text field to read --
+ the reference upload is a file input -- so it reports done only once
+ the buyer has scrolled past it, via the __refsOk marker the review
+ block posts. Without that it would block the rail forever.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionRequestPage.Filled(System.String)">
+ <summary>
+ One field's value, preferring the POST body and falling back to the
+ query string, so the rail is correct after a validation bounce too.
+ Convert.ToString, not CStr: an absent field hands CStr a Nothing.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionRequestPage.StepHint(System.Int32)">
+ <summary>One line telling the buyer what this step wants from them.</summary>
+</member>
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
+</member>
+<member name="P:STAR_DOM.Web.MerchantProductsPage.Search">
+ <summary>
+ The live filter text, from ?q= on the URL so a search survives a
+ reload and can be linked to. Trimmed once here because every use below
+ compares against it to decide whether to render the "clear" affordance.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderActions(System.Text.StringBuilder,STAR_DOM.Models.Order)">
  <summary>Per-row actions: quote shipping and confirm, advance status, book J&amp;T, confirm hand-over, record payment.</summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.NeedsShippingQuote(STAR_DOM.Models.Order)">
  <summary>
- True when a delivery order is waiting on its courier fee. Pick-up never
- quotes, and neither does an order that already has one on record.
+ True when an order is waiting on its courier fee. An order that already
+ has one on record never needs quoting again.
  </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderShippingQuoteForm(STAR_DOM.Models.Order)">
@@ -751,6 +793,14 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.OrderRepository.ListRecent(System.Int32)">
  <summary>Latest orders, bounded in SQL (used for dashboards instead of trimming full tables in memory).</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.MarkReceived(System.Int32)">
+ <summary>
+ Customer-side confirmation that the parcel arrived. This is the only
+ writer of ReceivedAt, and it stamps the same NOW() it stores, so the
+ date on the row is the moment the customer clicked rather than a
+ separately-entered value that could disagree with it.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.ConfirmWithShippingFee(System.Int32,System.Decimal,System.Int32)">
  <summary>
  Confirm a delivery order in the same statement that records the courier fee
@@ -767,12 +817,6 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.RestoreOrderStock(System.Int32)">
  <summary>Put sold units back on the shelf when an order is cancelled.</summary>
-</member>
-<member name="M:STAR_DOM.Repositories.OrderRepository.SetPickupConfirm(System.Int32,System.Boolean,System.Boolean)">
- <summary>
- Record one side of the pick-up claim. A pick-up order only completes when
- BOTH flags are set — the service layer turns the pair into DELIVERED.
- </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.PurchaseOrderId(System.Int32,System.Int32)">
  <summary>
@@ -886,6 +930,14 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.UserRepository.ListMerchants">
  <summary>Commission creators/artists (Admin or Merchant).</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.UserRepository.SetCommissionSlotCapacity(System.Int32,System.Int32)">
+ <summary>
+ Commission slots this artist is taking. 0 is meaningful, not a no-op:
+ ListMerchants filters on capacity > 0, so setting 0 quietly takes the
+ artist out of the Commission Hub without suspending the account or
+ touching the commissions already in flight.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Services.CartService.BundleDiscount(System.Collections.Generic.List{STAR_DOM.Models.CartItem})">
  <summary>
  Total savings from complete "N for ₱M" bundle groups in the cart, e.g. any
@@ -959,7 +1011,7 @@ STAR_DOM_Web
  (items inserted, stock taken, cart not cleared) is worse than no order.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.OrderService.Checkout(System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.String,System.String,System.Nullable{System.Int32})">
+<member name="M:STAR_DOM.Services.OrderService.Checkout(System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.String)">
  <summary>
  Full checkout: validate stock, create order + items + payment/shipping records,
  decrement stock, clear the cart. The order number is derived from the auto-increment
@@ -971,15 +1023,16 @@ STAR_DOM_Web
  Payment confirmation is password-gated for whoever records it — the buyer
  confirming their own e-wallet payment, or a merchant/admin recording one.
  GCash/GOtyme (the only accepted e-payments) must carry the reference number
- from the e-wallet receipt; COD / pay-on-pick-up need only the password.
+ from the e-wallet receipt; COD needs only the password.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.OrderService.ConfirmPickup(System.Int32,System.Boolean)">
+<member name="M:STAR_DOM.Services.OrderService.MarkReceived(System.Int32)">
  <summary>
- Pick-up orders are only closed when BOTH sides confirm the claim: the
- customer taps "order received" and the merchant/stall team taps "handed
- over". When the second confirmation lands, the order becomes DELIVERED
- (and PAID, for pay-on-claim methods) with an official receipt.
+ Customer confirms the parcel actually arrived. Deliberately gated on
+ DELIVERED: the store marks an order delivered when it hands it to the
+ courier, and until that has happened the buyer has nothing to confirm.
+ Setting RECEIVED also stamps ReceivedAt, so the row records that the
+ customer saw it land rather than the store merely asserting it did.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.ConfirmWithShippingFee(System.Int32,System.String,System.String)">

@@ -34,8 +34,6 @@ Namespace STAR_DOM.Web
             Public Phone As String = ""
             Public Notes As String = ""
             Public PaymentMethod As String = "COD"
-            Public Fulfillment As String = "DELIVERY"
-            Public PickupEventId As Integer = 0
         End Class
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
@@ -62,9 +60,8 @@ Namespace STAR_DOM.Web
 
         Private Function ReadPost() As CheckoutDraft
             Dim d As New CheckoutDraft()
-            ' Convert.ToString(String) hands back Nothing for a missing field — and the
-            ' delivery inputs are never posted while pick-up is selected. Coerce
-            ' everything to "" so nothing downstream sees a null.
+            ' Convert.ToString(String) hands back Nothing for a missing field, so coerce
+            ' everything to "" before trimming — nothing downstream sees a null.
             d.Street = Posted("addrStreet")
             d.Barangay = Posted("addrBarangay")
             d.City = Posted("addrCity")
@@ -75,21 +72,13 @@ Namespace STAR_DOM.Web
             d.Notes = Posted("notes")
             d.PaymentMethod = Posted("pm")
             If d.PaymentMethod = "" Then d.PaymentMethod = "COD"
-            d.Fulfillment = Posted("fulfillment")
-            If d.Fulfillment = "" Then d.Fulfillment = "DELIVERY"
-            Dim stallId As Integer
-            ' Through a local, not the property directly: TryParse writes its result
-            ' ByRef, and VB binds a property argument through a hidden copy, so the
-            ' draft would silently keep its default.
-            Integer.TryParse(Posted("pickupEvent"), stallId)
-            d.PickupEventId = stallId
             Return d
         End Function
 
         ''' <summary>One posted value, trimmed, or "" when the field was not sent.</summary>
         ''' <remarks>
         ''' Convert.ToString hands back Nothing for a missing field, and a disabled
-        ''' input (the whole address block while pick-up is selected) is never posted
+        ''' input is never posted
         ''' at all — so the value has to be coalesced before it is trimmed, not after.
         ''' Named Posted rather than Form: Page already has a Form property, and
         ''' shadowing it would be a trap for anyone editing this page later.
@@ -102,17 +91,12 @@ Namespace STAR_DOM.Web
         ' Named CheckDraft rather than Validate for the same reason against Page.Validate.
         ''' <summary>Returns the first problem, or Nothing when the draft can be ordered.</summary>
         Private Function CheckDraft(d As CheckoutDraft) As String
-            If d.Fulfillment <> "DELIVERY" AndAlso d.Fulfillment <> "PICKUP" Then
-                Return "Please choose delivery or stall pick-up."
-            End If
-
             ' Fully qualified: this page imports System.Web.UI, which brings its own
             ' Validation.Validators into scope and would win the bare name.
             Dim problem As String
 
-            If d.Fulfillment = "DELIVERY" Then
-                ' There is no map pin to fall back on, so every part of the address is
-                ' required: the courier has to work from the text alone.
+            ' There is no map pin to fall back on, so every part of the address is
+            ' required: the courier has to work from the text alone.
                 problem = STAR_DOM.Helpers.Validators.Required(d.Street, "House number and street")
                 If problem IsNot Nothing Then Return problem
                 problem = STAR_DOM.Helpers.Validators.Required(d.Barangay, "Barangay")
@@ -127,14 +111,8 @@ Namespace STAR_DOM.Web
                 If problem IsNot Nothing Then Return problem
                 problem = STAR_DOM.Helpers.Validators.Required(d.Landmark, "Nearest landmark")
                 If problem IsNot Nothing Then Return problem
-                If ComposeAddress(d).Length > AddressMax Then
-                    Return "That address is too long — please shorten the street or the landmark."
-                End If
-            Else
-                ' Caught here rather than left to the service: a missing stall would
-                ' otherwise come back as "that stall is not open", which reads as if a
-                ' stall had been picked and then closed.
-                If d.PickupEventId <= 0 Then Return "Please choose a pop-up stall for pick-up."
+            If ComposeAddress(d).Length > AddressMax Then
+                Return "That address is too long — please shorten the street or the landmark."
             End If
 
             problem = STAR_DOM.Helpers.Validators.Required(d.Phone, "Contact phone")
@@ -174,10 +152,8 @@ Namespace STAR_DOM.Web
                 Return
             End If
 
-            Dim addr As String = If(d.Fulfillment = "DELIVERY", ComposeAddress(d), "")
-            Dim result As ServiceResult = _orders.Checkout(d.PaymentMethod, addr, d.Phone, d.Notes, Nothing, "PENDING",
-                                                           d.Fulfillment,
-                                                           If(d.PickupEventId > 0, d.PickupEventId, Nothing))
+            Dim addr As String = ComposeAddress(d)
+            Dim result As ServiceResult = _orders.Checkout(d.PaymentMethod, addr, d.Phone, d.Notes, Nothing, "PENDING")
             If result.Success Then
                 ' find the freshest order to deep-link into
                 Dim fresh As Order = _orders.ListMyOrders().OrderByDescending(Function(o) o.Id).FirstOrDefault()
@@ -215,8 +191,6 @@ Namespace STAR_DOM.Web
             Dim phone As String = ""
             Dim notes As String = ""
             Dim pmSel As String = "COD"
-            Dim fulSel As String = "DELIVERY"
-            Dim pkSel As Integer = 0
             If d IsNot Nothing Then
                 street = d.Street
                 brgy = d.Barangay
@@ -227,8 +201,6 @@ Namespace STAR_DOM.Web
                 phone = d.Phone
                 notes = d.Notes
                 pmSel = d.PaymentMethod
-                fulSel = d.Fulfillment
-                pkSel = d.PickupEventId
             End If
 
             Dim items As List(Of CartItem) = _cart.ListItems()
@@ -239,7 +211,7 @@ Namespace STAR_DOM.Web
             End If
 
             sb.Append(WebUi.Section("Checkout", "SECURE ORDER",
-                                    "Choose delivery or stall pick-up, then how to pay. Payments are simulated for this demo — no real charge is made."))
+                                    "Enter your delivery address and how to pay. Payments are simulated for this demo — no real charge is made."))
 
             Dim subtotal As Decimal = items.Sum(Function(i) i.LineTotal)
             Dim bundleDisc As Decimal = _cart.BundleDiscount(items)
@@ -247,8 +219,7 @@ Namespace STAR_DOM.Web
 
             ' The courier fee is not knowable here: J&T only quotes once the parcel is
             ' weighed. Checkout therefore shows the goods total, and the store quotes the
-            ' real shipping fee when confirming the order. Pick-up needs no quote.
-            Dim isPickupSel As Boolean = fulSel = "PICKUP"
+            ' real shipping fee when confirming the order.
             Dim goodsTotal As Decimal = Math.Max(subtotal - bundleDisc, 0D)
 
             sb.Append("<div class=""row"" style=""align-items:flex-start;gap:24px"">")
@@ -277,26 +248,17 @@ Namespace STAR_DOM.Web
             End If
             sb.Append("</div>")
 
-            ' fulfillment: delivery vs stall pick-up
-            sb.Append("<div class=""card mb""><h3 style=""margin-bottom:10px"">" & WebUi.Ic("local_shipping", "sm") & " Fulfillment</h3>")
-            sb.Append("<label class=""card"" style=""display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;cursor:pointer"">")
-            sb.Append("<input type=""radio"" name=""fulfillment"" value=""DELIVERY""" & If(fulSel = "DELIVERY", " checked", "") & " style=""margin-top:3px"">")
-            sb.Append("<span class=""ms"" style=""color:var(--primary)"">local_shipping</span>")
-            sb.Append("<span><b>Delivery</b><br><span class=""sub"" style=""font-size:12px"">Ships nationwide via J&amp;T Express · " &
-                      "fee quoted when we confirm your order</span></span></label>")
+            ' Delivery only. STAR:DOM ships nationwide; there is no pick-up option.
+            sb.Append("<div class=""card mb""><h3 style=""margin-bottom:10px"">" & WebUi.Ic("local_shipping", "sm") & " Delivery</h3>")
+            sb.Append("<div class=""sub"" style=""font-size:12px;margin:0 0 12px"">Ships nationwide via J&amp;T Express · fee quoted when we confirm your order.</div>")
             ' Zone guide, so the eventual quote is never a surprise. Indicative only — the
             ' figure actually charged follows the parcel's weight when it is quoted.
             sb.Append("<div class=""sub"" style=""font-size:11.5px;margin:2px 0 10px;padding:9px 11px;background:var(--surface-low);border-radius:8px;border-left:3px solid var(--primary)"">")
             sb.Append("<b style=""color:var(--ink)"">Typical J&amp;T zone rates:</b> Luzon ₱0–100 · Visayas ₱101–200 · Mindanao ₱201–300. " &
                       "The exact fee follows the parcel's weight and is confirmed before dispatch.")
             sb.Append("</div>")
-            sb.Append("<label class=""card"" style=""display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;cursor:pointer"">")
-            sb.Append("<input type=""radio"" name=""fulfillment"" value=""PICKUP""" & If(fulSel = "PICKUP", " checked", "") & " style=""margin-top:3px"">")
-            sb.Append("<span class=""ms"" style=""color:var(--primary)"">storefront</span>")
-            sb.Append("<span><b>Pick-up at a pop-up stall</b><br><span class=""sub"" style=""font-size:12px"">No shipping fee · claim in person during the stall's open hours</span></span></label>")
-
-            ' delivery-only fields
-            sb.Append("<div id=""deliveryFields"">")
+            ' delivery address. There is no pick-up alternative any more, so these
+            ' inputs are always live and always required -- no radio toggling them.
             sb.Append("<div class=""field""><label for=""as1"">House number and street <span class=""sub"">*</span></label>")
             sb.Append("<input id=""as1"" name=""addrStreet"" required autocomplete=""address-line1"" placeholder=""Blk 1 Lot 2, Sample St."" value=""" & WebUi.Attr(street) & """></div>")
             sb.Append("<div class=""field""><label for=""as2"">Barangay <span class=""sub"">*</span></label>")
@@ -314,28 +276,6 @@ Namespace STAR_DOM.Web
             sb.Append("<input id=""as6"" name=""addrLandmark"" required placeholder=""Near SM, beside bakery, etc."" value=""" & WebUi.Attr(land) & """></div>")
             sb.Append("</div>")
             sb.Append("<div class=""sub"" style=""font-size:11.5px;margin:-4px 0 4px"">All fields are required because there's no map pin for this delivery address.</div>")
-            sb.Append("</div>")
-
-            ' pick-up-only fields
-            sb.Append("<div id=""pickupFields"" style=""display:none"">")
-            sb.Append("<div class=""field""><label for=""pk"">Choose a stall (open now or upcoming)</label>")
-            sb.Append("<select id=""pk"" name=""pickupEvent"" style=""width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff"">")
-            sb.Append("<option value="""">Choose a stall…</option>")
-            For Each ev As PopUpEvent In New EventService().ListUpcoming()
-                Dim whenText As String
-                If ev.Status = "NOW OPEN" Then
-                    whenText = "OPEN NOW · " & ev.OpenTime & "–" & ev.CloseTime
-                Else
-                    Dim span As String = ev.StartDate.ToString("MMM d")
-                    If ev.EndDate.Date <> ev.StartDate.Date Then span &= "–" & ev.EndDate.ToString("MMM d")
-                    whenText = span & " · " & ev.OpenTime & "–" & ev.CloseTime
-                End If
-                sb.Append("<option value=""" & ev.Id.ToString() & """" & If(ev.Id = pkSel, " selected", "") & ">" & WebUi.Attr(ev.Name & " — " & whenText) & "</option>")
-            Next
-            sb.Append("</select>")
-            sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:6px"">Hours are shown per stall. Your claim is final when <b>both you and the stall team</b> confirm the hand-over.</div>")
-            sb.Append("</div></div>")
-
             ' shared fields
             sb.Append("<div class=""field""><label for=""ph"">Contact phone</label><input id=""ph"" name=""phone"" required placeholder=""09xx xxx xxxx"" value=""" & WebUi.Attr(phone) & """></div>")
             sb.Append("<div class=""field""><label for=""nt"">Order notes (optional)</label><textarea id=""nt"" name=""notes"" style=""min-height:70px"">" & WebUi.Esc(notes) & "</textarea></div>")
@@ -351,7 +291,7 @@ Namespace STAR_DOM.Web
             If paySettings.IsChannelEnabled(PaymentSettingRepository.Gotyme) Then
                 sb.Append(PayOption("GOTYME", "GOtyme", "Pay with the GOtyme app", "account_balance_wallet", pmSel))
             End If
-            sb.Append(PayOption("COD", "Cash on Delivery / Claim", "Pay cash when your order arrives or at pick-up", "local_shipping", pmSel))
+            sb.Append(PayOption("COD", "Cash on Delivery", "Pay cash when your order arrives", "local_shipping", pmSel))
             sb.Append("<div class=""frow"">")
             sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">lock</span><span>Place Order</span></button>")
             sb.Append("<button type=""button"" class=""btn ghost"" id=""btnCancelCheckout""><span class=""ic ms"">arrow_back</span><span>Back to Cart</span></button>")
@@ -380,21 +320,9 @@ Namespace STAR_DOM.Web
             sb.Append("</div>")
             sb.Append("</div></div>")
 
-            ' Switching fulfillment & exit modal handling
+            ' Exit-confirmation modal
             sb.Append("<script>")
             sb.Append("(function(){")
-            sb.Append("var rads=document.getElementsByName('fulfillment');")
-            sb.Append("var del=document.getElementById('deliveryFields');")
-            sb.Append("var pick=document.getElementById('pickupFields');")
-            sb.Append("var ship=document.getElementById('shipCell');")
-            sb.Append("function isPickup(){for(var i=0;i<rads.length;i++){if(rads[i].checked&&rads[i].value==='PICKUP')return true;}return false;}")
-            sb.Append("function refresh(){var p=isPickup();")
-            sb.Append("del.style.display=p?'none':'';pick.style.display=p?'':'none';")
-            sb.Append("var as=del.getElementsByTagName('input');")
-            sb.Append("for(var i=0;i<as.length;i++){as[i].disabled=p;as[i].required=!p;}")
-            sb.Append("ship.innerHTML=p?'None — collected at the stall':'Quoted after confirmation';}")
-            sb.Append("for(var i=0;i<rads.length;i++){rads[i].addEventListener('change',refresh);}")
-            sb.Append("refresh();")
             sb.Append("var modal=document.getElementById('exitCheckoutModal');")
             sb.Append("var btnOpen=document.getElementById('btnCancelCheckout');")
             sb.Append("var btnStay=document.getElementById('btnStayCheckout');")

@@ -17,6 +17,7 @@ Namespace STAR_DOM.Web
         Protected cartBtn As System.Web.UI.HtmlControls.HtmlAnchor
         Protected notifBtn As System.Web.UI.HtmlControls.HtmlAnchor
         Protected brandLink As System.Web.UI.HtmlControls.HtmlAnchor
+        Protected topSearchBox As System.Web.UI.HtmlControls.HtmlGenericControl
         Protected authGate As System.Web.UI.HtmlControls.HtmlGenericControl
         Protected notifCount As Literal
         Protected footerTourLinks As Literal
@@ -111,6 +112,20 @@ Namespace STAR_DOM.Web
             ' Merchant/admin accounts never place customer orders — hide the cart
             ' button from the header entirely for them.
             If cartBtn IsNot Nothing Then cartBtn.Visible = Not STAR_DOM.Helpers.Session.CanManageStore
+
+            ' The header search points at the public catalog. Inside the studio that is
+            ' the wrong place to look for anything: staff manage the catalog from
+            ' Products & Stock, which now has its own filter, and a global box up here
+            ' only ever sent them back out to the storefront. Same flag as the cart.
+            '
+            ' Throws when the control is missing rather than silently skipping: the
+            ' div only binds to this field if Site.master still carries
+            ' runat="server" on it, and without that the guard below would quietly
+            ' do nothing and the box would keep showing for staff forever.
+            If topSearchBox Is Nothing Then
+                Throw New InvalidOperationException("Site.master: #topSearchBox is missing or lost its runat=server attribute.")
+            End If
+            topSearchBox.Visible = Not STAR_DOM.Helpers.Session.CanManageStore
 
             ' Current user chip
             Dim chip As New StringBuilder()

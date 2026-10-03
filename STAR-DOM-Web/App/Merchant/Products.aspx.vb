@@ -1,4 +1,5 @@
 Imports System.Text
+Imports System.Web
 Imports System.Web.UI
 Imports System.Web.UI.WebControls
 Imports STAR_DOM.Helpers
@@ -13,6 +14,17 @@ Namespace STAR_DOM.Web
         Protected Out As Literal
         Private ReadOnly _products As New ProductRepository()
         Private ReadOnly _cats As New CategoryRepository()
+
+        ''' <summary>
+        ''' The live filter text, from ?q= on the URL so a search survives a
+        ''' reload and can be linked to. Trimmed once here because every use below
+        ''' compares against it to decide whether to render the "clear" affordance.
+        ''' </summary>
+        Private ReadOnly Property Search As String
+            Get
+                Return If(Convert.ToString(Request.QueryString("q")), "").Trim()
+            End Get
+        End Property
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireMerchant()
@@ -60,7 +72,12 @@ Namespace STAR_DOM.Web
                     If id > 0 Then _products.SetStock(id, q)
                     Session("flash_msg") = "Stock updated."
                     Session("flash_ok") = True
-                    Response.Redirect("/App/Merchant/Products.aspx", True)
+                    ' Carry the active search across the save, or saving one stock
+                    ' level silently throws the staff back out to the full catalog.
+                    Dim back As String = "/App/Merchant/Products.aspx"
+                    Dim keep As String = If(Convert.ToString(Request.Form("stockQ")), "").Trim()
+                    If keep <> "" Then back &= "?q=" & HttpUtility.UrlEncode(keep)
+                    Response.Redirect(back, True)
                 End If
                 Render()
             Catch ex As Exception
@@ -84,20 +101,48 @@ Namespace STAR_DOM.Web
             ' seeded SKU belongs to Puffu Studio, and the page was filtering on
             ' MerchantId = the signed-in user.
             Dim isAdmin As Boolean = STAR_DOM.Helpers.Session.IsAdmin
+            Dim q As String = Search
             Dim mine As List(Of Product) = If(isAdmin,
-                                               _products.ListAll(),
-                                               _products.ListByMerchant(STAR_DOM.Helpers.Session.CurrentUser.Id))
+                                               _products.ListAll(q),
+                                               _products.ListByMerchant(STAR_DOM.Helpers.Session.CurrentUser.Id, q))
+            ' The low-stock alert counts the whole catalog, not the filtered view:
+            ' it is a warning about what needs reordering, and hiding half of it
+            ' because someone typed a letter would make it actively misleading.
             Dim low As List(Of Product) = _products.LowStock(STAR_DOM.Helpers.Session.CurrentUser.Id)
 
             sb.Append("<div class=""sec-head""><div><h3>" & If(isAdmin, "All products", "My products") &
                       " (" & mine.Count.ToString() & ")</h3></div>" &
                       WebUi.BtnHref("/App/Merchant/ProductEdit.aspx", "+ Add Product", "primary", "add") & "</div>")
+
+            ' Search for this page only. The header box is hidden from the studio
+            ' (it searches the public catalog), so the filter staff actually
+            ' wanted lives here. GET so it needs no CSRF token and survives reload.
+            sb.Append("<form method=""get"" action=""/App/Merchant/Products.aspx"" style=""display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center"">")
+            sb.Append("<div class=""searchbox"" style=""flex:1;min-width:240px;margin:0"">")
+            sb.Append("<input type=""text"" name=""q"" value=""" & WebUi.Attr(q) & """ placeholder=""Search by product name or SKU…"" aria-label=""Search products by name or SKU"" />")
+            sb.Append("<button type=""submit"" aria-label=""Search products""><span class=""ms sm"">search</span></button>")
+            sb.Append("</div>")
+            If q <> "" Then
+                sb.Append("<a class=""btn ghost sm"" href=""/App/Merchant/Products.aspx"">Clear</a>")
+                sb.Append("<span class=""sub"" style=""font-size:12px"">matching &ldquo;" & WebUi.Esc(q) & "&rdquo;</span>")
+            End If
+            sb.Append("</form>")
             If low.Count > 0 Then
                 sb.Append(WebUi.AlertBox(low.Count.ToString() & " product(s) at or below low-stock threshold.", "info"))
             End If
 
             If mine.Count = 0 Then
-                sb.Append(WebUi.EmptyRow("No products yet — add your first product."))
+                If q <> "" Then
+                    ' A filtered miss is not the same as an empty catalog — saying
+                    '"add your first product"' to someone mid-search is nonsense.
+                    ' EmptyRow HTML-escapes whatever it is given, so this message is plain text
+                ' only -- an entity like &ldquo; would show up literally instead of
+                ' rendering a quote, and a raw <a> would be escaped into view.
+                    sb.Append(WebUi.EmptyRow("No products match """ & q & """. " &
+                                              "Use the Clear link to see the whole catalog."))
+                Else
+                    sb.Append(WebUi.EmptyRow("No products yet — add your first product."))
+                End If
             Else
                 sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
                 Dim headers As New List(Of String) From {"SKU", "PRODUCT", "CATEGORY"}
@@ -121,6 +166,7 @@ Namespace STAR_DOM.Web
                     sb.Append("<td><form method=""post"" style=""display:flex;gap:6px;align-items:center"">" &
                               STAR_DOM.Web.Csrf.HiddenField() &
                               "<input type=""hidden"" name=""stockId"" value=""" & p.Id.ToString() & """>" &
+                              If(q <> "", "<input type=""hidden"" name=""stockQ"" value=""" & WebUi.Attr(q) & """>", "") &
                               "<input name=""stockQty"" type=""number"" value=""" & p.StockQuantity.ToString() & """ style=""width:64px;padding:5px;border:1px solid var(--line);border-radius:7px"">" &
                               "<button class=""btn ghost sm"" type=""submit""><span class=""ic ms"">save</span><span>Save</span></button></form>" &
                               If(lowFlag, "<span style=""color:var(--primary);font-size:11px;font-weight:700"">LOW</span>", "") & "</td>")

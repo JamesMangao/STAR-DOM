@@ -26,7 +26,7 @@ Namespace STAR_DOM.Web
         Private Sub RenderPage()
             Dim catId As Integer = 0
             Integer.TryParse(Request.QueryString("cat"), catId)
-            Dim q As String = Trim(CStr(Request.QueryString("q")))
+            Dim q As String = Trim(Convert.ToString(Request.QueryString("q")))
             Dim categories As List(Of Category) = _catalog.ListCategories()
             Dim products As List(Of Product) = _catalog.ListProducts(catId, q)
 

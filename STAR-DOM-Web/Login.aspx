@@ -27,7 +27,7 @@
             <h2>Turn your ideas into <em style="font-style:normal;color:var(--yellow)">living art.</em></h2>
             <p>Shop artisan prints, handcrafted stickers, limited merch, and custom commissions — online, or in person at our pop-up tours across the Philippines.</p>
             <div class="auth-features">
-                <div class="auth-feature"><%= STAR_DOM.Web.WebUi.Ic("storefront") %> Shop goods from verified PH indie creators</div>
+                <div class="auth-feature"><%= STAR_DOM.Web.WebUi.Ic("storefront") %> Shop original art straight from a solo PH artist</div>
                 <div class="auth-feature"><%= STAR_DOM.Web.WebUi.Ic("qr_code_2") %> Pay with GCash / GOtyme / QR Ph at every booth</div>
                 <div class="auth-feature"><%= STAR_DOM.Web.WebUi.Ic("draw") %> Request commission slots online</div>
             </div>

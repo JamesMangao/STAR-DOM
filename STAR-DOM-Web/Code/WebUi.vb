@@ -333,7 +333,21 @@ Namespace STAR_DOM.Web
             Dim sb As New StringBuilder()
             sb.Append("<div class=""pcard"">")
             sb.Append("<div style=""position:relative"">")
-            sb.Append(ProductImg(art, s.Seed, s.MerchantName, "height:170px"))
+            ' The banner is the brand logo, not placeholder initials. ProductImg falls
+            ' back to a gradient tile spelling out initials ("SA") whenever no file is
+            ' on record, which is what a merchant with no sample image used to get --
+            ' wrong for a card whose whole job is to say "this is STAR:DOM". The logo is
+            ' letterboxed rather than cropped because it is a wide wordmark: cover
+            ' would cut the ends off, so it is contained on a soft brand-tinted panel.
+            If String.IsNullOrWhiteSpace(art) Then
+                sb.Append("<div class=""art"" style=""height:170px;background:linear-gradient(135deg,#fff7d6,#ffe9a8);" &
+                          "background-image:none"">")
+                sb.Append("<img src=""/Assets/stardom-logo.webp"" alt=""STAR:DOM"" " &
+                          "style=""max-width:82%;max-height:118px;object-fit:contain"">")
+                sb.Append("</div>")
+            Else
+                sb.Append(ProductImg(art, s.Seed, s.MerchantName, "height:170px"))
+            End If
             sb.Append("<span class=""badge warn"" style=""position:absolute;top:8px;right:8px"">" & Esc(s.SlotsText) & "</span></div>")
             sb.Append("<div class=""pbody"">")
             ' No style tagline row: the artist name is the identity, the style line was

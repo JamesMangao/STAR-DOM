@@ -12,6 +12,7 @@ Namespace STAR_DOM.Web
 
         Protected Out As Literal
         Private ReadOnly _users As New UserRepository()
+        Private ReadOnly _commissions As New CommissionRepository()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireAdmin()
@@ -38,6 +39,24 @@ Namespace STAR_DOM.Web
                     End If
                     Response.Redirect("/App/Admin/Users.aspx", True)
                 End If
+                If Guard.IsPost() AndAlso Request.Form("slotUserId") IsNot Nothing Then
+                    Dim uid As Integer = 0
+                    Integer.TryParse(Request.Form("slotUserId"), uid)
+                    Dim cap As Integer = 0
+                    Integer.TryParse(Request.Form("slotCapacity"), cap)
+                    ' 0 is a real value: it takes an artist out of the commission hub
+                    ' entirely, which is how you pause intake without touching them.
+                    ' Negative is not a value, it is a typo - refuse it.
+                    If uid > 0 AndAlso cap >= 0 AndAlso cap <= 999 Then
+                        _users.SetCommissionSlotCapacity(uid, cap)
+                        Session("flash_msg") = "Commission slots updated."
+                        Session("flash_ok") = True
+                    Else
+                        Session("flash_msg") = "Enter a slot count between 0 and 999."
+                        Session("flash_ok") = False
+                    End If
+                    Response.Redirect("/App/Admin/Users.aspx", True)
+                End If
                 Render()
             Catch ex As Exception
                 Out.Text = WebUi.AlertBox("Could not load users: " & ex.Message)
@@ -52,8 +71,18 @@ Namespace STAR_DOM.Web
             ' the guards, so store-operator accounts are counted as staff.
             Dim nStaff As Integer = _users.CountByRole("ADMIN") + _users.CountByRole("MERCHANT")
             Dim all As List(Of User) = _users.ListUsers("").OrderBy(Function(u) u.Id).ToList()
+            ' How many of each artist's slots are already spoken for, so the console
+            ' shows "8 of 20 taken" rather than a bare capacity the admin cannot
+            ' reconcile against the pipeline.
+            Dim used As Dictionary(Of Integer, Integer) = _commissions.OpenSlotCounts()
+            Dim flash As String = Convert.ToString(Session("flash_msg"))
+            Dim flashOk As Boolean = Session("flash_ok") IsNot Nothing AndAlso CBool(Session("flash_ok"))
+            Session("flash_msg") = Nothing
+            Session("flash_ok") = Nothing
 
             Dim sb As New StringBuilder()
+            If flash <> "" Then sb.Append(WebUi.AlertBox(flash, If(flashOk, "ok", "err")))
+
             sb.Append(WebUi.Section("Admin Console", "SYSTEM ADMIN / USERS & ROLES",
                                     "Manage accounts, assign roles, and control marketplace access."))
 
@@ -64,7 +93,7 @@ Namespace STAR_DOM.Web
             sb.Append("</div>")
 
             sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
-            For Each h As String In {"ID", "NAME", "EMAIL", "USERNAME", "ROLE", "STATUS", "CHANGE ROLE", "ACTIONS"}
+            For Each h As String In {"ID", "NAME", "EMAIL", "USERNAME", "ROLE", "STATUS", "COMMISSION SLOTS", "CHANGE ROLE", "ACTIONS"}
                 sb.Append("<th>" & h & "</th>")
             Next
             sb.Append("</tr></thead><tbody>")
@@ -76,6 +105,23 @@ Namespace STAR_DOM.Web
                 sb.Append("<td>" & WebUi.Esc(u.Username) & "</td>")
                 sb.Append("<td><span class=""pill yellow"">" & WebUi.Esc(u.RoleName) & "</span></td>")
                 sb.Append("<td>" & If(u.Status = "ACTIVE", WebUi.Badge("ACTIVE"), WebUi.Badge("SUSPENDED")) & "</td>")
+                ' How many commission slots this artist takes, and how many are left.
+                ' Only staff accounts appear in the commission hub at all
+                ' (UserRepository.ListMerchants filters on capacity > 0), so 0 slots
+                ' is simply "not taking commissions right now".
+                Dim taken As Integer = 0
+                If used.ContainsKey(u.Id) Then taken = used(u.Id)
+                Dim left As Integer = Math.Max(0, u.CommissionSlotCapacity - taken)
+                Dim over As Boolean = taken > u.CommissionSlotCapacity
+                sb.Append("<td><form method=""post"" style=""display:flex;gap:6px;align-items:center"">" &
+                          STAR_DOM.Web.Csrf.HiddenField() &
+                          "<input type=""hidden"" name=""slotUserId"" value=""" & u.Id.ToString() & """>" &
+                          "<input name=""slotCapacity"" type=""number"" min=""0"" max=""999"" value=""" & u.CommissionSlotCapacity.ToString() & """ " &
+                          "aria-label=""Commission slot capacity for " & WebUi.Attr(u.FullName) & """ " &
+                          "style=""width:72px;padding:5px;border:1px solid var(--line);border-radius:7px"">" &
+                          "<button class=""btn ghost sm"" type=""submit""><span class=""ms sm"">save</span>Set</button></form>")
+                sb.Append("<span class=""sub"" style=""font-size:11px"">" & left.ToString() & " open · " & taken.ToString() & " taken" &
+                          If(over, " <span style=""color:#b91c1c;font-weight:700"">over capacity</span>", "") & "</span></td>")
                 ' The role form is nested inside the shell form, which the browser closes at this tag
                 ' — so the shell's token is not submitted with it. It carries its own.
                 sb.Append("<td><form method=""post"" style=""display:flex;gap:6px"">" &

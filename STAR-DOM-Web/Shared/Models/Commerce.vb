@@ -60,7 +60,7 @@ Namespace STAR_DOM.Models
         Public Property OrderNumber As String
         Public Property UserId As Integer
         Public Property EventId As Integer?
-        Public Property Status As String          ' PENDING / CONFIRMED / PROCESSING / SHIPPED / DELIVERED / CANCELLED
+        Public Property Status As String          ' PENDING / CONFIRMED / PROCESSING / SHIPPED / DELIVERED / RECEIVED / CANCELLED
         Public Property Subtotal As Decimal
         Public Property DiscountAmount As Decimal
         Public Property ShippingFee As Decimal
@@ -73,12 +73,6 @@ Namespace STAR_DOM.Models
         Public Property CreatedAt As Date
         Public Property UpdatedAt As Date
 
-        ' Fulfilment: DELIVERY (J&T) or PICKUP (claim at a stall, both sides confirm)
-        Public Property Fulfillment As String
-        Public Property PickupEventId As Integer?
-        Public Property PickupCustomerConfirmed As Boolean
-        Public Property PickupMerchantConfirmed As Boolean
-
         ' Delivery shipping is merchant-quoted, not computed. ShippingFeeConfirmed flips
         ' to True the moment the fee is entered, which is also the moment the order
         ' becomes CONFIRMED and TotalAmount becomes final.
@@ -86,10 +80,15 @@ Namespace STAR_DOM.Models
         Public Property ShippingFeeConfirmedBy As Integer?
         Public Property ShippingFeeConfirmedAt As Date?
 
+        ' When the customer confirmed the parcel arrived. Only ever set from
+        ' DELIVERED, so its presence is proof the buyer actually saw it land
+        ' rather than the store simply asserting it did.
+        Public Property ReceivedAt As Date?
+
         ''' <summary>True once the order has a final, customer-facing total.</summary>
         Public ReadOnly Property HasFinalTotal As Boolean
             Get
-                Return IsPickup OrElse ShippingFeeConfirmed
+                Return ShippingFeeConfirmed
             End Get
         End Property
 
@@ -97,14 +96,6 @@ Namespace STAR_DOM.Models
         Public Property CustomerName As String
         Public Property CustomerEmail As String
         Public Property ItemCount As Integer
-        Public Property PickupEventName As String
-        Public Property PickupHoursText As String
-
-        Public ReadOnly Property IsPickup As Boolean
-            Get
-                Return String.Equals(Fulfillment, "PICKUP", StringComparison.OrdinalIgnoreCase)
-            End Get
-        End Property
 
         ''' <summary>
         ''' Customer-facing courier sentence, J&amp;T only. Plain text: the page layer adds
@@ -130,15 +121,15 @@ Namespace STAR_DOM.Models
                         End If
                         Return "Order is being scheduled for booking with J&T Express."
                     Case "DELIVERED"
-                        Return "Order delivered successfully."
+                        Return "Order delivered — waiting for you to confirm you received it."
+                    Case "RECEIVED"
+                        Return "Order received. Enjoy your art!"
                     Case "CANCELLED"
                         Return "Order cancelled."
                     Case "PENDING"
-                        Return If(IsPickup, "Order placed — preparing for pick-up at the stall.",
-                                  "Order is currently scheduled for booking.")
+                        Return "Order is currently scheduled for booking."
                     Case Else
-                        Return If(IsPickup, "Being prepared for pick-up at the stall.",
-                                  "Order is currently scheduled for booking.")
+                        Return "Order is currently scheduled for booking."
                 End Select
             End Get
         End Property
@@ -156,7 +147,8 @@ Namespace STAR_DOM.Models
                 New String() {"CONFIRMED", "Order confirmed"},
                 New String() {"PROCESSING", "Preparing at the studio"},
                 New String() {"SHIPPED", "Handed to J&T Express"},
-                New String() {"DELIVERED", "Delivered"}
+                New String() {"DELIVERED", "Delivered"},
+                New String() {"RECEIVED", "Received by customer"}
             }
             Dim reached As Integer
             Select Case s
@@ -165,6 +157,7 @@ Namespace STAR_DOM.Models
                 Case "PROCESSING" : reached = 2
                 Case "SHIPPED" : reached = 3
                 Case "DELIVERED" : reached = 4
+                Case "RECEIVED" : reached = 5
                 Case Else : reached = 0
             End Select
             Dim result As New List(Of String())()

@@ -37,9 +37,9 @@ Namespace STAR_DOM.Web
                     Session("flash_ok") = r.Success
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
                 End If
-                ' Customer side of the pick-up claim: "I have the order in hand".
-                If Guard.IsPost() AndAlso Request.Form("pickupOrder") = o.Id.ToString() Then
-                    Dim r2 As ServiceResult = _orders.ConfirmPickup(o.Id, True)
+                ' Customer confirms the parcel landed.
+                If Guard.IsPost() AndAlso Request.Form("receivedOrder") = o.Id.ToString() Then
+                    Dim r2 As ServiceResult = _orders.MarkReceived(o.Id)
                     Session("flash_msg") = r2.Message
                     Session("flash_ok") = r2.Success
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
@@ -61,8 +61,8 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Function ResolveOrder() As Order
-            Dim idParam As String = Trim(CStr(Request.QueryString("id")))
-            If idParam = "" Then idParam = Trim(CStr(Request.Form("id")))
+            Dim idParam As String = Trim(Convert.ToString(Request.QueryString("id")))
+            If idParam = "" Then idParam = Trim(Convert.ToString(Request.Form("id")))
             If idParam.StartsWith("SD-", StringComparison.OrdinalIgnoreCase) Then
                 Return _orders.GetOrderByNumber(idParam)
             End If
@@ -101,18 +101,6 @@ Namespace STAR_DOM.Web
             End If
             sb.Append("</div>")
 
-            If o.IsPickup AndAlso o.PickupEventName <> "" Then
-                sb.Append("<div class=""card"" style=""background:var(--surface-low);margin-bottom:10px"">")
-                sb.Append("<span class=""ms sm"" style=""vertical-align:-3px;color:var(--primary)"">storefront</span> Claim at <b>" & WebUi.Esc(o.PickupEventName) & "</b>")
-                If o.PickupHoursText <> "" Then sb.Append(" <span class=""sub"">· open " & WebUi.Esc(o.PickupHoursText) & "</span>")
-                sb.Append("<div class=""sub"" style=""margin-top:6px"">Claim confirmations — Stall team: " &
-                          If(o.PickupMerchantConfirmed, "<span class=""badge live"">confirmed</span>", "<span class=""badge warn"">waiting</span>") &
-                          " &nbsp; You: " &
-                          If(o.PickupCustomerConfirmed, "<span class=""badge live"">confirmed</span>", "<span class=""badge warn"">waiting</span>") &
-                          "</div>")
-                sb.Append("</div>")
-            End If
-
             sb.Append("<ul class=""timeline"">")
             Dim steps As String()() = o.StatusTimeline
             For Each st As String() In steps
@@ -121,7 +109,7 @@ Namespace STAR_DOM.Web
                 sb.Append("<li class=""" & cls.Trim() & """><b>" & WebUi.Esc(st(0)) & "</b> — " & WebUi.Esc(st(1)) & "</li>")
             Next
             sb.Append("</ul>")
-            If o.Status = "SHIPPED" AndAlso Not o.IsPickup Then
+            If o.Status = "SHIPPED" Then
                 sb.Append("<div class=""card"" style=""background:var(--surface-low);margin-top:8px""><b>Courier:</b> handed to J&T Express on " &
                           WebUi.Esc(o.UpdatedAt.ToString("MMM d, yyyy")) & " · expected within 3–5 business days.</div>")
             End If
@@ -131,10 +119,9 @@ Namespace STAR_DOM.Web
             Dim isEWallet As Boolean = PaymentSetting.IsEWallet(method)
             Dim canPay As Boolean = (o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso
                                      o.Status <> "CANCELLED" AndAlso isEWallet)
-            Dim canConfirmPickup As Boolean = (isOwner AndAlso o.IsPickup AndAlso Not o.PickupCustomerConfirmed AndAlso
-                                               o.Status <> "CANCELLED" AndAlso o.Status <> "DELIVERED")
+            Dim canMarkReceived As Boolean = (isOwner AndAlso o.Status = "DELIVERED")
             Dim canCancel As Boolean = (o.Status = "PENDING")
-            If canPay OrElse canConfirmPickup OrElse canCancel Then
+            If canPay OrElse canMarkReceived OrElse canCancel Then
                 sb.Append("<div style=""margin-top:16px;display:flex;flex-direction:column;gap:12px"">")
                 If canPay Then
                     Dim brandName As String = WebUi.ChannelBrand(method)
@@ -174,12 +161,12 @@ Namespace STAR_DOM.Web
                     sb.Append("</form></div>")
                 End If
 
-                If canConfirmPickup Then
+                If canMarkReceived Then
                     sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:inline-flex"">")
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
-                    sb.Append("<input type=""hidden"" name=""pickupOrder"" value=""" & o.Id.ToString() & """>")
-                    sb.Append("<button class=""btn primary"" type=""submit"" data-confirm=""Confirm you have received this order at the stall?""><span class=""ic ms"">task_alt</span><span>Confirm order received</span></button>")
+                    sb.Append("<input type=""hidden"" name=""receivedOrder"" value=""" & o.Id.ToString() & """>")
+                    sb.Append("<button class=""btn primary"" type=""submit"" data-confirm=""Confirm this order has arrived?""><span class=""ic ms"">task_alt</span><span>Mark as received</span></button>")
                     sb.Append("</form>")
                 End If
 
@@ -194,24 +181,17 @@ Namespace STAR_DOM.Web
             ' details + items
             sb.Append("<div style=""flex:1.6;min-width:320px"">")
             sb.Append("<div class=""card mb""><div class=""kv"">")
-            If o.IsPickup Then
-                sb.Append("<dt>Claim at</dt><dd>" & WebUi.Esc(o.PickupEventName) &
-                          If(o.PickupHoursText <> "", " <span class=""sub"">· open " & WebUi.Esc(o.PickupHoursText) & "</span>", "") & "</dd>")
-            Else
-                sb.Append("<dt>Ship to</dt><dd>" & WebUi.Esc(o.ShippingAddress) & "</dd>")
-            End If
+            sb.Append("<dt>Ship to</dt><dd>" & WebUi.Esc(o.ShippingAddress) & "</dd>")
             sb.Append("<dt>Phone</dt><dd>" & WebUi.Esc(o.ContactPhone) & "</dd>")
             sb.Append("<dt>Payment</dt><dd>" & WebUi.Esc(DisplayPay(o.PaymentMethod)) & "</dd>")
             sb.Append("<dt>Pay status</dt><dd>" & WebUi.Badge(o.PaymentStatus) & "</dd>")
-            sb.Append("<dt>Delivery</dt><dd>" & If(o.IsPickup, "Pick-up at stall", "J&T Express delivery") & "</dd>")
+            sb.Append("<dt>Delivery</dt><dd>J&amp;T Express delivery</dd>")
             If o.DiscountAmount > 0D Then
                 sb.Append("<dt>Bundle savings</dt><dd style=""color:#15803d;font-weight:700"">−" & WebUi.Money(o.DiscountAmount) & "</dd>")
             End If
             ' Before the fee is quoted, say so rather than silently omitting the line: a total
             ' that excludes shipping must not look like the final amount.
-            If o.IsPickup Then
-                sb.Append("<dt>Shipping fee</dt><dd>None — collected at the stall</dd>")
-            ElseIf o.ShippingFeeConfirmed Then
+            If o.ShippingFeeConfirmed Then
                 If o.ShippingFee > 0D Then
                     sb.Append("<dt>Shipping fee</dt><dd>" & WebUi.Money(o.ShippingFee) & "</dd>")
                 Else
@@ -262,7 +242,12 @@ Namespace STAR_DOM.Web
             ' bottom actions with Back Button
             sb.Append("<div style=""margin-top:20px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"">")
             sb.Append("<a href=""/App/Orders.aspx"" class=""btn ghost"" style=""border-radius:10px;padding:8px 18px"">" & WebUi.Ic("arrow_back", "sm") & " Back to My Orders</a>")
-            sb.Append("<a href=""/App/Marketplace.aspx"" class=""btn ghost"" style=""border-radius:10px;padding:8px 18px"">" & WebUi.Ic("storefront", "sm") & " Continue Shopping</a>")
+            ' "Continue Shopping" is a shopper action. Staff opening this page are
+            ' managing the order, and the storefront is not somewhere they work, so
+            ' the button only appears for the buyer viewing their own order.
+            If isOwner AndAlso Not STAR_DOM.Helpers.Session.CanManageStore Then
+                sb.Append("<a href=""/App/Marketplace.aspx"" class=""btn ghost"" style=""border-radius:10px;padding:8px 18px"">" & WebUi.Ic("storefront", "sm") & " Continue Shopping</a>")
+            End If
             sb.Append("</div>")
             sb.Append("</div></div>")
 

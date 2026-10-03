@@ -9,15 +9,13 @@ Namespace STAR_DOM.Repositories
         Public Function CreateOrderRow(o As Order) As Integer
             Return Db.ExecIdentity(
                 "INSERT INTO Orders (OrderNumber, UserId, EventId, Status, Subtotal, DiscountAmount, ShippingFee, " &
-                "TotalAmount, PaymentMethod, PaymentStatus, ShippingAddress, ContactPhone, Notes, Fulfillment, PickupEventId, CreatedAt, UpdatedAt) " &
-                "VALUES (@num, @u, @e, @s, @sub, @d, @sf, @tot, @pm, 'PENDING', @addr, @ph, @notes, @ful, @pk, NOW(), NOW())",
+                "TotalAmount, PaymentMethod, PaymentStatus, ShippingAddress, ContactPhone, Notes, CreatedAt, UpdatedAt) " &
+                "VALUES (@num, @u, @e, @s, @sub, @d, @sf, @tot, @pm, 'PENDING', @addr, @ph, @notes, NOW(), NOW())",
                 Db.P("@num", o.OrderNumber), Db.P("@u", o.UserId),
                 Db.P("@e", If(o.EventId.HasValue, CObj(o.EventId.Value), DBNull.Value)),
                 Db.P("@s", o.Status), Db.P("@sub", o.Subtotal), Db.P("@d", o.DiscountAmount),
                 Db.P("@sf", o.ShippingFee), Db.P("@tot", o.TotalAmount), Db.P("@pm", o.PaymentMethod),
-                Db.P("@addr", o.ShippingAddress), Db.P("@ph", o.ContactPhone), Db.P("@notes", o.Notes),
-                Db.P("@ful", If(String.IsNullOrEmpty(o.Fulfillment), "DELIVERY", o.Fulfillment)),
-                Db.P("@pk", If(o.PickupEventId.HasValue, CObj(o.PickupEventId.Value), DBNull.Value)))
+                Db.P("@addr", o.ShippingAddress), Db.P("@ph", o.ContactPhone), Db.P("@notes", o.Notes))
         End Function
 
         Public Sub AddOrderItem(orderId As Integer, item As OrderItem)
@@ -31,12 +29,10 @@ Namespace STAR_DOM.Repositories
 
         Private Const OrderSelect As String =
             "SELECT o.*, u.FullName AS CustomerName, u.Email AS CustomerEmail, " &
-            "s.TrackingNumber AS TrackingNumber, pe.Name AS PickupEventName, " &
-            "(pe.OpenTime || ' - ' || pe.CloseTime) AS PickupHoursText, " &
+            "s.TrackingNumber AS TrackingNumber, " &
             "(SELECT COALESCE(SUM(oi.Quantity),0) FROM OrderItems oi WHERE oi.OrderId = o.Id) AS ItemCount " &
             "FROM Orders o LEFT JOIN Users u ON u.Id = o.UserId " &
-            "LEFT JOIN Shipping s ON s.OrderId = o.Id " &
-            "LEFT JOIN PopUpEvents pe ON pe.Id = o.PickupEventId "
+            "LEFT JOIN Shipping s ON s.OrderId = o.Id "
 
         Public Function GetById(id As Integer) As Order
             Dim rows As List(Of DataRow) = Db.Rows(OrderSelect & "WHERE o.Id = @id", Db.P("@id", id))
@@ -136,6 +132,17 @@ Namespace STAR_DOM.Repositories
         End Sub
 
         ''' <summary>
+        ''' Customer-side confirmation that the parcel arrived. This is the only
+        ''' writer of ReceivedAt, and it stamps the same NOW() it stores, so the
+        ''' date on the row is the moment the customer clicked rather than a
+        ''' separately-entered value that could disagree with it.
+        ''' </summary>
+        Public Sub MarkReceived(orderId As Integer)
+            Db.Exec("UPDATE Orders SET Status = 'RECEIVED', ReceivedAt = NOW(), UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@id", orderId))
+        End Sub
+
+        ''' <summary>
         ''' Confirm a delivery order in the same statement that records the courier fee
         ''' it was confirmed against, so the two can never disagree: there is no window
         ''' in which Status = CONFIRMED but no fee was quoted.
@@ -173,20 +180,6 @@ Namespace STAR_DOM.Repositories
         Public Sub UpdatePaymentStatus(orderId As Integer, paymentStatus As String)
             Db.Exec("UPDATE Orders SET PaymentStatus = @s, UpdatedAt = NOW() WHERE Id = @id",
                     Db.P("@s", paymentStatus), Db.P("@id", orderId))
-        End Sub
-
-        ''' <summary>
-        ''' Record one side of the pick-up claim. A pick-up order only completes when
-        ''' BOTH flags are set — the service layer turns the pair into DELIVERED.
-        ''' </summary>
-        Public Sub SetPickupConfirm(orderId As Integer, customerSide As Boolean, confirmed As Boolean)
-            If customerSide Then
-                Db.Exec("UPDATE Orders SET PickupCustomerConfirmed = @c, UpdatedAt = NOW() WHERE Id = @id",
-                        Db.P("@c", confirmed), Db.P("@id", orderId))
-            Else
-                Db.Exec("UPDATE Orders SET PickupMerchantConfirmed = @c, UpdatedAt = NOW() WHERE Id = @id",
-                        Db.P("@c", confirmed), Db.P("@id", orderId))
-            End If
         End Sub
 
         ' ----- Payments ---------------------------------------------------------
@@ -364,16 +357,11 @@ Namespace STAR_DOM.Repositories
                 .CreatedAt = RowReader.AsDate(r, "CreatedAt"), .UpdatedAt = RowReader.AsDate(r, "UpdatedAt"),
                 .CustomerName = RowReader.AsStr(r, "CustomerName"), .CustomerEmail = RowReader.AsStr(r, "CustomerEmail"),
                 .ItemCount = RowReader.AsInt(r, "ItemCount"),
-                .Fulfillment = RowReader.AsStr(r, "Fulfillment", "DELIVERY"),
-                .PickupEventId = RowReader.AsNullableInt(r, "PickupEventId"),
-                .PickupCustomerConfirmed = RowReader.AsBool(r, "PickupCustomerConfirmed"),
-                .PickupMerchantConfirmed = RowReader.AsBool(r, "PickupMerchantConfirmed"),
                 .ShippingFeeConfirmed = RowReader.AsBool(r, "ShippingFeeConfirmed"),
                 .ShippingFeeConfirmedBy = RowReader.AsNullableInt(r, "ShippingFeeConfirmedBy"),
                 .ShippingFeeConfirmedAt = RowReader.AsNullableDate(r, "ShippingFeeConfirmedAt"),
-                .TrackingNumber = RowReader.AsStr(r, "TrackingNumber"),
-                .PickupEventName = RowReader.AsStr(r, "PickupEventName"),
-                .PickupHoursText = RowReader.AsStr(r, "PickupHoursText")
+                .ReceivedAt = RowReader.AsNullableDate(r, "ReceivedAt"),
+                .TrackingNumber = RowReader.AsStr(r, "TrackingNumber")
             }
         End Function
 

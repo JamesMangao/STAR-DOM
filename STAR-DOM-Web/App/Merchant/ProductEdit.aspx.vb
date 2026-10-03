@@ -46,8 +46,8 @@ Namespace STAR_DOM.Web
                 p.MerchantId = STAR_DOM.Helpers.Session.CurrentUser.Id
             End If
 
-            p.Name = Trim(CStr(Request.Form("name")))
-            p.Sku = Trim(CStr(Request.Form("sku"))).ToUpperInvariant()
+            p.Name = Trim(Convert.ToString(Request.Form("name")))
+            p.Sku = Trim(Convert.ToString(Request.Form("sku"))).ToUpperInvariant()
             p.BrandName = Convert.ToString(Request.Form("brand"))
             p.MaterialDetails = Convert.ToString(Request.Form("material"))
             p.BadgeLabel = Convert.ToString(Request.Form("badge"))

@@ -37,42 +37,25 @@ Namespace STAR_DOM.Services
         ''' </summary>
         Public Function Checkout(paymentMethod As String, shippingAddress As String, contactPhone As String,
                                  Optional notes As String = "", Optional eventId As Integer? = Nothing,
-                                 Optional orderStatus As String = "PENDING",
-                                 Optional fulfillment As String = "DELIVERY",
-                                 Optional pickupEventId As Integer? = Nothing) As ServiceResult
+                                 Optional orderStatus As String = "PENDING") As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
 
             Dim items As List(Of CartItem) = _cart.ListItems()
             If items.Count = 0 Then Return ServiceResult.Fail("Your cart is empty.")
 
-            ' Orders are online-only: delivered via J&T Express, or claimed in person at
-            ' a pop-up stall that is open now (or about to open). Card is not offered —
-            ' the accepted e-payments are GCash and GOtyme.
-            Dim isPickup As Boolean = String.Equals(fulfillment, "PICKUP", StringComparison.OrdinalIgnoreCase)
+            ' Orders are online-only: delivered nationwide via J&T Express. Card is not
+            ' offered — the accepted e-payments are GCash and GOtyme.
             Dim method As String = paymentMethod.Trim().ToUpperInvariant()
             If method = PaymentSettingRepository.LegacyMaya Then method = PaymentSettingRepository.Gotyme
             If method <> "GCASH" AndAlso method <> "GOTYME" AndAlso method <> "COD" Then
                 Return ServiceResult.Fail("Please choose GCash, GOtyme, or Cash on Delivery.")
             End If
 
-            Dim pickupEvent As PopUpEvent = Nothing
-            If isPickup Then
-                If Not pickupEventId.HasValue Then
-                    Return ServiceResult.Fail("Please choose a pop-up stall for pick-up.")
-                End If
-                pickupEvent = New EventRepository().GetEvent(pickupEventId.Value)
-                If pickupEvent Is Nothing OrElse
-                   (pickupEvent.Status <> "NOW OPEN" AndAlso pickupEvent.Status <> "UPCOMING") Then
-                    Return ServiceResult.Fail("That stall is not open for pick-up — please choose an active or upcoming stall.")
-                End If
-            End If
 
-            ' Address of record: the stall itself for pick-ups (receipts + merchant view).
-            Dim addressOnFile As String =
-                If(isPickup, Trim(pickupEvent.Name & " · " & pickupEvent.LocationName), shippingAddress)
+            Dim addressOnFile As String = shippingAddress
 
             Dim errors As New List(Of String)()
-            If Not isPickup Then errors.Add(Validators.Required(shippingAddress, "Shipping address"))
+            errors.Add(Validators.Required(shippingAddress, "Shipping address"))
             errors.Add(Validators.Phone(contactPhone))
             Dim clean As String() = errors.Where(Function(e) e IsNot Nothing).ToArray()
             If clean.Length > 0 Then
@@ -97,7 +80,7 @@ Namespace STAR_DOM.Services
             ' order is created with ShippingFee 0, ShippingFeeConfirmed FALSE, and a total
             ' that is still subtotal minus bundle savings. The merchant quotes the real J&T
             ' fee when confirming the order (ConfirmWithShippingFee), which is what makes
-            ' the total final. Pick-up never carries a fee, so its total is final at once.
+            ' the total final.
             Dim shippingFee As Decimal = 0D
             Dim total As Decimal = Math.Max(subtotal - bundleDiscount, 0D)
             Dim orderNumber As String = ""
@@ -116,16 +99,14 @@ Namespace STAR_DOM.Services
                     ' SD-yyyyMMdd-nnnn number (16 chars) replaces it right after.
                     Dim oid As Integer = Db.ExecIdentity(
                         "INSERT INTO Orders (OrderNumber, UserId, EventId, Status, Subtotal, DiscountAmount, ShippingFee, " &
-                        "TotalAmount, PaymentMethod, PaymentStatus, ShippingAddress, ContactPhone, Notes, Fulfillment, PickupEventId, CreatedAt, UpdatedAt) " &
-                        "VALUES (@num, @u, @e, @st, @sub, @d, @sf, @tot, @pm, 'PENDING', @addr, @ph, @n, @ful, @pk, NOW(), NOW())",
+                        "TotalAmount, PaymentMethod, PaymentStatus, ShippingAddress, ContactPhone, Notes, CreatedAt, UpdatedAt) " &
+                        "VALUES (@num, @u, @e, @st, @sub, @d, @sf, @tot, @pm, 'PENDING', @addr, @ph, @n, NOW(), NOW())",
                         Db.P("@num", "SD-TMP-" & Guid.NewGuid().ToString("N").Substring(0, 20)),
                         Db.P("@u", Session.CurrentUser.Id),
                         Db.P("@e", If(eventId.HasValue, CObj(eventId.Value), DBNull.Value)), Db.P("@st", orderStatus),
                         Db.P("@sub", subtotal), Db.P("@d", bundleDiscount), Db.P("@sf", shippingFee), Db.P("@tot", total),
                         Db.P("@pm", method), Db.P("@addr", addressOnFile),
-                        Db.P("@ph", contactPhone), Db.P("@n", notes),
-                        Db.P("@ful", If(isPickup, "PICKUP", "DELIVERY")),
-                        Db.P("@pk", If(isPickup AndAlso pickupEventId.HasValue, CObj(pickupEventId.Value), DBNull.Value)))
+                        Db.P("@ph", contactPhone), Db.P("@n", notes))
                     orderNumber = "SD-" & Date.Now.ToString("yyyyMMdd") & "-" & oid.ToString("D4")
                     Db.Exec("UPDATE Orders SET OrderNumber = @num WHERE Id = @id",
                             Db.P("@num", orderNumber), Db.P("@id", oid))
@@ -155,14 +136,10 @@ Namespace STAR_DOM.Services
                         "VALUES (@o, @m, @a, @r, @s, NOW())",
                         Db.P("@o", oid), Db.P("@m", paymentMethod), Db.P("@a", total),
                         Db.P("@r", ""), Db.P("@s", "PENDING"))
-                    ' A pick-up order has no parcel and no Shipping row — the claim is
-                    ' tracked by the two-side confirm flags on the order itself.
-                    If Not isPickup Then
-                        Db.Exec(
-                            "INSERT INTO Shipping (OrderId, Courier, TrackingNumber, Status, Address) VALUES (@o, @c, @t, @s, @a)",
-                            Db.P("@o", oid), Db.P("@c", "J&T Express"), Db.P("@t", ""), Db.P("@s", "PENDING"),
-                            Db.P("@a", addressOnFile))
-                    End If
+                    Db.Exec(
+                        "INSERT INTO Shipping (OrderId, Courier, TrackingNumber, Status, Address) VALUES (@o, @c, @t, @s, @a)",
+                        Db.P("@o", oid), Db.P("@c", "J&T Express"), Db.P("@t", ""), Db.P("@s", "PENDING"),
+                        Db.P("@a", addressOnFile))
 
                     ' Clear cart (PostgreSQL: no "DELETE alias FROM ... JOIN")
                     Db.Exec("DELETE FROM CartItems WHERE CartId IN (SELECT Id FROM Cart WHERE UserId = @u)",
@@ -190,13 +167,11 @@ Namespace STAR_DOM.Services
             Dim notif As New NotificationService()
             notif.Notify(Session.CurrentUser.Id, "Order placed – " & orderNumber,
                          "Your order of " & Fmt.PHP(total) & " via " & method & " has been received. " &
-                         If(isPickup,
-                             "We'll prepare it for pick-up at " & pickupEvent.Name & ".",
-                             "We'll confirm the J&T shipping fee and send you the final total before it ships. Track it in My Orders."),
+                         "We'll confirm the J&T shipping fee and send you the final total before it ships. Track it in My Orders.",
                          "ORDER", "my-orders")
             notif.NotifyRole("ADMIN", "New order – " & orderNumber,
                              Fmt.PHP(total) & " – " & items.Count.ToString() & " item(s) ready for processing" &
-                             If(isPickup, ".", ". Quote the J&T shipping fee to confirm it."),
+                             ". Quote the J&T shipping fee to confirm it.",
                              "ORDER", "merchant-orders")
 
             Return ServiceResult.Ok("Order " & orderNumber & " placed!", orderNumber)
@@ -206,7 +181,7 @@ Namespace STAR_DOM.Services
         ''' Payment confirmation is password-gated for whoever records it — the buyer
         ''' confirming their own e-wallet payment, or a merchant/admin recording one.
         ''' GCash/GOtyme (the only accepted e-payments) must carry the reference number
-        ''' from the e-wallet receipt; COD / pay-on-pick-up need only the password.
+        ''' from the e-wallet receipt; COD needs only the password.
         ''' </summary>
         Public Function ConfirmPayment(orderNumber As String, reference As String, password As String) As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
@@ -265,51 +240,30 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
-        ''' Pick-up orders are only closed when BOTH sides confirm the claim: the
-        ''' customer taps "order received" and the merchant/stall team taps "handed
-        ''' over". When the second confirmation lands, the order becomes DELIVERED
-        ''' (and PAID, for pay-on-claim methods) with an official receipt.
+        ''' Customer confirms the parcel actually arrived. Deliberately gated on
+        ''' DELIVERED: the store marks an order delivered when it hands it to the
+        ''' courier, and until that has happened the buyer has nothing to confirm.
+        ''' Setting RECEIVED also stamps ReceivedAt, so the row records that the
+        ''' customer saw it land rather than the store merely asserting it did.
         ''' </summary>
-        Public Function ConfirmPickup(orderId As Integer, customerSide As Boolean) As ServiceResult
+        Public Function MarkReceived(orderId As Integer) As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
             Dim order As Order = _orders.GetById(orderId)
             If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
-            If Not order.IsPickup Then Return ServiceResult.Fail("This order is not a pick-up order.")
-            If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
-
-            If customerSide Then
-                If order.UserId <> Session.CurrentUser.Id Then Return ServiceResult.Fail("You don't have access to this order.")
-                If order.PickupCustomerConfirmed Then Return ServiceResult.Ok("You already confirmed this pick-up.")
-                _orders.SetPickupConfirm(orderId, True, True)
-            Else
-                If Not Session.CanManageStore Then Return ServiceResult.Fail("Only the store team can do this.")
-                If order.PickupMerchantConfirmed Then Return ServiceResult.Ok("Hand-over already confirmed.")
-                _orders.SetPickupConfirm(orderId, False, True)
+            If order.UserId <> Session.CurrentUser.Id Then
+                Return ServiceResult.Fail("You don't have access to this order.")
+            End If
+            If order.Status = "RECEIVED" Then Return ServiceResult.Ok("You already confirmed this order.")
+            If order.Status <> "DELIVERED" Then
+                Return ServiceResult.Fail("You can mark this received once it shows as delivered.")
             End If
 
-            Dim fresh As Order = _orders.GetById(orderId)
+            _orders.MarkReceived(orderId)
             Dim notif As New NotificationService()
-            If fresh.PickupCustomerConfirmed AndAlso fresh.PickupMerchantConfirmed Then
-                _orders.UpdateStatus(orderId, "DELIVERED")
-                Dim wasPaid As Boolean = fresh.PaymentStatus = "PAID"
-                _orders.UpdatePaymentStatus(orderId, "PAID")
-                If Not wasPaid Then IssueReceiptFor(fresh)
-                notif.Notify(fresh.UserId, "Pick-up complete – " & fresh.OrderNumber,
-                             "Both sides confirmed the claim — order delivered successfully. Enjoy your art!",
-                             "ORDER", "my-orders")
-                Return ServiceResult.Ok("Pick-up confirmed by both sides — order delivered!")
-            End If
-
-            If customerSide Then
-                notif.NotifyRole("ADMIN", "Customer confirmed pick-up – " & fresh.OrderNumber,
-                                 "The customer has the order. Waiting for the stall team to confirm hand-over.",
-                                 "ORDER", "merchant-orders")
-                Return ServiceResult.Ok("Thanks! Waiting for the stall team to confirm hand-over.")
-            End If
-            notif.Notify(fresh.UserId, "Your order is ready for claim – " & fresh.OrderNumber,
-                         "The stall confirmed the hand-over. Tap 'Confirm order received' in My Orders once you have it.",
-                         "ORDER", "my-orders")
-            Return ServiceResult.Ok("Hand-over confirmed — waiting for the customer to confirm.")
+            notif.NotifyRole("ADMIN", "Order received – " & order.OrderNumber,
+                             "The customer confirmed this order arrived.",
+                             "ORDER", "merchant-orders")
+            Return ServiceResult.Ok("Thanks for confirming! Enjoy your art.")
         End Function
 
         Public Function ListMyOrders(Optional page As Integer = 1, Optional pageSize As Integer = 0) As List(Of Order)
@@ -353,13 +307,13 @@ Namespace STAR_DOM.Services
             If Not Session.CanManageStore Then Return ServiceResult.Fail("Only the store team can do this.")
             Dim order As Order = _orders.GetById(orderId)
             If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
-            If order.IsPickup Then Return ServiceResult.Fail("Pick-up orders carry no shipping fee and are confirmed as usual.")
             If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
             ' PROCESSING is refused alongside SHIPPED/DELIVERED on purpose. Confirming
             ' writes Status = CONFIRMED, so letting an in-flight order back in would
             ' drag it a step backwards in the pipeline. Re-quoting a CONFIRMED order is
             ' still allowed — that is how a mis-typed fee gets corrected.
-            If order.Status = "PROCESSING" OrElse order.Status = "SHIPPED" OrElse order.Status = "DELIVERED" Then
+            If order.Status = "PROCESSING" OrElse order.Status = "SHIPPED" OrElse
+               order.Status = "DELIVERED" OrElse order.Status = "RECEIVED" Then
                 Return ServiceResult.Fail("This order is already on its way — the shipping fee can no longer be changed.")
             End If
 
@@ -417,17 +371,11 @@ Namespace STAR_DOM.Services
             Dim order As Order = _orders.GetById(orderId)
             If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
 
-            ' Pick-up orders never ride a courier: they close when both sides confirm
-            ' the claim (ConfirmPickup), not through the ship/deliver path.
-            If order.IsPickup AndAlso (newStatus = "SHIPPED" OrElse newStatus = "DELIVERED") Then
-                Return ServiceResult.Fail("Pick-up orders are completed by the two-sided claim confirmation, not by shipping.")
-            End If
-
             ' A delivery order cannot be confirmed on a bare status change: the courier
             ' fee is what the customer is quoted, so it has to be entered through
             ' ConfirmWithShippingFee. A zero fee is still a decision worth recording, so
             ' this gate is on ShippingFeeConfirmed rather than on the fee being non-zero.
-            If newStatus = "CONFIRMED" AndAlso Not order.IsPickup AndAlso Not order.ShippingFeeConfirmed Then
+            If newStatus = "CONFIRMED" AndAlso Not order.ShippingFeeConfirmed Then
                 Return ServiceResult.Fail("Enter the J&T shipping fee to confirm this order — the customer is quoted the final total at that point.")
             End If
 

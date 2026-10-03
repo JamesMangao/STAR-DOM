@@ -33,7 +33,7 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Sub Serve()
-            Dim channel As String = Convert.ToString(Request.QueryString("ch")).Trim().ToUpperInvariant()
+            Dim channel As String = Trim(Convert.ToString(Request.QueryString("ch"))).ToUpperInvariant()
             If channel = "MAYA" Then channel = "GOTYME"
 
             Dim ps As PaymentSetting = New PaymentSettingRepository().GetByChannel(channel)

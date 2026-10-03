@@ -32,7 +32,7 @@
                     <span class="brand-sub">ARTISAN &amp; POP-UP HUB</span>
                 </span>
             </a>
-            <div class="searchbox">
+            <div class="searchbox" id="topSearchBox" runat="server">
                 <input type="text" id="topSearchInput" name="q" placeholder="Search products, artists, pop-up venues..." onkeydown="if(event.key==='Enter'||event.keyCode===13){event.preventDefault();var val=this.value.trim();if(val){window.location.href='/App/Catalog.aspx?q='+encodeURIComponent(val);}}" />
                 <button type="button" aria-label="Search" onclick="var inp=document.getElementById('topSearchInput');var val=inp?inp.value.trim():'';if(val){window.location.href='/App/Catalog.aspx?q='+encodeURIComponent(val);}"><span class="ms sm">search</span></button>
             </div>

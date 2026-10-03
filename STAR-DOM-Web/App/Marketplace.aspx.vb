@@ -38,21 +38,20 @@ Namespace STAR_DOM.Web
             sb.Append("<h1 style=""font-size:38px;line-height:1.12;margin:12px 0 10px;letter-spacing:-1px"">Turn Your Ideas Into " &
                       "<span class=""grad-text"">Living Art.</span></h1>")
             sb.Append("<p class=""sub"" style=""font-size:16px;max-width:560px"">Shop artisan prints, handcrafted stickers, " &
-                      "limited merch, and custom commissions online or in-person at our physical pop-up tours.</p>")
+                      "limited merch, and custom commissions shipped nationwide.</p>")
             sb.Append("<div class=""frow"">")
             sb.Append(WebUi.BtnHref("/App/Catalog.aspx", "Explore Marketplace Catalog"))
-            sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx", "Visit Current Pop-up Booth", "secondary", "storefront"))
+            sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx", "See Us Popping Up", "secondary", "storefront"))
             sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request Custom Commission", "ghost", "draw"))
             sb.Append("</div>")
             Dim rep As New ReportService()
-            Dim totalCreators As Integer = Math.Max(1, rep.TotalCreators())
             Dim totalSalesVol As Decimal = rep.EventRevenueTotal() + rep.RevenueTotal()
             Dim formattedVol As String = If(totalSalesVol >= 1000D, "₱" & (totalSalesVol / 1000D).ToString("0.#") & "K+", "₱" & totalSalesVol.ToString("N0"))
 
             sb.Append("<div class=""grid kpis"" style=""grid-template-columns:repeat(3,minmax(130px,1fr));max-width:600px;margin:20px 0 0"">")
-            sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:#ffe0de"">" & WebUi.Ic("groups") & "</span><div class=""k-value"" style=""font-size:26px"">" & totalCreators.ToString() & "+</div><div class=""k-label"">Active Indie Creators</div></div>")
+            sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:#ffe0de"">" & WebUi.Ic("lightbulb") & "</span><div class=""k-value"" style=""font-size:15px;line-height:1.2;letter-spacing:-.01em"">UNLIMITED</div><div class=""k-label"">Ideas for commission</div></div>")
             sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:var(--yellow-soft);color:var(--on-yellow)"">" & WebUi.Ic("paid") & "</span><div class=""k-value"" style=""font-size:26px"">" & formattedVol & "</div><div class=""k-label"">Bazaar Sales Volume</div></div>")
-            sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:var(--tertiary-fixed);color:var(--tertiary)"">" & WebUi.Ic("verified") & "</span><div class=""k-value"" style=""font-size:26px"">100%</div><div class=""k-label"">Verified PH Guild</div></div>")
+            sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:var(--tertiary-fixed);color:var(--tertiary)"">" & WebUi.Ic("verified") & "</span><div class=""k-value"" style=""font-size:19px;line-height:1.2"">100%</div><div class=""k-label"">Human-made art</div></div>")
             sb.Append("</div></div>")
 
             ' hero collage — first few featured products
@@ -149,7 +148,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""card"" style=""background:var(--yellow);border-color:#eec200;display:flex;flex-direction:column;justify-content:center;gap:4px"">" &
                       "<span class=""k-label"" style=""font-size:9px;letter-spacing:.12em;font-weight:800"">BAZAAR EXCLUSIVE</span>" &
                       "<span style=""font-weight:800;font-size:20px"">" & WebUi.Money(b.BasePrice) & "</span>" &
-                      "<span style=""font-size:12px"">On-site pickup at booth</span></div>")
+                      "<span style=""font-size:12px"">Nationwide J&T delivery</span></div>")
             sb.Append("</div>")
             Return sb.ToString()
         End Function

@@ -676,6 +676,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .steps { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0; }
 .step { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 7px 12px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
 .step.on { background: var(--yellow); border-color: var(--line-yellow); color: #231b00; }
+/* A finished step. Muted rather than green so it recedes and the current chip
+   stays the only thing competing for the eye. */
+.step.done { color: var(--green); border-color: rgba(22, 163, 74, .35); background: rgba(22, 163, 74, .06); }
+.step-ic { font-size: 10px; vertical-align: 1px; opacity: .85; }
 
 /* =====================================================================
    Merchant console & public store-locations (DESIGN.md)

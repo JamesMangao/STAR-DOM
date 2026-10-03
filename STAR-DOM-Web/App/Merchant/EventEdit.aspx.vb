@@ -63,7 +63,7 @@ Namespace STAR_DOM.Web
                 ev = New PopUpEvent()
             End If
 
-            ev.Name = Trim(CStr(Request.Form("name")))
+            ev.Name = Trim(Convert.ToString(Request.Form("name")))
             ev.VenueDetail = Convert.ToString(Request.Form("venue"))
             ev.BoothNumber = Convert.ToString(Request.Form("booth"))
             ev.OpenTime = Convert.ToString(Request.Form("open"))

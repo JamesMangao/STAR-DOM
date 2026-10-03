@@ -61,8 +61,8 @@ Namespace STAR_DOM.Web
                       "Original art, crafted by hand and " &
                       "<span class=""grad-text"">delivered to your door.</span></h1>")
             sb.Append("<p class=""sub"" style=""font-size:16px;max-width:560px"">Stickers, prints, pins and limited merch " &
-                      "from one solo artist. Order online for nationwide J&amp;T Express delivery, or claim in person at an " &
-                      "active pop-up booth.</p>")
+                      "from one solo artist. Order online for nationwide J&amp;T Express delivery, " &
+                      "nationwide.</p>")
             sb.Append("<div class=""frow"">")
             sb.Append(WebUi.BtnHref("/App/Catalog.aspx", "Explore the Catalog"))
             sb.Append(WebUi.BtnHref("/Register.aspx", "Create Free Account", "secondary", "person_add"))
@@ -95,7 +95,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""card"" style=""background:var(--yellow);border-color:#eec200;display:flex;flex-direction:column;justify-content:center;gap:4px"">" &
                       "<span class=""k-label"" style=""font-size:9px;letter-spacing:.12em;font-weight:800"">POP-UP EXCLUSIVE</span>" &
                       "<span style=""font-weight:800;font-size:20px"">" & WebUi.Money(b.BasePrice) & "</span>" &
-                      "<span style=""font-size:12px"">On-site claim at the booth</span></div>")
+                      "<span style=""font-size:12px"">Nationwide J&amp;T delivery</span></div>")
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -113,7 +113,7 @@ Namespace STAR_DOM.Web
             sb.Append(Kpi("inventory_2", productCount.ToString(), "Handcrafted SKUs", "var(--yellow-soft)", "var(--on-yellow)"))
             sb.Append(Kpi("palette", categoryCount.ToString(), "Art Categories", "#ffe0de", "var(--primary)"))
             sb.Append(Kpi("paid", vol, "Bazaar Sales Volume", "var(--tertiary-fixed)", "var(--tertiary)"))
-            sb.Append(Kpi("local_shipping", "2 ways", "Delivery or Booth Claim", "#e5f6e7", "var(--green)"))
+            sb.Append(Kpi("local_shipping", "1 way", "Nationwide J&T delivery", "#e5f6e7", "var(--green)"))
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -135,10 +135,10 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""grid"" style=""grid-template-columns:repeat(auto-fit,minmax(240px,1fr))"">")
             sb.Append(StepCard("1", "search", "Browse the catalog",
                                "Stickers, prints, pins and limited merch, every piece made by the artist. Look around with no sign-up."))
-            sb.Append(StepCard("2", "local_shipping", "Choose delivery or booth claim",
-                               "Nationwide J&amp;T Express for ₱80 &mdash; free over ₱1,500 &mdash; or claim at an active pop-up booth with no shipping fee."))
+            sb.Append(StepCard("2", "local_shipping", "Enter your delivery address",
+                               "Nationwide J&amp;T Express for ₱80 &mdash; free over ₱1,500. Every order ships to your door."))
             sb.Append(StepCard("3", "account_balance_wallet", "Pay your way",
-                               "GCash, GOtyme, or Cash on Delivery / Claim. Sign in once and your cart carries straight through to checkout."))
+                               "GCash, GOtyme, or Cash on Delivery. Sign in once and your cart carries straight through to checkout."))
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -243,7 +243,7 @@ Namespace STAR_DOM.Web
             Dim sb As New StringBuilder()
             sb.Append("<div class=""sec-head"" style=""margin-top:30px"">")
             sb.Append("<div><div class=""eyebrow"">FIND US IN PERSON</div><h2>Pop-up Booth Today</h2></div>")
-            sb.Append("<div class=""sub"">Walk-ups welcome &mdash; claim online orders on the spot</div>")
+            sb.Append("<div class=""sub"">Walk-ups welcome &mdash; come see the work in person</div>")
             sb.Append("</div>")
             sb.Append("<div class=""card"" style=""display:flex;align-items:center;gap:18px;flex-wrap:wrap;border-color:#eec200"">")
             sb.Append("<span class=""pulse""></span>")
@@ -286,8 +286,8 @@ Namespace STAR_DOM.Web
                                 "Pay from your e-wallet and record the reference number &mdash; no card details stored."))
             sb.Append(TrustCard("local_shipping", "J&amp;T Express",
                                 "Flat ₱80 nationwide shipping, free over ₱1,500. Track every parcel from My Orders."))
-            sb.Append(TrustCard("payments", "Cash on Delivery / Claim",
-                                "Pay the courier on arrival, or settle in person when you claim at a pop-up booth."))
+            sb.Append(TrustCard("payments", "Cash on Delivery",
+                                "Pay the courier on arrival. No card details are ever stored."))
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -303,11 +303,17 @@ Namespace STAR_DOM.Web
             Dim sb As New StringBuilder()
             sb.Append("<div class=""card"" style=""margin:30px 0 6px;background:var(--yellow);border-color:#eec200;" &
                       "display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap"">")
-            sb.Append("<div><div class=""eyebrow"" style=""color:var(--on-yellow)"">READY WHEN YOU ARE</div>")
-            sb.Append("<b style=""font-family:var(--font-display);font-size:21px"">Create a free account to start your cart</b>")
+            ' The copy sits in its own block, not directly in the flex row: .eyebrow is
+            ' display:inline-block, which used to put it and the headline on one line
+            ' ("READY WHEN YOU ARECreate a free account..."). flex:1 lets the text take
+            ' the space it needs and the buttons keep their own width when it wraps.
+            sb.Append("<div style=""flex:1;min-width:300px"">")
+            sb.Append("<div class=""eyebrow"" style=""display:block;color:var(--on-yellow)"">READY WHEN YOU ARE</div>")
+            sb.Append("<b style=""display:block;font-family:var(--font-display);font-size:21px;margin-bottom:4px"">Create a free account to start your cart</b>")
             sb.Append("<div class=""sub"" style=""max-width:520px"">Browsing is open to everyone. An account lets you check out, " &
-                      "track orders, save a wishlist and request commissions.</div></div>")
-            sb.Append("<div class=""frow"" style=""margin:0"">")
+                      "track orders, save a wishlist and request commissions.</div>")
+            sb.Append("</div>")
+            sb.Append("<div class=""frow"" style=""margin:0;flex-shrink:0"">")
             sb.Append(WebUi.BtnHref("/Register.aspx", "Create Free Account", "primary", "person_add"))
             sb.Append(WebUi.BtnHref("/Login.aspx", "Sign In", "ghost"))
             sb.Append("</div></div>")

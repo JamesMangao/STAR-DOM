@@ -161,7 +161,7 @@ Namespace STAR_DOM.Web
             sb.Append("<h3 style=""font-size:15px;font-weight:700""><span class=""ph-ic"" style=""width:28px;height:28px;font-size:14px;background:var(--surface-mid);color:var(--primary)"">" & WebUi.Ic("info", "sm") & "</span> Pop-up Guidelines</h3>")
             sb.Append("<p class=""sub"" style=""margin:0;font-size:12.5px"">Everything you need to know before visiting our on-site creator pavilions.</p>")
             sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("smartphone") & "</span><div><b>Cashless Preferred</b><span>All stalls accept GCash, GOtyme, and major Philippine bank QR Ph codes.</span></div></div>")
-            sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("package_2") & "</span><div><b>Stall Pick-ups</b><span>Online orders with pick-up fulfillment can be claimed at the booth — both you and the stall team confirm the hand-over.</span></div></div>")
+            sb.Append("<div class=""guideline""><span class=""gi"">" & WebUi.Ic("package_2") & "</span><div><b>Tracked Delivery</b><span>Every order ships nationwide via J&amp;T Express. You get the tracking number and can mark the order received once it arrives.</span></div></div>")
             sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request a Commission", "ghost", "draw"))
             sb.Append("</div></div>")
             Return sb.ToString()
