@@ -42,7 +42,11 @@ Namespace STAR_DOM.Services
                 If openCounts.ContainsKey(m.Id) Then used = openCounts(m.Id)
                 Dim openSlots As Integer = Math.Max(0, m.CommissionSlotCapacity - used)
                 If m.CommissionSlotCapacity <= 0 Then Continue For
-                Dim deposit As Decimal = Math.Round(m.CommissionStartingPrice * 0.2D, 0)
+                ' No deposit and no starting price on the card: a commission is free to
+                ' request, the artist prices it when they accept, and the customer pays
+                ' that one figure in full. This used to compute a 20% "Deposit" from
+                ' CommissionStartingPrice and put it in the button text, which told
+                ' customers a deposit existed when none is taken.
                 slots.Add(New CommissionSlotView With {
                     .MerchantId = m.Id,
                     .MerchantName = m.FullName,
@@ -52,10 +56,9 @@ Namespace STAR_DOM.Services
                     .StartingPrice = m.CommissionStartingPrice,
                     .Turnaround = m.CommissionTurnaround,
                     .Formats = m.CommissionFormats,
-                    .Deposit = deposit,
                     .SlotsOpen = openSlots,
                     .SlotsTotal = m.CommissionSlotCapacity,
-                    .CtaText = "Request Slot (Deposit " & Fmt.PHP(deposit) & ")"
+                    .CtaText = "Request a Slot"
                 })
             Next
             Return slots

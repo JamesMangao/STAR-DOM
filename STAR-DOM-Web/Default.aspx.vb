@@ -86,15 +86,15 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.ProductImg(a.PrimaryImageFile, a.Id, a.Name, "height:210px"))
             sb.Append("<div style=""padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px"">" &
                       "<b>" & WebUi.Esc(a.Name) & "</b> <span style=""color:var(--primary);font-weight:800"">" &
-                      WebUi.Money(a.EffectivePrice) & "</span></div>")
+                      WebUi.Money(a.BasePrice) & "</span></div>")
             sb.Append("</div>")
             sb.Append("<div class=""grid"" style=""grid-template-columns:1fr 1fr;gap:12px;margin-top:12px"">")
             sb.Append("<div class=""card"" style=""padding:0;overflow:hidden"">" & WebUi.ProductImg(b.PrimaryImageFile, b.Id, b.Name, "height:120px") &
                       "<div style=""padding:8px 10px;font-size:12px""><b>" & WebUi.Esc(b.Name) & "</b><br>" &
-                      WebUi.Money(b.EffectivePrice) & "</div></div>")
+                      WebUi.Money(b.BasePrice) & "</div></div>")
             sb.Append("<div class=""card"" style=""background:var(--yellow);border-color:#eec200;display:flex;flex-direction:column;justify-content:center;gap:4px"">" &
                       "<span class=""k-label"" style=""font-size:9px;letter-spacing:.12em;font-weight:800"">POP-UP EXCLUSIVE</span>" &
-                      "<span style=""font-weight:800;font-size:20px"">" & WebUi.Money(b.EffectivePrice) & "</span>" &
+                      "<span style=""font-weight:800;font-size:20px"">" & WebUi.Money(b.BasePrice) & "</span>" &
                       "<span style=""font-size:12px"">On-site claim at the booth</span></div>")
             sb.Append("</div>")
             Return sb.ToString()
@@ -213,7 +213,6 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name, "height:185px"))
             sb.Append("<div class=""badges"">")
             sb.Append(If(p.BadgeLabel <> "", "<span class=""badge warn"">" & WebUi.Esc(p.BadgeLabel) & "</span>", ""))
-            sb.Append(If(p.HasDiscount, "<span class=""badge live"">" & p.DiscountPercent.ToString() & "% OFF</span>", ""))
             sb.Append("</div></div>")
             sb.Append("<div class=""pbody"">")
             sb.Append("<span class=""brand"">" & WebUi.Esc(p.BrandName) & "</span>")
@@ -224,7 +223,7 @@ Namespace STAR_DOM.Web
                           " <small style=""color:var(--ink-soft)"">(" & p.RatingCount.ToString() & ")</small></span>")
             End If
             sb.Append("<div class=""pfoot"">")
-            sb.Append(WebUi.Money(p.EffectivePrice))
+            sb.Append(WebUi.Money(p.BasePrice))
             ' Anonymous shoppers who press Add are bounced to Login with this URL as
             ' the return target, so the add completes the moment they sign in. The
             ' gate attributes let the premium popup explain that instead of just

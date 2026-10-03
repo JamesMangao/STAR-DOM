@@ -125,14 +125,19 @@ Namespace STAR_DOM.Repositories
                 Db.P("@an", cm.AdditionalNotes), Db.P("@id", cm.Id))
         End Sub
 
-        Public Sub SetOffer(id As Integer, finalPrice As Decimal, completionDate As Date?, merchantNotes As String, deposit As Decimal?)
+        ''' <summary>
+        ''' Stores the artist's quote. There is no deposit: the artist prices the
+        ''' finished piece themselves when they accept, and the customer pays that one
+        ''' figure in full. DepositAmount is deliberately left untouched (NULL for new
+        ''' commissions) so the column stays for legacy rows without being read anywhere.
+        ''' </summary>
+        Public Sub SetOffer(id As Integer, finalPrice As Decimal, completionDate As Date?, merchantNotes As String)
             Db.Exec(
                 "UPDATE Commissions SET FinalPrice = @fp, EstimatedCompletionDate = @ed, MerchantNotes = @mn, " &
-                "DepositAmount = @dp, UpdatedAt = NOW() WHERE Id = @id",
+                "DepositAmount = NULL, UpdatedAt = NOW() WHERE Id = @id",
                 Db.P("@fp", finalPrice),
                 Db.P("@ed", If(completionDate.HasValue, CObj(completionDate.Value), DBNull.Value)),
                 Db.P("@mn", merchantNotes),
-                Db.P("@dp", If(deposit.HasValue, CObj(deposit.Value), DBNull.Value)),
                 Db.P("@id", id))
         End Sub
 

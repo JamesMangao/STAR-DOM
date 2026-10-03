@@ -87,7 +87,7 @@ Namespace STAR_DOM.Web
             sb.Append("<dt>Average rating</dt><dd>" & WebUi.Stars(CInt(Math.Round(_reports.AvgRating()))) & " " & _reports.AvgRating().ToString("0.0") & "</dd>")
             sb.Append("<dt>Reviews</dt><dd>" & _reports.ReviewCount().ToString() & "</dd>")
             sb.Append("<dt>Low stock SKUs</dt><dd>" & _reports.LowStockCount().ToString() & "</dd>")
-            sb.Append("<dt>Customers</dt><dd>" & _reports.TotalCustomers().ToString() & "</dd>")
+            sb.Append("<dt>Customers</dt><dd>" & _reports.ReviewingCustomers().ToString() & " <span class=""sub"">who reviewed</span></dd>")
             sb.Append("</div></div>")
             Out.Text = sb.ToString()
         End Sub

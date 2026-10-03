@@ -84,12 +84,37 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Commission " & number & " submitted!", id)
         End Function
 
+        ' ----- Access rules ------------------------------------------------------
+
+        ''' <summary>
+        ''' True when the signed-in user owns this commission: either they are the
+        ''' customer who requested it, or they are the artist it was sent to.
+        ''' </summary>
+        ''' <remarks>
+        ''' Session.CanManageStore on its own is NOT a valid gate. It is true for the
+        ''' admin AND for every merchant, so using it directly meant any artist could
+        ''' open another artist's commission — and then act on it — just by putting a
+        ''' different id in the URL. Request ownership is now part of the check.
+        ''' </remarks>
+        Public Function CanAccess(cm As Commission) As Boolean
+            If cm Is Nothing Or Not Session.IsAuthenticated Then Return False
+            Dim uid As Integer = Session.CurrentUser.Id
+            If cm.CustomerId = uid Then Return True
+            Return cm.MerchantId = uid AndAlso Session.CanManageStore
+        End Function
+
+        ''' <summary>Merchant-side actions: the artist this commission is addressed to, and only them.</summary>
+        Public Function CanManageCommission(cm As Commission) As Boolean
+            If cm Is Nothing Or Not Session.CanManageStore Then Return False
+            Return cm.MerchantId = Session.CurrentUser.Id
+        End Function
+
         ' ----- Merchant actions -------------------------------------------------
 
         Public Function RequestClarification(commissionId As Integer, message As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If Not Session.CanManageStore Then Return ServiceResult.Fail("Not authorized.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
             If String.IsNullOrWhiteSpace(message) Then Return ServiceResult.Fail("Please enter a clarification message.")
 
             Dim err As String = _repo.UpdateStatus(commissionId, "", CommissionStatuses.ClarificationRequested,
@@ -102,14 +127,19 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Clarification requested and sent to the customer.")
         End Function
 
+        ''' <summary>
+        ''' The artist accepts the request and prices it themselves — there is no
+        ''' deposit and no fixed menu price. The customer then pays this one figure in
+        ''' full once they confirm the offer.
+        ''' </summary>
         Public Function AcceptAndOffer(commissionId As Integer, finalPrice As Decimal, completionDate As Date?,
-                                       merchantNotes As String, deposit As Decimal?) As ServiceResult
+                                       merchantNotes As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If Not Session.CanManageStore Then Return ServiceResult.Fail("Not authorized.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
             If finalPrice <= 0 Then Return ServiceResult.Fail("Final price must be greater than zero.")
 
-            _repo.SetOffer(commissionId, finalPrice, completionDate, merchantNotes, deposit)
+            _repo.SetOffer(commissionId, finalPrice, completionDate, merchantNotes)
             Dim err As String = _repo.UpdateStatus(commissionId, "", CommissionStatuses.OfferSent,
                                                    Session.DisplayName, "Merchant accepted and sent an offer")
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
@@ -124,7 +154,7 @@ Namespace STAR_DOM.Services
         Public Function Decline(commissionId As Integer, note As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If Not Session.CanManageStore Then Return ServiceResult.Fail("Not authorized.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
             _repo.UpdateStatus(commissionId, "", CommissionStatuses.Declined, Session.DisplayName, note)
             _notif.Notify(cm.CustomerId, "Commission declined – " & cm.CommissionNumber,
                           If(String.IsNullOrWhiteSpace(note), "The merchant declined your request.", note),
@@ -167,12 +197,15 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Offer confirmed. Please complete payment to start production.")
         End Function
 
+        ''' <summary>
+        ''' Records the single full payment for the finished piece. Nothing partial
+        ''' and nothing upfront: the artist quotes, the customer confirms, the whole
+        ''' amount settles here.
+        ''' </summary>
         Public Function MarkPaid(commissionId As Integer, reference As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If cm.CustomerId <> Session.CurrentUser.Id AndAlso Not Session.CanManageStore Then
-                Return ServiceResult.Fail("Not authorized.")
-            End If
+            If Not CanAccess(cm) Then Return ServiceResult.Fail("Not authorized.")
             If Not (String.Equals(cm.Status, CommissionStatuses.CustomerConfirmed, StringComparison.OrdinalIgnoreCase) OrElse
                     String.Equals(cm.Status, CommissionStatuses.PaymentPending, StringComparison.OrdinalIgnoreCase)) Then
                 Return ServiceResult.Fail("Payment can only be recorded after the offer is confirmed.")
@@ -189,9 +222,7 @@ Namespace STAR_DOM.Services
         Public Function Cancel(commissionId As Integer) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If cm.CustomerId <> Session.CurrentUser.Id AndAlso Not Session.CanManageStore Then
-                Return ServiceResult.Fail("Not authorized.")
-            End If
+            If Not CanAccess(cm) Then Return ServiceResult.Fail("Not authorized.")
             _repo.UpdateStatus(commissionId, "", CommissionStatuses.Cancelled, Session.DisplayName, "Request cancelled")
             Return ServiceResult.Ok("Commission cancelled.")
         End Function
@@ -213,7 +244,7 @@ Namespace STAR_DOM.Services
         Public Function Complete(commissionId As Integer) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If Not Session.CanManageStore Then Return ServiceResult.Fail("Not authorized.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
             _repo.UpdateStatus(commissionId, "", CommissionStatuses.Completed, Session.DisplayName, "Delivered to customer")
             _notif.Notify(cm.CustomerId, "Commission completed – " & cm.CommissionNumber,
                           "Your commission has been completed and delivered. Enjoy!",
@@ -224,7 +255,7 @@ Namespace STAR_DOM.Services
         Private Function MerchantTransition(commissionId As Integer, fromStatus As String, toStatus As String, note As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If Not Session.CanManageStore Then Return ServiceResult.Fail("Not authorized.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
             Dim err As String = _repo.UpdateStatus(commissionId, fromStatus, toStatus, Session.DisplayName, note)
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
             _notif.Notify(cm.CustomerId, "Update – " & cm.CommissionNumber,
@@ -256,9 +287,7 @@ Namespace STAR_DOM.Services
         Public Function SendMessage(commissionId As Integer, message As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If cm.CustomerId <> Session.CurrentUser.Id AndAlso Not Session.CanManageStore Then
-                Return ServiceResult.Fail("Not authorized.")
-            End If
+            If Not CanAccess(cm) Then Return ServiceResult.Fail("Not authorized.")
             If String.IsNullOrWhiteSpace(message) Then Return ServiceResult.Fail("Message cannot be empty.")
             _repo.AddMessage(commissionId, Session.CurrentUser.Id, message)
             Dim recipient As Integer = If(cm.CustomerId = Session.CurrentUser.Id, cm.MerchantId, cm.CustomerId)

@@ -62,15 +62,6 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Event deleted.")
         End Function
 
-        Public Function SetCurrent(eventId As Integer) As ServiceResult
-            _repo.SetCurrent(eventId)
-            Dim ev As PopUpEvent = _repo.GetEvent(eventId)
-            _notif.NotifyRole("CUSTOMER", "We've moved! Now open at " & ev.Name,
-                              "The active physical booth is now " & ev.Name & " – " & ev.BoothNumber &
-                              " (" & ev.HoursText & ").", "EVENT", "popup-locations")
-            Return ServiceResult.Ok("Location node migrated to " & ev.Name & ".")
-        End Function
-
         Public Function SetStatus(eventId As Integer, status As String) As ServiceResult
             _repo.SetStatus(eventId, status)
             Return ServiceResult.Ok("Event status set to " & status & ".")

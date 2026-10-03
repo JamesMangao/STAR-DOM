@@ -58,6 +58,10 @@ Namespace STAR_DOM.Services
             Return _repo.TotalCustomers()
         End Function
 
+        Public Function ReviewingCustomers() As Integer
+            Return _repo.ReviewingCustomers()
+        End Function
+
         Public Function TotalCreators() As Integer
             Return _repo.TotalCreators()
         End Function

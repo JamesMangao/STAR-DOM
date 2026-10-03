@@ -120,15 +120,13 @@ Namespace STAR_DOM.Repositories
             Return Nothing
         End Function
 
-        ''' <summary>Set a single event as the active physical node.</summary>
-        Public Sub SetCurrent(eventId As Integer)
-            Db.Exec("UPDATE PopUpEvents SET IsCurrent = FALSE, " &
-                    "Status = CASE WHEN Status = 'NOW OPEN' THEN 'UPCOMING' ELSE Status END")
-            Db.Exec("UPDATE PopUpEvents SET IsCurrent = TRUE, Status = 'NOW OPEN' WHERE Id = @id", Db.P("@id", eventId))
-        End Sub
-
+        ''' <summary>
+        ''' The only manual override an event has. The live booth is derived from the
+        ''' clock (GetCurrentEvent), never from a stored "current" flag, so nothing here
+        ''' touches IsCurrent — the column stays at its schema default.
+        ''' </summary>
         Public Sub SetStatus(eventId As Integer, status As String)
-            Db.Exec("UPDATE PopUpEvents SET Status = @s, IsCurrent = CASE WHEN @s = 'NOW OPEN' THEN TRUE ELSE IsCurrent END, UpdatedAt = NOW() WHERE Id = @id",
+            Db.Exec("UPDATE PopUpEvents SET Status = @s, UpdatedAt = NOW() WHERE Id = @id",
                     Db.P("@s", status), Db.P("@id", eventId))
         End Sub
 

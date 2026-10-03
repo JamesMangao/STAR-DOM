@@ -116,6 +116,20 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.WebUi.ProductImg(System.Object,System.Int32,System.String,System.String)">
  <summary>Real product image block when one is on file, else gradient placeholder art.</summary>
 </member>
+<member name="M:STAR_DOM.Web.WebUi.AssetUrl(System.Object)">
+ <summary>
+ Where an img tag or CSS background should fetch a stored asset path from.
+
+ Venue photos under /Assets/Malls/ are held twice: the file in Git and the
+ bytes in AssetImages. They are served by App/AssetImg.aspx, which reads the
+ database row first and falls back to the file, so a lost folder still
+ renders. Every other path (product art, logos, payment marks) is a plain
+ static file and is returned untouched.
+
+ The path is URL-encoded on the way out: several venue files carry spaces
+ and one used to carry an apostrophe, which breaks a bare query string.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.WebUi.CommissionSlotCard(STAR_DOM.Helpers.CommissionSlotView,System.String,System.String,System.String)">
  <summary>
  Commission slot card, shared by the Commission Hub and the Marketplace preview so the
@@ -141,6 +155,19 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Web.WebUi.Badge(System.String)">
  <summary>Status pill colored per state.</summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.BoothLabel(System.Object)">
+ <summary>
+ Booth / stall label for display.
+ </summary>
+ <remarks>
+ BoothNumber is stored inconsistently across events -- most rows hold a bare
+ code ("D-04", "Island F") but some were seeded as "Booth D-04". Renderers
+ that always prefixed "Booth " therefore printed "Booth Booth D-04", and the
+ ones that used an uppercased "BOOTH " chip printed "BOOTH Booth D-04". This
+ prefixes only when the stored value does not already name its own prefix,
+ so both shapes render correctly without a data migration.
+ </remarks>
 </member>
 <member name="M:STAR_DOM.Web.WebUi.OutLink(System.String,System.String,System.Boolean)">
  <summary>Category/filter chip link.</summary>
@@ -220,9 +247,6 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.PopupLocationsPage.CurrentHero(STAR_DOM.Models.PopUpEvent)">
  <summary>Split hero stage for the current active location (4.html).</summary>
 </member>
-<member name="M:STAR_DOM.Web.PopupLocationsPage.StampCard">
- <summary>Merchant stamp card callout (collect 4 stamps).</summary>
-</member>
 <member name="M:STAR_DOM.Web.PopupLocationsPage.VenueImage(STAR_DOM.Models.PopUpEvent)">
  <summary>Background for a venue photo: the mall photo when one is on file, else the brand gradient.</summary>
 </member>
@@ -270,6 +294,40 @@ STAR_DOM_Web
  <summary>
  A 404 with a 1x1 transparent GIF so an img tag degrades to nothing
  instead of the site's error page appearing inside the popup.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Web.AssetImgPage">
+ <summary>
+ Streams one venue photo out of AssetImages (BYTEA), falling back to the
+ file under Assets\Malls when no row exists.
+
+ Why a database copy: Assets\Malls ships in Git, but the itinerary grid is
+ the first thing a visitor sees, and a stray folder delete -- or a clone
+ that never carried the images -- leaves every venue with the gradient
+ placeholder. Holding the bytes here means a pg_dump carries them with
+ everything else and the photos restore themselves, exactly like the QR
+ image in PaymentQr.aspx.
+
+ Only paths under /Assets/Malls/ are served, so this endpoint cannot be
+ turned into a general file reader: the query string is checked against
+ that prefix and against ".." before it is used at all.
+ </summary>
+</member>
+<member name="F:STAR_DOM.Web.AssetImgPage.Root">
+ <summary>The only folder this endpoint will read from.</summary>
+</member>
+<member name="M:STAR_DOM.Web.AssetImgPage.Normalize(System.String)">
+ <summary>
+ Accepts only a root-relative path under /Assets/Malls. Anything else --
+ a different folder, a traversal, a query string, a backslash -- becomes
+ "" and the caller 404s, so the endpoint can never read outside the one
+ folder it exists for.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.AssetImgPage.Fail(System.String)">
+ <summary>
+ A 404 with a 1x1 transparent GIF so an img tag degrades to nothing
+ instead of the site's error page appearing inside the photo frame.
  </summary>
 </member>
 <member name="T:STAR_DOM.Web.CommissionHubPage">
@@ -659,8 +717,20 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.CommissionRepository.UpdateStatus(System.Int32,System.String,System.String,System.String,System.String)">
  <summary>Transition status and record full history. Returns error string or Nothing.</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.EventRepository.SetCurrent(System.Int32)">
- <summary>Set a single event as the active physical node.</summary>
+<member name="M:STAR_DOM.Repositories.CommissionRepository.SetOffer(System.Int32,System.Decimal,System.Nullable{System.DateTime},System.String)">
+ <summary>
+ Stores the artist's quote. There is no deposit: the artist prices the
+ finished piece themselves when they accept, and the customer pays that one
+ figure in full. DepositAmount is deliberately left untouched (NULL for new
+ commissions) so the column stays for legacy rows without being read anywhere.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.EventRepository.SetStatus(System.Int32,System.String)">
+ <summary>
+ The only manual override an event has. The live booth is derived from the
+ clock (GetCurrentEvent), never from a stored "current" flag, so nothing here
+ touches IsCurrent — the column stays at its schema default.
+ </summary>
 </member>
 <member name="T:STAR_DOM.Repositories.EventRepository.SaleRejectedException">
  <summary>
@@ -762,6 +832,14 @@ STAR_DOM_Web
  when they are displayed (PaymentSetting.DisplayName).
  </summary>
 </member>
+<member name="M:STAR_DOM.Repositories.ProductRepository.ListAll(System.String)">
+ <summary>
+ Every product across every merchant. For the admin only: the merchant
+ catalog pages scope by MerchantId, and the seeded catalog belongs to one
+ merchant, so an admin signing into Merchant Studio would otherwise see an
+ empty "My products" table.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Repositories.ReceiptRepository">
  <summary>Issues and retrieves BIR-style official receipts (OR) for confirmed payments.</summary>
 </member>
@@ -793,6 +871,17 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.EventStats">
  <summary>Revenue + sales-count per event in one grouped query (kills dashboard N+1).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.ReviewingCustomers">
+ <summary>
+ Shoppers who actually left an approved review.
+ The merchant report prints this as "Customers", sitting directly under
+ the review count: the demo has no Orders rows, so reviews are the only
+ evidence of who has bought anything, and counting CUSTOMER-role accounts
+ instead made the two numbers on the same card contradict each other
+ (6 accounts, 1 reviewer). TotalCustomers above stays the raw account
+ count for anywhere that really means "registered accounts".
+ </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.UserRepository.ListMerchants">
  <summary>Commission creators/artists (Admin or Merchant).</summary>
@@ -833,6 +922,35 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Services.CatalogService.CommissionSlots">
  <summary>Open commission slot cards for merchants with capacity (drives the hub + marketplace sections).</summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.CanAccess(STAR_DOM.Models.Commission)">
+ <summary>
+ True when the signed-in user owns this commission: either they are the
+ customer who requested it, or they are the artist it was sent to.
+ </summary>
+ <remarks>
+ Session.CanManageStore on its own is NOT a valid gate. It is true for the
+ admin AND for every merchant, so using it directly meant any artist could
+ open another artist's commission — and then act on it — just by putting a
+ different id in the URL. Request ownership is now part of the check.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.CanManageCommission(STAR_DOM.Models.Commission)">
+ <summary>Merchant-side actions: the artist this commission is addressed to, and only them.</summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.AcceptAndOffer(System.Int32,System.Decimal,System.Nullable{System.DateTime},System.String)">
+ <summary>
+ The artist accepts the request and prices it themselves — there is no
+ deposit and no fixed menu price. The customer then pays this one figure in
+ full once they confirm the offer.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.MarkPaid(System.Int32,System.String)">
+ <summary>
+ Records the single full payment for the finished piece. Nothing partial
+ and nothing upfront: the artist quotes, the customer confirms, the whole
+ amount settles here.
+ </summary>
 </member>
 <member name="T:STAR_DOM.Services.OrderService.StockShortageException">
  <summary>

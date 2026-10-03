@@ -52,8 +52,6 @@ Namespace STAR_DOM.Web
             ' ---- Tier-1 highlight: current active location ----
             If current IsNot Nothing Then
                 sb.Append(CurrentHero(current))
-                ' stamp card callout
-                sb.Append(StampCard())
             End If
 
             ' ---- Upcoming events ----
@@ -84,13 +82,13 @@ Namespace STAR_DOM.Web
             ' photo
             sb.Append("<div class=""photo-frame"" style=""width:100%;max-width:270px;height:180px;flex-shrink:0"">")
             sb.Append(WebUi.ProductImg(ev.ImageFile, ev.Id * 5 + 2, ev.Name, "height:180px"))
-            sb.Append("<div class=""ph-overlay"" style=""justify-content:space-between;flex-direction:row;align-items:flex-end""><div class=""ph-title"" style=""font-size:12px"">" & WebUi.Esc(ev.BoothNumber) & " Atrium Booth</div><span style=""font-size:9px;opacity:.9"">Updated " & Clock.RelativeTime(ev.UpdatedAt) & "</span></div></div>")
+            sb.Append("<div class=""ph-overlay"" style=""justify-content:space-between;flex-direction:row;align-items:flex-end""><div class=""ph-title"" style=""font-size:12px"">" & WebUi.BoothLabel(ev.BoothNumber) & " &middot; Atrium</div><span style=""font-size:9px;opacity:.9"">Updated " & Clock.RelativeTime(ev.UpdatedAt) & "</span></div></div>")
             ' info
             sb.Append("<div style=""flex:1;min-width:260px"">")
             sb.Append("<div style=""display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px"">")
             sb.Append("<span class=""eyebrow"" style=""margin:0;color:var(--tertiary)"">CURRENT PHYSICAL LOCATION</span>")
             sb.Append("<span class=""status-chip red""><span class=""dot""></span> NOW OPEN TODAY</span>")
-            sb.Append("<span class=""sys-rev"">BOOTH " & WebUi.Esc(ev.BoothNumber) & "</span></div>")
+            sb.Append("<span class=""sys-rev"">" & WebUi.BoothLabel(ev.BoothNumber).ToUpperInvariant() & "</span></div>")
             sb.Append("<h2 style=""font-size:24px;font-weight:800;letter-spacing:-.5px;margin:4px 0"">STAR:DOM @ " & WebUi.Esc(ev.Name) & "</h2>")
             sb.Append("<p class=""sub"" style=""margin:2px 0 12px"">" & WebUi.Esc(ev.VenueDetail) & " · " & WebUi.Esc(ev.LocationAddress) & "</p>")
             ' operating snapshot matrix
@@ -98,49 +96,21 @@ Namespace STAR_DOM.Web
             sb.Append(MiniStat("TOUR RESIDENCY", ev.WindowText))
             sb.Append(MiniStat("OPERATING HOURS", ev.HoursText & " (Daily)"))
             sb.Append("</div>")
-            ' offerings tag cloud
-            sb.Append("<div style=""margin-top:12px""><span style=""font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);font-weight:800"">Booth Inventory &amp; Live Offerings</span>")
-            sb.Append("<div class=""tagcloud"" style=""margin-top:7px"">")
-            sb.Append("<span class=""tag"">" & WebUi.Ic("check_circle", "sm") & " Exclusive Physical Art Prints</span>")
-            sb.Append("<span class=""tag"">" & WebUi.Ic("cards", "sm") & " Sticker Gacha Dispensers</span>")
-            sb.Append("<span class=""tag"">" & WebUi.Ic("qr_code_2", "sm") & " GCash / GOtyme QR Ready</span>")
-            sb.Append("<span class=""tag yellow"">" & WebUi.Ic("shopping_bag", "sm") & " Limited Convention Bags</span>")
-            sb.Append("</div></div>")
-            ' CTAs
+            ' CTAs. The "Booth Inventory & Live Offerings" tag cloud and the second
+            ' "Browse Event Exclusive Inventory" button were removed: they were a
+            ' fixed marketing list (Sticker Gacha Dispensers, Convention Bags, ...)
+            ' that no data backs, and they linked to this same page.
             sb.Append("<div class=""btn-row"" style=""margin-top:16px"">")
             sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx?id=" & ev.Id.ToString(), "View Venue Floor Map & Directions", "primary", "map"))
-            sb.Append(WebUi.BtnHref("/App/PopupLocations.aspx?id=" & ev.Id.ToString(), "Browse Event Exclusive Inventory", "secondary", "package_2"))
             sb.Append("</div></div></div>")
-            ' mini stats (right column)
-            sb.Append("<div class=""stat-grid"" style=""margin-top:14px"">")
-            sb.Append("<div class=""mini-stat""><span>Queue Status</span><b class=""orange"">~4 MINS</b></div>")
-            sb.Append("<div class=""mini-stat""><span>Live Stock</span><b class=""red"">94% AVAIL</b></div>")
-            sb.Append("<div class=""mini-stat""><span>Floor Staff</span><b>3 ARTISANS</b></div>")
-            sb.Append("<div class=""mini-stat""><span>PH Clock</span><b style=""color:var(--primary)"">" & Clock.Now.ToString("h:mm tt") & " (UTC+8)</b></div>")
-            sb.Append("</div>")
+            ' No queue/stock/staff/clock mini-stat row: those were hardcoded strings
+            ' (94% AVAIL, 3 ARTISANS) that nothing in the database could change.
             sb.Append("</div></div></div>")
             Return sb.ToString()
         End Function
 
         Private Function MiniStat(label As String, value As String) As String
             Return "<div class=""mini-stat"" style=""text-align:left;background:var(--surface-low)""><span>" & WebUi.Esc(label) & "</span><b style=""font-size:13px;font-weight:700;color:var(--ink)"">" & WebUi.Esc(value) & "</b></div>"
-        End Function
-
-        ''' <summary>Merchant stamp card callout (collect 4 stamps).</summary>
-        Private Function StampCard() As String
-            Dim sb As New StringBuilder()
-            sb.Append("<div class=""panel""><div class=""panel-bd"" style=""padding:14px 16px"">")
-            sb.Append("<div style=""display:flex;align-items:center;gap:14px;flex-wrap:wrap"">")
-            sb.Append("<span class=""ph-ic"" style=""width:44px;height:44px;font-size:24px;background:var(--yellow);color:var(--on-yellow)"">" & WebUi.Ic("diamond") & "</span>")
-            sb.Append("<div style=""flex:1;min-width:240px""><div style=""display:flex;gap:8px;align-items:center;flex-wrap:wrap""><span class=""eyebrow"" style=""color:var(--primary);margin:0"">Pop-up Merchant Stamp Card</span><span class=""sys-rev"">PHILIPPINES TOUR 2026</span></div>")
-            sb.Append("<h3 style=""font-size:15px;font-weight:700;margin:4px 0 2px"">Collect 4 Foil Stamps &amp; Claim a Free Art Print!</h3>")
-            sb.Append("<p class=""sub"" style=""margin:0;max-width:560px"">Spend ₱500 at any official physical STAR:DOM booth to receive an exclusive metallic foil badge stamp. Present your card at any STAR:DOM booth to redeem.</p></div>")
-            ' stamps
-            sb.Append("<div class=""stamp-row"" style=""background:var(--surface-low);padding:10px 14px;border-radius:9px"">")
-            sb.Append("<div style=""display:flex;gap:8px""><span class=""stamp collected"">" & WebUi.Ic("star", "filled") & "</span><span class=""stamp collected"">" & WebUi.Ic("star", "filled") & "</span><span class=""stamp empty"">" & WebUi.Ic("star") & "</span><span class=""stamp empty"">" & WebUi.Ic("star") & "</span></div>")
-            sb.Append("<div><span class=""stamp-count"">2 / 4 COLLECTED</span><br><span class=""stamp-cta"">2 STAMPS TO UNLOCK</span></div>")
-            sb.Append("</div></div></div></div>")
-            Return sb.ToString()
         End Function
 
         Private Function EventCard(ev As PopUpEvent) As String
@@ -165,7 +135,9 @@ Namespace STAR_DOM.Web
         Private Function VenueImage(ev As PopUpEvent) As String
             Dim f As String = Convert.ToString(ev.ImageFile).Trim()
             If f.Length > 0 Then
-                Return "url('" & WebUi.Attr(f) & "')"
+                ' AssetUrl sends /Assets/Malls/ paths through the DB-backed
+                ' streaming endpoint, so a deleted folder still renders here.
+                Return "url('" & WebUi.Attr(WebUi.AssetUrl(f)) & "')"
             End If
             Return CategoryGradient(ev.Id)
         End Function
@@ -212,7 +184,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""card""><div class=""kv"">")
             sb.Append("<dt>Venue</dt><dd>" & WebUi.Esc(ev.VenueDetail) & "</dd>")
             sb.Append("<dt>Address</dt><dd>" & WebUi.Esc(ev.LocationAddress) & "</dd>")
-            sb.Append("<dt>Booth</dt><dd>" & WebUi.Esc(ev.BoothNumber) & "</dd>")
+            sb.Append("<dt>Booth</dt><dd>" & WebUi.BoothLabel(ev.BoothNumber) & "</dd>")
             sb.Append("<dt>Hours</dt><dd>" & WebUi.Esc(ev.HoursText) & "</dd>")
             If ev.FeaturedGuest <> "" Then sb.Append("<dt>Featured</dt><dd>" & WebUi.Esc(ev.FeaturedGuest) & "</dd>")
             sb.Append("<dt>Status</dt><dd>" & WebUi.Badge(ev.Status) & "</dd>")
@@ -228,7 +200,7 @@ Namespace STAR_DOM.Web
                 For Each p As Product In exclusives
                     sb.Append("<div class=""pcard"">")
                     sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name, "height:150px"))
-                    sb.Append("<div class=""pbody""><b>" & WebUi.Esc(p.Name) & "</b>" & WebUi.Money(p.EffectivePrice) &
+                    sb.Append("<div class=""pbody""><b>" & WebUi.Esc(p.Name) & "</b>" & WebUi.Money(p.BasePrice) &
                               WebUi.AddCartButton(p, Server.UrlEncode("/App/PopupLocations.aspx?id=" & id.ToString()), "Add to bag") &
                               "</div></div>")
                 Next

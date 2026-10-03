@@ -504,6 +504,25 @@ UPDATE PaymentSettings SET Channel = 'GOTYME' WHERE Channel = 'MAYA'
 -- PaymentSettings trigger lives with the other UpdatedAt triggers further below,
 -- after trg_star_dom_touch_updated_at() is defined.
 
+-- Mall / venue photography, stored as bytes for the same reason the QR image
+-- above is: Assets\Malls ships in Git, but a stray folder delete (or a machine
+-- that never cloned the images) leaves the itinerary grid with nothing to draw.
+-- One row per root-relative path, so PopUpEvents.ImageFile keeps holding the
+-- path it always has and only the byte source moves -- App/AssetImg.aspx serves
+-- the copy held here and falls back to the file when a row is missing, which is
+-- exactly the PaymentQr arrangement.
+--
+-- NOT in the seed's TRUNCATE list: the rows are the durable copy of artwork,
+-- not demo data, and re-seeding the catalogue must not delete them. Deleting a
+-- row on purpose is how you retire a photo.
+CREATE TABLE IF NOT EXISTS AssetImages (
+    Path VARCHAR(255) NOT NULL PRIMARY KEY,   -- root-relative, '/Assets/Malls/x.webp'
+    Data BYTEA NOT NULL,
+    Mime VARCHAR(50) NOT NULL DEFAULT 'image/webp',
+    ByteSize INT NOT NULL DEFAULT 0,
+    UpdatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes & Constraints
 CREATE INDEX IF NOT EXISTS IDX_Users_Role ON Users (RoleId);
 CREATE INDEX IF NOT EXISTS IDX_Users_Status ON Users (Status);
@@ -530,6 +549,9 @@ END
 $do$;
 CREATE INDEX IF NOT EXISTS IDX_Events_Status ON PopUpEvents (Status, StartDate);
 CREATE INDEX IF NOT EXISTS IDX_Events_Current ON PopUpEvents (IsCurrent);
+-- Lookups are by exact Path (the primary key), so no extra index is needed;
+-- ByteSize exists only so the streaming endpoint can answer HEAD without
+-- pulling the blob out of storage.
 DO $do$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uk_eventinventory') THEN
@@ -649,6 +671,13 @@ CREATE TRIGGER trg_paymentsettings_updatedat
     BEFORE UPDATE ON PaymentSettings
     FOR EACH ROW EXECUTE FUNCTION public.trg_star_dom_touch_updated_at();
 
+-- The ETag the streaming endpoint sends is derived from UpdatedAt, so an
+-- edited photo must move it or browsers keep serving the stale bytes.
+DROP TRIGGER IF EXISTS trg_assetimages_updatedat ON AssetImages;
+CREATE TRIGGER trg_assetimages_updatedat
+    BEFORE UPDATE ON AssetImages
+    FOR EACH ROW EXECUTE FUNCTION public.trg_star_dom_touch_updated_at();
+
 -- ------------------------------------------------------------
 -- Row level security
 -- ------------------------------------------------------------
@@ -669,6 +698,13 @@ DECLARE
 BEGIN
     -- service_role only exists on Supabase; fall back to the table owner on a
     -- plain local PostgreSQL so this script also runs for development.
+    --
+    -- The roles are joined into a comma-separated string that is spliced in as
+    -- a LIST (%s), never as one identifier (%I): %I would quote the whole
+    -- string as a single role named "service_role, postgres", which does not
+    -- exist, so CREATE POLICY failed with 'role "service_role, postgres" does
+    -- not exist' on every Supabase host. On a plain local PostgreSQL that
+    -- branch never ran, which is why it survived.
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
         backend_roles := 'service_role, postgres';
     ELSE
@@ -679,7 +715,7 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
         EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_backend_access', t);
         EXECUTE format(
-            'CREATE POLICY %I ON public.%I FOR ALL TO %I USING (true) WITH CHECK (true)',
+            'CREATE POLICY %I ON public.%I FOR ALL TO %s USING (true) WITH CHECK (true)',
             t || '_backend_access', t, backend_roles);
     END LOOP;
 END

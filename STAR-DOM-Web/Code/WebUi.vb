@@ -292,7 +292,26 @@ Namespace STAR_DOM.Web
         Public Function ProductImg(imageFile As Object, seed As Integer, name As String, Optional style As String = "") As String
             Dim f As String = Convert.ToString(imageFile)
             If String.IsNullOrWhiteSpace(f) Then Return Art(seed, name, style)
-            Return "<div class=""art"" style=""background-image:url('" & Attr(f) & "');" & style & """></div>"
+            Return "<div class=""art"" style=""background-image:url('" & Attr(AssetUrl(f)) & "');" & style & """></div>"
+        End Function
+
+        ''' <summary>
+        ''' Where an img tag or CSS background should fetch a stored asset path from.
+        '''
+        ''' Venue photos under /Assets/Malls/ are held twice: the file in Git and the
+        ''' bytes in AssetImages. They are served by App/AssetImg.aspx, which reads the
+        ''' database row first and falls back to the file, so a lost folder still
+        ''' renders. Every other path (product art, logos, payment marks) is a plain
+        ''' static file and is returned untouched.
+        '''
+        ''' The path is URL-encoded on the way out: several venue files carry spaces
+        ''' and one used to carry an apostrophe, which breaks a bare query string.
+        ''' </summary>
+        Public Function AssetUrl(path As Object) As String
+            Dim f As String = Convert.ToString(path)
+            If String.IsNullOrWhiteSpace(f) Then Return ""
+            If Not f.StartsWith("/Assets/Malls/", StringComparison.OrdinalIgnoreCase) Then Return f
+            Return "/App/AssetImg.aspx?p=" & HttpUtility.UrlEncode(f)
         End Function
 
         ''' <summary>
@@ -390,6 +409,25 @@ Namespace STAR_DOM.Web
             Return "<span class=""badge " & kind & """>" & Esc(status) & "</span>"
         End Function
 
+        ''' <summary>
+        ''' Booth / stall label for display.
+        ''' </summary>
+        ''' <remarks>
+        ''' BoothNumber is stored inconsistently across events -- most rows hold a bare
+        ''' code ("D-04", "Island F") but some were seeded as "Booth D-04". Renderers
+        ''' that always prefixed "Booth " therefore printed "Booth Booth D-04", and the
+        ''' ones that used an uppercased "BOOTH " chip printed "BOOTH Booth D-04". This
+        ''' prefixes only when the stored value does not already name its own prefix,
+        ''' so both shapes render correctly without a data migration.
+        ''' </remarks>
+        Public Function BoothLabel(number As Object) As String
+            Dim s As String = Convert.ToString(number).Trim()
+            If s.Length = 0 Then Return "&mdash;"
+            If s.StartsWith("Booth", StringComparison.OrdinalIgnoreCase) Then Return Esc(s)
+            If s.StartsWith("Stall", StringComparison.OrdinalIgnoreCase) Then Return Esc(s)
+            Return "Booth " & Esc(s)
+        End Function
+
         Public Function Stars(rating As Integer) As String
             rating = Math.Max(0, Math.Min(5, rating))
             Dim sb As New StringBuilder()
@@ -465,12 +503,12 @@ Namespace STAR_DOM.Web
             sb.Append("<a class=""btn " & kind & """ href=""" & Attr(url) & """")
             sb.Append(" data-addcart=""" & Attr(url) & """")
             sb.Append(" data-name=""" & Attr(p.Name) & """")
-            sb.Append(" data-price=""" & Attr(Fmt_PHP(p.EffectivePrice)) & """")
-            sb.Append(" data-unit=""" & p.EffectivePrice.ToString(System.Globalization.CultureInfo.InvariantCulture) & """")
+            sb.Append(" data-price=""" & Attr(Fmt_PHP(p.BasePrice)) & """")
+            sb.Append(" data-unit=""" & p.BasePrice.ToString(System.Globalization.CultureInfo.InvariantCulture) & """")
             sb.Append(" data-stock=""" & p.StockQuantity.ToString() & """")
             sb.Append(" data-img=""" & Attr(p.PrimaryImageFile) & """")
             sb.Append(" data-seed=""" & p.Id.ToString() & """")
-            sb.Append(AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice))
+            sb.Append(AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.BasePrice))
             sb.Append(">" & ic & "<span>" & Esc(text) & "</span></a>")
             Return sb.ToString()
         End Function

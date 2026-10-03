@@ -60,6 +60,19 @@ Namespace STAR_DOM.Repositories
             Return Db.ScalarInt("SELECT COUNT(*) FROM Users u JOIN Roles r ON r.Id = u.RoleId WHERE r.Name = 'CUSTOMER'")
         End Function
 
+        ''' <summary>
+        ''' Shoppers who actually left an approved review.
+        ''' The merchant report prints this as "Customers", sitting directly under
+        ''' the review count: the demo has no Orders rows, so reviews are the only
+        ''' evidence of who has bought anything, and counting CUSTOMER-role accounts
+        ''' instead made the two numbers on the same card contradict each other
+        ''' (6 accounts, 1 reviewer). TotalCustomers above stays the raw account
+        ''' count for anywhere that really means "registered accounts".
+        ''' </summary>
+        Public Function ReviewingCustomers() As Integer
+            Return Db.ScalarInt("SELECT COUNT(DISTINCT UserId) FROM Reviews WHERE IsApproved = TRUE AND UserId IS NOT NULL")
+        End Function
+
         Public Function TotalCreators() As Integer
             Return Db.ScalarInt("SELECT COUNT(*) FROM Users u JOIN Roles r ON r.Id = u.RoleId " &
                                 "WHERE (r.Name = 'ADMIN' OR r.Name = 'MERCHANT') AND u.Status = 'ACTIVE'")

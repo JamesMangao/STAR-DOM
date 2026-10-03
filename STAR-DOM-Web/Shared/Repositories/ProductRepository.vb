@@ -44,6 +44,23 @@ Namespace STAR_DOM.Repositories
             Return Db.Rows(sql, ps.ToArray()).Select(Function(r) Map(r)).ToList()
         End Function
 
+        ''' <summary>
+        ''' Every product across every merchant. For the admin only: the merchant
+        ''' catalog pages scope by MerchantId, and the seeded catalog belongs to one
+        ''' merchant, so an admin signing into Merchant Studio would otherwise see an
+        ''' empty "My products" table.
+        ''' </summary>
+        Public Function ListAll(Optional search As String = "") As List(Of Product)
+            Dim sql As String = BaseSelect & "WHERE 1=1 "
+            Dim ps As New List(Of NpgsqlParameter)()
+            If Not String.IsNullOrEmpty(search) Then
+                sql &= "AND (p.Name LIKE @s OR p.Sku LIKE @s) "
+                ps.Add(Db.P("@s", "%" & search & "%"))
+            End If
+            sql &= "ORDER BY p.MerchantId, p.CreatedAt DESC"
+            Return Db.Rows(sql, ps.ToArray()).Select(Function(r) Map(r)).ToList()
+        End Function
+
         Public Function GetById(id As Integer) As Product
             Dim rows As List(Of DataRow) = Db.Rows(BaseSelect & "WHERE p.Id = @id", Db.P("@id", id))
             If rows.Count = 0 Then Return Nothing

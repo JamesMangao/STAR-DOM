@@ -45,27 +45,20 @@ Namespace STAR_DOM.Web
             End If
 
             ' ---- KPI row ----
+            ' Only the digital marketplace tile survives. The booth-sales, order-tally
+            ' and hot-seller tiles, the omnichannel donut and the Quick Node panel
+            ' duplicated Event Sales Reports and repeated values the merchant has no
+            ' way to act on, so they were removed.
             Dim eventStats As Dictionary(Of Integer, (rev As Decimal, salesCnt As Integer)) = _reports.EventStats()
             sb.Append("<div class=""grid kpis"">")
-            sb.Append(BazaarSalesKpi(current))
-            sb.Append(BazaarOrdersKpi(current))
             sb.Append(DigitalMarketplaceKpi())
-            sb.Append(HotSellerKpi())
             sb.Append("</div>")
 
-            ' ---- Two-column workbench ----
-            sb.Append("<div class=""grid-12"">")
-            sb.Append("<div>")
+            ' ---- Workbench ----
             sb.Append(ScheduledEventsPanel(current))
             sb.Append(HistoricalPanel(eventStats))
             sb.Append(LowStockPanel())
             sb.Append(RecentOrdersPanel())
-            sb.Append("</div>")
-            sb.Append("<div>")
-            sb.Append(RevenueMixPanel())
-            sb.Append(QuickNodePanel(current))
-            sb.Append("</div>")
-            sb.Append("</div>")
 
             Out.Text = sb.ToString()
         End Sub
@@ -88,7 +81,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""photo-frame"" style=""width:100%;max-width:230px;height:150px;flex-shrink:0"">")
             sb.Append(WebUi.Art(ev.Id * 7 + 3, ev.Name, "height:150px"))
             sb.Append("<div class=""ph-overlay""><span class=""ph-eyebrow"">Active Footprint</span>")
-            sb.Append("<span class=""ph-title"">" & WebUi.Esc(ev.BoothNumber) & " Atrium</span></div></div>")
+            sb.Append("<span class=""ph-title"">" & WebUi.BoothLabel(ev.BoothNumber) & "</span></div></div>")
             ' info
             sb.Append("<div style=""flex:1;min-width:240px"">")
             sb.Append("<div style=""display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px"">")
@@ -102,39 +95,12 @@ Namespace STAR_DOM.Web
             sb.Append("</div></div></div>")
             ' quick controls
             sb.Append("<div class=""btn-row"" style=""margin-top:14px"">")
-            sb.Append(WebUi.BtnHref("/App/Merchant/EventEdit.aspx?id=" & ev.Id.ToString(), "Configure " & WebUi.Esc(ev.BoothNumber), "ghost", "grid_view"))
+            sb.Append(WebUi.BtnHref("/App/Merchant/EventEdit.aspx?id=" & ev.Id.ToString(), "Configure " & WebUi.BoothLabel(ev.BoothNumber), "ghost", "grid_view"))
             sb.Append("</div></div></div>")
             ' No booth-pulse footer strip: the cash-drawer float, cellular mesh and
             ' soundbox readouts were POS terminal status, not anything the app tracks.
             sb.Append("</div>")
             Return sb.ToString()
-        End Function
-
-        Private Function BazaarSalesKpi(ev As PopUpEvent) As String
-            Dim rev As Decimal = 0D
-            If ev IsNot Nothing Then rev = _reports.RevenueForEvent(ev.Id)
-            Return "<div class=""kpi k-icon"">" &
-                   "<span class=""k-ic"" style=""border-radius:9px;background:#ffe0de"">" & WebUi.Ic("payments") & "</span>" &
-                   "<div class=""k-label"">Galleria South Bazaar Sales</div>" &
-                   "<div class=""k-value"" style=""font-size:26px"">" & Fmt_Php(rev) & "</div>" &
-                   "<div class=""k-sub""><span class=""trend-pill up"">" & WebUi.Ic("trending_up", "sm") & " +34% vs SM Santa Rosa</span> &nbsp; Day 3 of 4</div></div>"
-        End Function
-
-        Private Function BazaarOrdersKpi(ev As PopUpEvent) As String
-            Dim total As Integer = 0
-            If ev IsNot Nothing Then total = _reports.EventSalesCount(ev.Id)
-            Dim qr As Integer = CInt(Math.Round(total * 0.7D))
-            Dim pre As Integer = total - qr
-            Dim pctQr As Integer = If(total > 0, CInt(qr * 100 / total), 0)
-            pctQr = Math.Max(0, Math.Min(100, pctQr))
-            Return "<div class=""kpi k-icon"">" &
-                   "<span class=""k-ic"" style=""border-radius:9px;background:var(--yellow-soft);color:var(--on-yellow)"">" & WebUi.Ic("shopping_cart_checkout") & "</span>" &
-                   "<div class=""k-label"">Bazaar Orders Tally</div>" &
-                   "<div class=""k-value"">" & total.ToString() & " Orders</div>" &
-                   "<div class=""k-bar""><i style=""width:" & pctQr.ToString() & "%;background:var(--primary)""></i>" &
-                   "<i style=""width:" & (100 - pctQr).ToString() & "%;background:var(--yellow)""></i></div>" &
-                   "<div class=""k-legend""><span><span class=""sw"" style=""background:var(--primary)""></span>" & qr.ToString() & " In-Person QR/Cash</span>" &
-                   "<span><span class=""sw"" style=""background:var(--yellow)""></span> " & pre.ToString() & " Pre-Orders</span></div></div>"
         End Function
 
         Private Function DigitalMarketplaceKpi() As String
@@ -147,16 +113,6 @@ Namespace STAR_DOM.Web
                    "<div class=""k-value"">" & Fmt_Php(digital) & "</div>" &
                    "<div class=""k-sub""><b style=""color:var(--ink)"">" & _reports.TotalCommissions().ToString() & " Commissions</b> &nbsp;&bull;&nbsp; <b style=""color:var(--ink)"">" &
                    _reports.OrdersCount().ToString() & " Parcel Shipments</b></div></div>"
-        End Function
-
-        Private Function HotSellerKpi() As String
-            Dim hot = _reports.HotSeller()
-            Return "<div class=""kpi k-icon"">" &
-                   "<span class=""k-ic"" style=""border-radius:9px;background:var(--surface-mid)"">" & WebUi.Ic("star") & "</span>" &
-                   "<div class=""k-label"">Hot Booth Seller (Galleria)</div>" &
-                   "<div class=""k-value"" style=""font-size:18px;line-height:1.2"">" & WebUi.Esc(hot.name) & "</div>" &
-                   "<div style=""font-size:21px;font-weight:800;color:var(--primary);margin:2px 0;font-family:var(--font-display)"">" & hot.units.ToString() & " Units Sold</div>" &
-                   "<div class=""k-sub""><b style=""color:var(--primary)"">Only " & hot.stock.ToString() & " left in booth tray</b> &nbsp;<a href=""/App/Merchant/Products.aspx"" style=""font-weight:800"">Restock " & WebUi.Ic("arrow_forward", "sm") & "</a></div></div>"
         End Function
 
         Private Function ScheduledEventsPanel(current As PopUpEvent) As String
@@ -255,43 +211,6 @@ Namespace STAR_DOM.Web
             Return sb.ToString()
         End Function
 
-        Private Function RevenueMixPanel() As String
-            Dim sb As New StringBuilder()
-            Dim mix = _reports.OmnichannelMix()
-            Dim total As Decimal = mix.eventTotal + mix.onlineTotal
-            Dim pctEv As Integer = If(total > 0, CInt(mix.eventTotal / total * 100), 0)
-            pctEv = Math.Max(0, Math.Min(100, pctEv))
-            sb.Append("<div class=""panel""><div class=""panel-hd""><h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--primary)"">" & WebUi.Ic("donut_large", "sm") & "</span> Omnichannel Revenue Mix <span class=""htag"">ACTIVE RUN</span></h3></div><div class=""panel-bd"">")
-            sb.Append("<p class=""sub"" style=""margin:0 0 12px"">Event pop-ups vs Direct Web Marketplace (current run)</p>")
-            sb.Append(WebUi.Donut(pctEv, 100 - pctEv, "TOTAL GROSS", Fmt_K(total)))
-            sb.Append("<div class=""rev-mix"" style=""margin-top:12px"">")
-            sb.Append("<div class=""mix-row""><span class=""ml""><span class=""swatch"" style=""background:var(--primary)""></span>Galleria South Pop-up</span>")
-            sb.Append("<span class=""mm""><b>" & Fmt_Php(mix.eventTotal) & "</b><small>(" & pctEv.ToString() & "%)</small></span></div>")
-            sb.Append("<div class=""mix-row""><span class=""ml""><span class=""swatch"" style=""background:var(--yellow)""></span>Web &amp; Commissions Hub</span>")
-            sb.Append("<span class=""mm""><b>" & Fmt_Php(mix.onlineTotal) & "</b><small>(" & (100 - pctEv).ToString() & "%)</small></span></div>")
-            sb.Append("</div>")
-            sb.Append("<div class=""row space-between sub"" style=""margin:14px 0 4px;font-size:12px""><span>Hourly Peak Flow: 2PM–6PM</span><span style=""color:var(--primary);font-weight:800"">High Footfall</span></div>")
-            sb.Append("<div class=""sparkline""><svg viewBox=""0 0 200 40"" preserveAspectRatio=""none"" style=""color:var(--primary)""><path d=""M0,35 Q30,30 50,15 T100,20 T150,5 T200,12"" fill=""none"" stroke=""currentColor"" stroke-width=""2.5""></path><path d=""M0,35 Q30,30 50,15 T100,20 T150,5 T200,12 L200,40 L0,40 Z"" fill=""currentColor"" opacity=""0.15""></path></svg></div>")
-            sb.Append("</div></div>")
-            Return sb.ToString()
-        End Function
-
-        Private Function QuickNodePanel(current As PopUpEvent) As String
-            Dim sb As New StringBuilder()
-            sb.Append("<div class=""panel""><div class=""panel-hd""><h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--yellow)"">" & WebUi.Ic("edit_location_alt", "sm") & "</span> Quick Node Configuration <span class=""htag"">DOCK PANEL</span></h3></div><div class=""panel-bd"">")
-            sb.Append("<p class=""sub"" style=""margin:0 0 14px"">Re-assign active store presence or schedule the transition payload.</p>")
-            sb.Append("<div class=""kv"" style=""grid-template-columns:1fr;gap:8px"">")
-            sb.Append("<div class=""field""><label>Pop-up / Event Name</label><input type=""text"" value=""STAR:DOM @ " & WebUi.Attr(If(current IsNot Nothing, current.Name, "—")) & """ readonly /></div>")
-            sb.Append("<div class=""grid-2""><div class=""field""><label>Booth / Stall No.</label><input type=""text"" value=""" & WebUi.Attr(If(current IsNot Nothing, current.BoothNumber, "—")) & """ readonly /></div><div class=""field""><label>Op. Window</label><input type=""text"" value=""" & WebUi.Attr(If(current IsNot Nothing, current.WindowText, "—")) & """ readonly /></div></div>")
-            sb.Append("<div class=""field""><label>Deployment Status</label><input type=""text"" value=""NOW OPEN"" readonly /></div>")
-            sb.Append("</div>")
-            sb.Append("<div class=""btn-row"" style=""margin-top:14px"">")
-            sb.Append(WebUi.BtnHref("/App/Merchant/Events.aspx", "Sync", "ghost", "sync"))
-            sb.Append(WebUi.BtnHref("/App/Merchant/EventEdit.aspx?id=" & If(current IsNot Nothing, current.Id.ToString(), "0"), "Commit Node Change", "primary", "verified"))
-            sb.Append("</div></div></div>")
-            Return sb.ToString()
-        End Function
-
         Private Function EventStateChip(state As String) As String
             Dim s As String = Convert.ToString(state).ToUpperInvariant()
             Dim label As String = Convert.ToString(state)
@@ -313,11 +232,6 @@ Namespace STAR_DOM.Web
 
         Private Function Fmt_Php(v As Decimal) As String
             Return "₱" & v.ToString("N2")
-        End Function
-
-        Private Function Fmt_K(v As Decimal) As String
-            If v >= 1000D Then Return "₱" & (v / 1000D).ToString("0.#") & "k"
-            Return Fmt_Php(v)
         End Function
 
         Private Function Table(headers() As String) As StringBuilder

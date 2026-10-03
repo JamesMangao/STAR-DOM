@@ -79,10 +79,18 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.Section("Products & Stock", "MERCHANT STUDIO / PRODUCTS",
                                     "Manage your catalog, categories, stock levels and sale flags."))
 
-            Dim mine As List(Of Product) = _products.ListByMerchant(STAR_DOM.Helpers.Session.CurrentUser.Id)
+            ' A merchant only ever owns their own catalog, but the admin owns the whole
+            ' catalog. Without this the admin's "My products" table was empty: every
+            ' seeded SKU belongs to Puffu Studio, and the page was filtering on
+            ' MerchantId = the signed-in user.
+            Dim isAdmin As Boolean = STAR_DOM.Helpers.Session.IsAdmin
+            Dim mine As List(Of Product) = If(isAdmin,
+                                               _products.ListAll(),
+                                               _products.ListByMerchant(STAR_DOM.Helpers.Session.CurrentUser.Id))
             Dim low As List(Of Product) = _products.LowStock(STAR_DOM.Helpers.Session.CurrentUser.Id)
 
-            sb.Append("<div class=""sec-head""><div><h3>My products (" & mine.Count.ToString() & ")</h3></div>" &
+            sb.Append("<div class=""sec-head""><div><h3>" & If(isAdmin, "All products", "My products") &
+                      " (" & mine.Count.ToString() & ")</h3></div>" &
                       WebUi.BtnHref("/App/Merchant/ProductEdit.aspx", "+ Add Product", "primary", "add") & "</div>")
             If low.Count > 0 Then
                 sb.Append(WebUi.AlertBox(low.Count.ToString() & " product(s) at or below low-stock threshold.", "info"))
@@ -92,7 +100,10 @@ Namespace STAR_DOM.Web
                 sb.Append(WebUi.EmptyRow("No products yet — add your first product."))
             Else
                 sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
-                For Each h As String In {"SKU", "PRODUCT", "CATEGORY", "PRICE", "STOCK", "FLAGS", "ACTIONS"}
+                Dim headers As New List(Of String) From {"SKU", "PRODUCT", "CATEGORY"}
+                If isAdmin Then headers.Add("MERCHANT")
+                headers.AddRange(New String() {"PRICE", "STOCK", "FLAGS", "ACTIONS"})
+                For Each h As String In headers
                     sb.Append("<th>" & h & "</th>")
                 Next
                 sb.Append("</tr></thead><tbody>")
@@ -103,7 +114,8 @@ Namespace STAR_DOM.Web
                     sb.Append("<td><b>" & WebUi.Esc(p.Name) & "</b><br><span class=""sub"" style=""font-size:11px"">" &
                               WebUi.Esc(p.BrandName) & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(p.CategoryName) & "</td>")
-                    sb.Append("<td>" & WebUi.Money(p.EffectivePrice) & "</td>")
+                    If isAdmin Then sb.Append("<td>" & WebUi.Esc(p.MerchantName) & "</td>")
+                    sb.Append("<td>" & WebUi.Money(p.BasePrice) & "</td>")
                     ' The stock form is nested inside the shell form, which the browser closes at this
                     ' tag — so the shell's token is not submitted with it. It carries its own.
                     sb.Append("<td><form method=""post"" style=""display:flex;gap:6px;align-items:center"">" &
@@ -117,7 +129,10 @@ Namespace STAR_DOM.Web
                     If p.IsBoothExclusive Then flags.Add("BOOTH")
                     If p.IsEventExclusive Then flags.Add("EVENT")
                     If p.IsFeatured Then flags.Add("FEATURED")
-                    If p.HasDiscount Then flags.Add(p.DiscountPercent.ToString() & "%")
+                    ' A set SalePrice is the checkout-time discount, never shown as a price
+                    ' anywhere. Flag it so the merchant can tell why the cart differs,
+                    ' without putting a second, different figure in the PRICE column.
+                    If p.HasDiscount Then flags.Add("SALE")
                     If p.BadgeLabel <> "" Then flags.Add(p.BadgeLabel)
                     sb.Append(If(flags.Count = 0, "—", String.Join(" ", flags.Select(Function(f) WebUi.Pill(f, "yellow")))))
                     sb.Append("</td>")

@@ -23,7 +23,9 @@ Namespace STAR_DOM.Web
                     Out.Text = WebUi.AlertBox("Commission request not found.")
                     Return
                 End If
-                If cm.CustomerId <> STAR_DOM.Helpers.Session.CurrentUser.Id AndAlso Not STAR_DOM.Helpers.Session.CanManageStore Then
+                ' Ownership check, not a role check: CanManageStore alone is true for
+                ' every merchant, which let any artist open any commission by id.
+                If Not _svc.CanAccess(cm) Then
                     Out.Text = WebUi.AlertBox("You don't have access to this commission request.")
                     Return
                 End If
@@ -75,28 +77,24 @@ Namespace STAR_DOM.Web
             Dim kind As String = Convert.ToString(Request.Form("kind"))
             Select Case kind
                 Case "clarify"
-                    If Not STAR_DOM.Helpers.Session.CanManageStore Then Return ServiceResult.Fail("Not authorized.")
+                    If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
                     Return _svc.RequestClarification(cm.Id, Convert.ToString(Request.Form("message")))
                 Case "decline"
-                    If Not STAR_DOM.Helpers.Session.CanManageStore Then Return ServiceResult.Fail("Not authorized.")
+                    If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
                     Return _svc.Decline(cm.Id, Convert.ToString(Request.Form("note")))
                 Case "offer"
-                    If Not STAR_DOM.Helpers.Session.CanManageStore Then Return ServiceResult.Fail("Not authorized.")
+                    If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
                     Dim price As Decimal = 0D
                     Decimal.TryParse(Request.Form("price"), price)
-                    Dim deposit As Decimal? = Nothing
-                    Dim dep As String = Convert.ToString(Request.Form("deposit"))
-                    If dep <> "" Then
-                        Dim d As Decimal
-                        If Decimal.TryParse(dep, d) Then deposit = d
-                    End If
                     Dim est As Date? = Nothing
                     Dim dt As String = Convert.ToString(Request.Form("est"))
                     If dt <> "" Then
                         Dim d As Date
                         If Date.TryParse(dt, d) Then est = d
                     End If
-                    Return _svc.AcceptAndOffer(cm.Id, price, est, Convert.ToString(Request.Form("merchantNotes")), deposit)
+                    ' No deposit field: the artist sets the price of the finished piece
+                    ' and the customer pays that one figure in full.
+                    Return _svc.AcceptAndOffer(cm.Id, price, est, Convert.ToString(Request.Form("merchantNotes")))
                 Case "reply"
                     ' customer (or staff) replies to a clarification request
                     Return _svc.ReplyToClarification(cm.Id, Convert.ToString(Request.Form("message")), cm)
@@ -151,10 +149,10 @@ Namespace STAR_DOM.Web
                 sb.Append("<h3 style=""margin-bottom:8px"">" & WebUi.Ic("request_quote", "sm") & " Official offer</h3>")
                 sb.Append("<div class=""kv"">")
                 sb.Append("<dt>Final price</dt><dd>" & WebUi.Money(cm.FinalPrice) & "</dd>")
-                If cm.DepositAmount.HasValue Then sb.Append("<dt>Deposit</dt><dd>" & WebUi.Money(cm.DepositAmount) & "</dd>")
                 If cm.EstimatedCompletionDate.HasValue Then
                     sb.Append("<dt>Est. completion</dt><dd>" & WebUi.Esc(cm.EstimatedCompletionDate.Value.ToString("MMM d, yyyy")) & "</dd>")
                 End If
+                sb.Append("<dt>Payment</dt><dd>Paid in full — no deposit</dd>")
                 sb.Append("</div>")
                 If cm.MerchantNotes <> "" Then sb.Append("<p class=""sub"">" & WebUi.Esc(cm.MerchantNotes) & "</p>")
                 sb.Append("</div>")
@@ -228,7 +226,7 @@ Namespace STAR_DOM.Web
         Private Function BuildActions(cm As Commission) As String
             Dim sb As New StringBuilder()
             Dim st As String = cm.Status.ToUpperInvariant()
-            Dim isMerchant As Boolean = STAR_DOM.Helpers.Session.CanManageStore
+            Dim isMerchant As Boolean = _svc.CanManageCommission(cm)
             Dim isOwner As Boolean = cm.CustomerId = STAR_DOM.Helpers.Session.CurrentUser.Id
             Dim showPanel As String = CStr(Request.QueryString("panel")).ToLowerInvariant()
 
@@ -255,7 +253,7 @@ Namespace STAR_DOM.Web
                     sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=confirmoffer""><span class=""ic ms"">how_to_reg</span><span>Confirm Offer</span></a>")
                 End If
                 If st = "PAYMENT PENDING" OrElse st = "CUSTOMER CONFIRMED" OrElse st = "PAID" Then
-                    sb.Append(PanelLink(cm, "pay", "Pay Deposit", "primary", showPanel, "payments"))
+                    sb.Append(PanelLink(cm, "pay", "Pay in Full", "primary", showPanel, "payments"))
                 End If
                 If st = "CLARIFICATION REQUESTED" Then
                     sb.Append(PanelLink(cm, "reply", "Reply & Resubmit", "primary", showPanel, "reply"))
@@ -270,11 +268,12 @@ Namespace STAR_DOM.Web
             ' panel forms
             Select Case showPanel
                 Case "offer"
-                    sb.Append(PanelForm(cm, "offer", "Send the official offer",
+                    sb.Append(PanelForm(cm, "offer", "Accept & price this commission",
+                                        "<p class=""sub"" style=""margin:0 0 10px"">You set the price based on this request. " &
+                                        "The customer pays this amount in full — there is no deposit.</p>" &
                                         "<div class=""field""><label>Final price (₱)</label><input name=""price"" type=""number"" step=""0.01"" required></div>" &
                                         "<div class=""field""><label>Estimated completion</label><input name=""est"" type=""date""></div>" &
-                                        "<div class=""field""><label>Deposit (₱, optional)</label><input name=""deposit"" type=""number"" step=""0.01""></div>" &
-                                        "<div class=""field""><label>Merchant notes</label><textarea name=""merchantNotes"" style=""min-height:60px""></textarea></div>"))
+                                        "<div class=""field""><label>Notes for the customer</label><textarea name=""merchantNotes"" style=""min-height:60px""></textarea></div>"))
                 Case "clarify"
                     sb.Append(PanelForm(cm, "clarify", "Request clarification from the customer",
                                         "<div class=""field""><label>What do you need clarified?</label><textarea name=""message"" required style=""min-height:80px""></textarea></div>"))
@@ -285,7 +284,10 @@ Namespace STAR_DOM.Web
                     sb.Append(PanelForm(cm, "reply", "Reply to the merchant's clarification",
                                         "<div class=""field""><label>Your reply / updated details</label><textarea name=""message"" required style=""min-height:100px""></textarea></div>"))
                 Case "pay"
-                    sb.Append(PanelForm(cm, "pay", "Record deposit payment (simulated)",
+                    Dim due As Decimal = If(cm.FinalPrice.HasValue, cm.FinalPrice.Value, 0D)
+                    sb.Append(PanelForm(cm, "pay", "Record full payment (simulated)",
+                                        "<p class=""sub"" style=""margin:0 0 10px"">Amount due: <b style=""color:var(--primary)"">" &
+                                        WebUi.Money(due) & "</b> — one payment, no deposit.</p>" &
                                         "<div class=""field""><label>Payment reference (GCash/GOtyme transaction no.)</label><input name=""ref"" placeholder=""Optional — auto-generated if blank""></div>"))
             End Select
             Return sb.ToString()

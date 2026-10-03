@@ -56,13 +56,9 @@ Namespace STAR_DOM.Web
             ' left: art + price panel
             sb.Append("<div style=""flex:1;min-width:300px;max-width:430px"">")
             sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name, "height:360px;border-radius:16px"))
-            If p.HasDiscount Then
-                sb.Append("<div class=""card"" style=""background:var(--yellow);border-color:#eec200;margin-top:12px;display:flex;justify-content:space-between;align-items:center"">")
-                sb.Append("<div><span class=""k-label"" style=""font-weight:800;font-size:10px;letter-spacing:.1em"">BAZAAR PRICE</span><br>" &
-                          "<span style=""font-size:24px;font-weight:800;color:var(--primary)"">" & WebUi.Money(p.EffectivePrice) & "</span>" &
-                          " <s class=""sub"">" & WebUi.Money(p.BasePrice) & "</s></div>")
-                sb.Append("<span class=""badge live"">-" & p.DiscountPercent.ToString() & "%</span></div>")
-            End If
+            ' No "bazaar price" banner: the displayed price is always BasePrice. Any
+            ' discount is a bundle group that CartService applies once the items are
+            ' in the cart, so there is nothing to advertise here.
             sb.Append("</div>")
 
             ' right: details
@@ -80,27 +76,9 @@ Namespace STAR_DOM.Web
                           "<span class=""sub"">" & WebUi.Esc(p.MaterialDetails) & "</span></div>")
             End If
 
-            ' Bundle callout: both prices, so the saving is legible without arithmetic.
-            ' The original figure is the live regular cost of a full group (sale prices
-            ' honoured); the bundle price is what the group actually costs. The discount
-            ' still applies automatically once a complete group is in the cart.
-            Dim cartSvc As New CartService()
-            Dim bGroup As BundleGroup = cartSvc.BundleForProduct(p.Id)
-            If bGroup IsNot Nothing Then
-                Dim bRegular As Decimal = cartSvc.BundleRegularPrice(bGroup)
-                Dim bSave As Decimal = Math.Max(bRegular - bGroup.GroupPrice, 0D)
-                sb.Append("<div class=""card"" style=""background:var(--surface-low);border-left:4px solid var(--primary);margin-top:12px;display:flex;gap:10px;align-items:flex-start"">")
-                sb.Append("<span class=""ms"" style=""color:var(--primary)"">sell</span>")
-                sb.Append("<div class=""sub"" style=""margin:0""><b style=""color:var(--ink)"">" &
-                          WebUi.Esc(bGroup.Name) & ":</b> any " & bGroup.GroupSize.ToString() & " for <b style=""color:var(--ink)"">" &
-                          Fmt.PHP(bGroup.GroupPrice) & "</b>")
-                If bRegular > 0D AndAlso bSave > 0D Then
-                    sb.Append(" <s>" & WebUi.Money(bRegular) & "</s> <span style=""color:#15803d;font-weight:700"">save " &
-                              WebUi.Money(bSave) & "</span>")
-                End If
-                sb.Append(" — applied automatically in your cart.</div>")
-                sb.Append("</div>")
-            End If
+            ' No bundle price callout: the discount is a cart-time effect, so advertising
+            ' the struck-through group total here would contradict the price shown
+            ' just below. The BUNDLE badge on the catalog card is enough of a hint.
 
             Dim stockText As String = If(p.StockQuantity > 0,
                                          If(p.StockQuantity <= p.LowStockThreshold,
@@ -108,7 +86,7 @@ Namespace STAR_DOM.Web
                                             p.StockQuantity.ToString() & " in booth stock"),
                                          "<span style=""color:var(--primary);font-weight:700"">Out of stock</span>")
             sb.Append("<div class=""frow"">")
-            sb.Append("<div class=""money"" style=""font-size:26px"">" & WebUi.Money(p.EffectivePrice) & "</div>")
+            sb.Append("<div class=""money"" style=""font-size:26px"">" & WebUi.Money(p.BasePrice) & "</div>")
             sb.Append("<div class=""stockline"">" & stockText & "</div>")
             sb.Append("</div>")
 
@@ -119,7 +97,7 @@ Namespace STAR_DOM.Web
             Dim wlText As String = If(_cart.InWishlist(p.Id), "Remove from Wishlist", "Add to Wishlist")
             sb.Append(WebUi.BtnHref("/App/Cart.aspx?wl=" & p.Id.ToString() & "&ret=" &
                                     Server.UrlEncode("/App/Product.aspx?id=" & p.Id.ToString()), wlText, "ghost", "favorite",
-                                    WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.EffectivePrice)))
+                                    WebUi.AuthGateAttrs(p.Name, p.PrimaryImageFile, p.Id, p.BasePrice)))
             sb.Append("</div>")
             sb.Append("</div></div>")
 

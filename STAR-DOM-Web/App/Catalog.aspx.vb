@@ -34,16 +34,10 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.Section("Handcrafted Products & Art", "CATALOG DISCOVERY",
                                     "Browse every SKU in the atelier — search, filter by category, and add to your cart."))
 
-            ' Bundle deals banner — pricing is applied automatically in the cart and
-            ' at checkout whenever a complete group is present.
-            Dim bundleNote As String = New CartService().BundleNote()
-            If bundleNote <> "" Then
-                sb.Append("<div class=""card mb"" style=""background:var(--surface-low);border-left:4px solid var(--primary);display:flex;gap:10px;align-items:center"">")
-                sb.Append("<span class=""ms"" style=""color:var(--primary)"">sell</span>")
-                sb.Append("<div class=""sub"" style=""margin:0""><b style=""color:var(--ink)"">Bundle deals — applied automatically:</b> " &
-                          WebUi.Esc(bundleNote) & "</div>")
-                sb.Append("</div>")
-            End If
+            ' No bundle-deals banner here. It spelled out the group prices ("any 4 for
+            ' ₱100") above a grid of ₱30 cards, which is exactly the mismatch the
+            ' pricing rule forbids: BasePrice on every card, discount only once the
+            ' group is in the cart. CartService.BundleDiscount still applies it.
 
             sb.Append("<div class=""row space-between mb"">")
             If q <> "" Then
@@ -75,22 +69,22 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Function ProductCard(p As Product) As String
-            ' Bundle membership is looked up once per card and reused for the badge and
-            ' the strikethrough price, so a card costs at most one extra query.
-            Dim cartSvc As New CartService()
-            Dim bGroup As BundleGroup = cartSvc.BundleForProduct(p.Id)
-            Dim bRegular As Decimal = If(bGroup Is Nothing, 0D, cartSvc.BundleRegularPrice(bGroup))
+            ' Pricing rule: the card shows BasePrice and nothing else. No strike-through
+            ' regular price, no "% OFF", no "any 4 for ₱100" — bundle pricing is applied
+            ' by CartService.BundleDiscount once the shopper has the group in the cart,
+            ' so the figure on the card is always the figure they actually pay. The BUNDLE
+            ' badge stays so the deal is still discoverable before the cart.
+            Dim inBundle As Boolean = New CartService().BundleForProduct(p.Id) IsNot Nothing
 
             Dim sb As New StringBuilder()
             sb.Append("<div class=""pcard"">")
             sb.Append("<div style=""position:relative"">")
             sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name, "height:185px"))
             sb.Append("<div class=""badges"">")
-            If bGroup IsNot Nothing Then
+            If inBundle Then
                 sb.Append("<span class=""badge live"">BUNDLE</span>")
             End If
-            sb.Append(If(p.BadgeLabel <> "", "<span class=""badge warn"">" & WebUi.Esc(p.BadgeLabel) & "</span>",
-                         If(p.HasDiscount, "<span class=""badge live"">" & p.DiscountPercent.ToString() & "% OFF</span>", "")))
+            sb.Append(If(p.BadgeLabel <> "", "<span class=""badge warn"">" & WebUi.Esc(p.BadgeLabel) & "</span>", ""))
             sb.Append("</div></div>")
             sb.Append("<div class=""pbody"">")
             sb.Append("<span class=""brand"">" & WebUi.Esc(p.BrandName) & "</span>")
@@ -101,15 +95,7 @@ Namespace STAR_DOM.Web
                           " <small style=""color:var(--ink-soft)"">(" & p.RatingCount.ToString() & ")</small></span>")
             End If
             sb.Append("<div class=""pfoot"">")
-            ' Two prices where a bundle applies: what the group costs normally, struck
-            ' through, then the bundle price the shopper actually pays.
-            If bGroup IsNot Nothing AndAlso bRegular > 0D AndAlso bRegular > bGroup.GroupPrice Then
-                sb.Append("<div><s class=""sub"" style=""font-size:11px"">" & WebUi.Money(bRegular) & "</s> " &
-                          "<span class=""money"">" & WebUi.Money(bGroup.GroupPrice) & "</span> " &
-                          "<span class=""sub"" style=""font-size:10.5px"">any " & bGroup.GroupSize.ToString() & "</span></div>")
-            Else
-                sb.Append(WebUi.Money(p.EffectivePrice))
-            End If
+            sb.Append(WebUi.Money(p.BasePrice))
             sb.Append(WebUi.AddCartButton(p, Server.UrlEncode(Request.RawUrl)))
             sb.Append("</div>")
             sb.Append(If(p.StockQuantity > 0,

@@ -68,8 +68,12 @@ Namespace STAR_DOM.Web
                 sb.Append("</tr></thead><tbody>")
                 For Each ev As PopUpEvent In events
                     sb.Append("<tr>")
-                    sb.Append("<td><b>STAR:DOM @ " & WebUi.Esc(ev.Name) & "</b>" & If(ev.IsCurrent, " " & WebUi.Pill("ACTIVE NODE", "red"), "") &
-                              "<br><span class=""sub"" style=""font-size:11px"">Booth " & WebUi.Esc(ev.BoothNumber) & "</span></td>")
+                    ' No "active node" badge here. It used to come from PopUpEvents.IsCurrent,
+                    ' a stored flag that nothing ever set or cleared, so it went stale and
+                    ' contradicted the clock-derived STATUS column. The live booth is read
+                    ' from EventRepository.GetCurrentEvent (date window + NOW OPEN) instead.
+                    sb.Append("<td><b>STAR:DOM @ " & WebUi.Esc(ev.Name) & "</b>" &
+                              "<br><span class=""sub"" style=""font-size:11px"">" & WebUi.BoothLabel(ev.BoothNumber) & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(ev.VenueDetail) & "<br><span class=""sub"" style=""font-size:11px"">" &
                               WebUi.Esc(ev.CityLabel) & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(ev.WindowText) & "</td>")
@@ -86,25 +90,13 @@ Namespace STAR_DOM.Web
                 sb.Append("</tbody></table></div>")
             End If
 
-            ' locations
-            Dim locations As List(Of StoreLocation) = _events.ListLocations()
-            sb.Append("<div class=""sec-head"" style=""margin-top:26px""><div><h3>Store locations (" & locations.Count.ToString() & ")</h3></div></div>")
-            If locations.Count = 0 Then
-                sb.Append(WebUi.EmptyRow("No store locations on file."))
-            Else
-                sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
-                For Each h As String In {"LOCATION", "VENUE", "CITY / REGION", "STATUS"}
-                    sb.Append("<th>" & h & "</th>")
-                Next
-                sb.Append("</tr></thead><tbody>")
-                For Each l As StoreLocation In locations
-                    sb.Append("<tr><td><b>" & WebUi.Esc(l.Name) & "</b></td>")
-                    sb.Append("<td>" & WebUi.Esc(l.Venue) & "</td>")
-                    sb.Append("<td>" & WebUi.Esc(l.City) & ", " & WebUi.Esc(l.Region) & "</td>")
-                    sb.Append("<td>" & If(l.IsActive, WebUi.Badge("ACTIVE"), WebUi.Badge("INACTIVE")) & "</td></tr>")
-                Next
-                sb.Append("</tbody></table></div>")
-            End If
+            ' No store-locations table here. StoreLocations is the venue address book that
+            ' PopUpEvents.LocationId points at; listing it beside the events duplicated
+            ' the venue names (the VENUE column above already shows the event's own
+            ' VenueDetail) and it had no add/edit/delete UI, so it read as a dead
+            ' table. The addresses themselves are still used -- PopupLocations shows
+            ' LocationAddress and RegionLabel, and the pick-up shipping address on an
+            ' order is the event name plus LocationName.
             Out.Text = sb.ToString()
         End Sub
 
