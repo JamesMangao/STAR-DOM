@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500..700,0..1,-50..200&amp;display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/site.css?v=20261003b" />
+    <link rel="stylesheet" href="/css/site.css?v=20261005a" />
     <link rel="icon" type="image/webp" href="/Assets/stardom-logo.webp" />
     <%-- Returns to the public storefront, which needs no account. The visible
          button below is the fallback when the browser blocks this. --%>

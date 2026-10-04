@@ -83,7 +83,7 @@ Namespace STAR_DOM.Repositories
         End Function
 
         Public Function PendingCommissions() As Integer
-            Return Db.ScalarInt("SELECT COUNT(*) FROM Commissions WHERE Status IN ('SUBMITTED','PENDING REVIEW','CLARIFICATION REQUESTED')")
+            Return Db.ScalarInt("SELECT COUNT(*) FROM Commissions WHERE Status IN ('SUBMITTED','PENDING REVIEW')")
         End Function
 
         Public Function LowStockCount() As Integer

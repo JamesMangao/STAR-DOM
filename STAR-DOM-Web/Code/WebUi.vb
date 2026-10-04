@@ -415,7 +415,7 @@ Namespace STAR_DOM.Web
                      "COMPLETED", "LIVE", "AVAILABLE", "READY", "SUCCESS"
                     kind = "live"
                 Case "PENDING", "PENDING REVIEW", "PENDING APPROVAL", "SUBMITTED", "UPCOMING",
-                     "CLARIFICATION REQUESTED", "PAYMENT PENDING", "HIDDEN", "PROCESSING"
+                     "PAYMENT PENDING", "HIDDEN", "PROCESSING"
                     kind = "warn"
                 Case "CANCELLED", "DECLINED", "SUSPENDED", "FAILED", "LOW STOCK", "ENDED", "REFUNDED"
                     kind = "muted"
@@ -461,8 +461,100 @@ Namespace STAR_DOM.Web
             Return sb.ToString()
         End Function
 
+        ''' <summary>
+        ''' Shown wherever an order or payment did not go through. The customer is
+        ''' pointed at a human instead of a dead-end error, so this must stay in
+        ''' step with the number published by the studio.
+        ''' </summary>
+        Public Function PaymentFailureNote(Optional heading As String = "Order / payment failed") As String
+            Return "<div class=""card"" style=""border-color:var(--primary);background:#ffe0de"">" &
+                   "<b style=""display:block;margin-bottom:4px"">" & Esc(heading) & "</b>" &
+                   "<span class=""sub"" style=""color:var(--ink)"">For concerns please message " &
+                   "<b>@star.d0mm</b> on Instagram or contact <b>09701375033</b>.</span></div>"
+        End Function
+
+        ''' <summary>
+        ''' "You cannot cancel from here" notice. Once the studio has the order or
+        ''' commission moving it is off the customer's hands, so say so before they
+        ''' reach for a cancel button.
+        ''' </summary>
+        Public Function NoCancelNote(Optional subject As String = "an order") As String
+            Return "<div class=""sub"" style=""font-size:12px;margin-top:8px"">" &
+                   WebUi.Ic("lock", "sm") & " Note that once " & Esc(subject) & " is processing, it cannot be canceled.</div>"
+        End Function
+
         Public Function Pill(text As String, Optional kind As String = "yellow") As String
             Return "<span class=""pill " & kind & """>" & Esc(text) & "</span>"
+        End Function
+
+        ''' <summary>
+        ''' Shopper-facing "N for ₱M" bundle legend, e.g. "Stickers Bundle — any 4 for
+        ''' ₱100 · Button Pins Bundle — any 3 for ₱100". Returns an empty string when no
+        ''' deal bundle is active, so callers can append it unconditionally.
+        ''' </summary>
+        Public Function BundleNote() As String
+            Return (New STAR_DOM.Services.CartService()).BundleNote()
+        End Function
+
+        ''' <summary>
+        ''' Banner form of <see cref="BundleNote"/>, for the browsing pages (catalog,
+        ''' marketplace, public landing) so the deal is visible before the cart. It only
+        ''' advertises the group rule — product cards still show BasePrice, and
+        ''' CartService.BundleDiscount is what actually takes the money off — so this
+        ''' never contradicts the price printed on a card.
+        ''' </summary>
+        Public Function BundleNoteStrip() As String
+            Dim note As String = BundleNote()
+            If note = "" Then Return ""
+            Dim sb As New StringBuilder()
+            sb.Append("<div class=""bundle-note"">")
+            sb.Append("<span class=""bundle-note-ic ms"">sell</span>")
+            sb.Append("<span><b>BUNDLE DEALS</b><br>")
+            sb.Append("<span class=""bundle-note-body"">" & Esc(note) & "</span></span>")
+            sb.Append("</div>")
+            Return sb.ToString()
+        End Function
+
+        ''' <summary>
+        ''' One line per active bundle, e.g. "Stickers Bundle · 4 for ₱100". For tight
+        ''' spots where the joined legend from <see cref="BundleNote"/> would wrap over
+        ''' too many lines, such as the marketplace Bazaar Exclusive tile. Names are
+        ''' escaped; the separator is real markup. Empty list when none is active.
+        ''' </summary>
+        Public Function BundleNoteLines() As List(Of String)
+            Dim lines As New List(Of String)()
+            For Each g As BundleGroup In (New STAR_DOM.Services.CartService()).BundleGroups()
+                Dim label As String = If(g.Name, "").Trim()
+                If label = "" Then
+                    label = "Bundle #" & g.BundleId.ToString()
+                ElseIf label.EndsWith(" Bundle", StringComparison.OrdinalIgnoreCase) Then
+                    ' The tile already says BUNDLE DEALS / BAZAAR EXCLUSIVE, so repeating
+                    ' the word on every line only costs width. Data-driven, not hardcoded.
+                    label = label.Substring(0, label.Length - " Bundle".Length).Trim()
+                End If
+                lines.Add(Esc(label) & " &middot; " & g.GroupSize.ToString() & " for " & Fmt.PHP(g.GroupPrice))
+            Next
+            Return lines
+        End Function
+
+        ''' <summary>
+        ''' The bundle block for the yellow promo tiles: one compact line per deal,
+        ''' separated from the tile's own copy by a rule. Colours suit the yellow tile
+        ''' background. Returns an empty string when no deal bundle is active, so
+        ''' callers can append it unconditionally.
+        ''' </summary>
+        Public Function BundleNoteBlock() As String
+            Dim lines As List(Of String) = BundleNoteLines()
+            If lines.Count = 0 Then Return ""
+            Dim sb As New StringBuilder()
+            sb.Append("<div style=""border-top:1px solid rgba(35,27,0,.18);margin-top:5px;padding-top:7px;" &
+                      "display:flex;flex-direction:column;gap:3px"">")
+            For Each line As String In lines
+                sb.Append("<span style=""font-size:9.5px;font-weight:700;line-height:1.35;color:#231b00"">" &
+                          line & "</span>")
+            Next
+            sb.Append("</div>")
+            Return sb.ToString()
         End Function
 
         ''' <summary>Category/filter chip link.</summary>

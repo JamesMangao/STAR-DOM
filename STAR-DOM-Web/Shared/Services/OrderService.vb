@@ -9,6 +9,7 @@ Namespace STAR_DOM.Services
     Public Class OrderService
 
         Private ReadOnly _orders As New OrderRepository()
+        Private ReadOnly _paySettings As New PaymentSettingRepository()
         Private ReadOnly _receipts As New ReceiptRepository()
         Private ReadOnly _cart As New CartService()
         Private ReadOnly _products As New ProductRepository()
@@ -45,9 +46,16 @@ Namespace STAR_DOM.Services
 
             ' Orders are online-only: delivered nationwide via J&T Express. Card is not
             ' offered — the accepted e-payments are GCash and GOtyme.
-            Dim method As String = paymentMethod.Trim().ToUpperInvariant()
+            '
+            ' "PENDING" is the parked method for the quote-first flow: the customer
+            ' places the order before choosing a channel, and picks GCash / GOtyme /
+            ' COD on the order page once the studio has returned the final total.
+            ' Orders.PaymentMethod is NOT NULL, so the column needs a value now.
+            Dim method As String = If(paymentMethod, "").Trim().ToUpperInvariant()
             If method = PaymentSettingRepository.LegacyMaya Then method = PaymentSettingRepository.Gotyme
-            If method <> "GCASH" AndAlso method <> "GOTYME" AndAlso method <> "COD" Then
+            If method = "" Then method = "PENDING"
+            If method <> "PENDING" AndAlso
+               method <> "GCASH" AndAlso method <> "GOTYME" AndAlso method <> "COD" Then
                 Return ServiceResult.Fail("Please choose GCash, GOtyme, or Cash on Delivery.")
             End If
 
@@ -183,6 +191,33 @@ Namespace STAR_DOM.Services
         ''' GCash/GOtyme (the only accepted e-payments) must carry the reference number
         ''' from the e-wallet receipt; COD needs only the password.
         ''' </summary>
+        ''' <summary>
+        ''' Records the channel the customer picked at payment time. Checkout parks the
+        ''' method as "PENDING" because the studio quotes the order first, so this is
+        ''' where the real channel is chosen.
+        ''' </summary>
+        Public Function ChoosePaymentMethod(orderId As Integer, method As String) As ServiceResult
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.UserId <> Session.CurrentUser.Id AndAlso Not Session.CanManageStore Then
+                Return ServiceResult.Fail("You don't have access to this order.")
+            End If
+            If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
+            If order.ShippingFeeConfirmed = False Then
+                Return ServiceResult.Fail("Your order is still being priced. You can choose a payment method " &
+                                          "once the studio returns the final total and shipping fee.")
+            End If
+            Dim pick As String = If(method, "").Trim().ToUpperInvariant()
+            If pick <> "GCASH" AndAlso pick <> "GOTYME" AndAlso pick <> "COD" Then
+                Return ServiceResult.Fail("Choose a payment method.")
+            End If
+            If Not _paySettings.IsChannelEnabled(pick) AndAlso pick <> "COD" Then
+                Return ServiceResult.Fail("That payment method is not available right now.")
+            End If
+            _orders.SetPaymentMethod(orderId, pick)
+            Return ServiceResult.Ok("Payment method saved.")
+        End Function
+
         Public Function ConfirmPayment(orderNumber As String, reference As String, password As String) As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
             Dim order As Order = _orders.GetByNumber(orderNumber)
@@ -194,6 +229,15 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail("This order was cancelled and cannot be paid.")
             End If
             If order.PaymentStatus = "PAID" Then Return ServiceResult.Ok("Payment already recorded.")
+
+            ' Payment is only possible after the studio has returned the order with
+            ' the final price and the shipping fee. Until ConfirmWithShippingFee
+            ' runs, ShippingFee is 0 and TotalAmount is not what the customer owes,
+            ' so taking money now would collect the wrong figure.
+            If Not order.ShippingFeeConfirmed Then
+                Return ServiceResult.Fail("Your order is still being priced. You can pay once the studio " &
+                                          "returns it with the final total and shipping fee.")
+            End If
 
             ' Password re-entry gate. Verified against a fresh DB read (not the session
             ' copy) so a password changed mid-session is honoured immediately.

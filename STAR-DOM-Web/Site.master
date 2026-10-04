@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500..700,0..1,-50..200&amp;display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/site.css?v=20261003b" />
+    <link rel="stylesheet" href="/css/site.css?v=20261005a" />
     <link rel="icon" type="image/webp" href="/Assets/stardom-logo.webp" />
     <link rel="apple-touch-icon" href="/Assets/stardom-logo.webp" />
 </head>
@@ -553,6 +553,40 @@
                 try { el.click(); } finally { if (saved) el.setAttribute('data-confirm', saved); }
             };
             open(msg, { danger: el.hasAttribute('data-confirm-danger'), okText: el.getAttribute('data-confirm-ok') });
+        });
+    })();
+
+    // In-page GET search boxes.
+    //
+    // These cannot be <form method="get">: Site.master wraps every App page in
+    // one shell <form>, and an HTML parser DROPS a nested form's start tag, so
+    // the submit hit the shell form (multipart/form-data, no action) and just
+    // reloaded the page with no query string. The filter box looked dead.
+    //
+    // Instead the box is a bare input plus a button that navigates. The input
+    // keeps name="q" so the value still round-trips on reload.
+    (function () {
+        function run(btn) {
+            var input = document.getElementById(btn.getAttribute('data-gosearch'));
+            if (!input) return;
+            var url = btn.getAttribute('data-gourl') || location.pathname;
+            var q = (input.value || '').trim();
+            location.href = q
+                ? url + (url.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(q)
+                : url;
+        }
+        document.addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest ? e.target.closest('[data-gosearch]') : null;
+            if (btn) { e.preventDefault(); run(btn); }
+        });
+        // Enter in the box submits the search instead of the shell form.
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            var input = e.target && e.target.closest ? e.target.closest('[data-gosearch-input]') : null;
+            if (!input) return;
+            e.preventDefault();
+            var btn = document.querySelector('[data-gosearch="' + input.id + '"]');
+            if (btn) run(btn);
         });
     })();
     </script>

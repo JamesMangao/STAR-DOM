@@ -103,7 +103,7 @@ Namespace STAR_DOM.Web
             ' Fully qualified: Page.Session (HttpSessionState) shadows the helper class.
             If Not STAR_DOM.Helpers.Session.CanManageStore Then Return ""
             Dim inbound As List(Of Commission) = _commissions.ListMerchantCommissions("", "")
-            Dim pending As Integer = inbound.Where(Function(c) c.Status = "PENDING REVIEW" OrElse c.Status = "CLARIFICATION REQUESTED").Count()
+            Dim pending As Integer = inbound.Where(Function(c) c.Status = "PENDING REVIEW").Count()
             Dim sb As New StringBuilder()
             sb.Append("<div class=""sec-head"" style=""margin-top:30px""><div>")
             sb.Append("<div class=""eyebrow"">MERCHANT STUDIO</div>")

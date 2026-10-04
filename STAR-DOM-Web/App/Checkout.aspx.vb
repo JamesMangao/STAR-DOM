@@ -142,22 +142,18 @@ Namespace STAR_DOM.Web
                 Response.Redirect("/App/Cart.aspx", True)
             End If
 
-            ' An e-wallet order does not exist until the customer confirms they sent
-            ' the money. "Place Order" only opens the QR popup — re-rendering the form
-            ' with every field they typed still in it, so the popup's Back button
-            ' simply closes it and they can switch payment method for free. COD has
-            ' nothing to confirm, so it is recorded straight away.
-            If Not scanConfirmed AndAlso PaymentSetting.IsEWallet(d.PaymentMethod) Then
-                RenderForm(d, Nothing, True)
-                Return
-            End If
-
+            ' No QR / scan-confirm round-trip any more: checkout records the order and
+            ' stops there. Payment happens later, on the order page, once the
+            ' studio has returned the final price and shipping fee. PaymentMethod
+            ' is parked as PENDING because the column is NOT NULL and the real
+            ' channel is chosen at payment time.
             Dim addr As String = ComposeAddress(d)
-            Dim result As ServiceResult = _orders.Checkout(d.PaymentMethod, addr, d.Phone, d.Notes, Nothing, "PENDING")
+            Dim result As ServiceResult = _orders.Checkout("PENDING", addr, d.Phone, d.Notes, Nothing, "PENDING")
             If result.Success Then
                 ' find the freshest order to deep-link into
                 Dim fresh As Order = _orders.ListMyOrders().OrderByDescending(Function(o) o.Id).FirstOrDefault()
-                Session("flash_msg") = result.Message
+                Session("flash_msg") = "Order placed. The studio will return it with the final price and shipping fee — " &
+                                  "you can pay once that is confirmed."
                 Session("flash_ok") = True
                 If fresh IsNot Nothing Then
                     Response.Redirect("/App/OrderDetail.aspx?id=" & fresh.Id.ToString(), True)
@@ -281,30 +277,23 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""field""><label for=""nt"">Order notes (optional)</label><textarea id=""nt"" name=""notes"" style=""min-height:70px"">" & WebUi.Esc(notes) & "</textarea></div>")
             sb.Append("</div>")
 
-            ' payment — e-wallet channels follow the admin's enable/disable toggles
-            ' from Payment Settings (COD is always offered).
+            ' No payment method here. The studio prices the order and returns it with
+            ' the shipping fee before the customer can pay, so offering GCash /
+            ' GOtyme / COD at this point would collect a figure that is not the
+            ' final one. The customer picks a channel on the order page once the
+            ' studio has quoted it.
             Dim paySettings As New PaymentSettingRepository()
-            sb.Append("<div class=""card""><h3 style=""margin-bottom:10px"">" & WebUi.Ic("payments", "sm") & " Payment method</h3>")
-            If paySettings.IsChannelEnabled(PaymentSettingRepository.Gcash) Then
-                sb.Append(PayOption("GCASH", "GCash", "Pay instantly via the GCash app QR", "qr_code_2", pmSel))
-            End If
-            If paySettings.IsChannelEnabled(PaymentSettingRepository.Gotyme) Then
-                sb.Append(PayOption("GOTYME", "GOtyme", "Pay with the GOtyme app", "account_balance_wallet", pmSel))
-            End If
-            sb.Append(PayOption("COD", "Cash on Delivery", "Pay cash when your order arrives", "local_shipping", pmSel))
+            sb.Append("<div class=""card""><h3 style=""margin-bottom:10px"">" & WebUi.Ic("info", "sm") & " How payment works</h3>")
+            sb.Append("<p class=""sub"" style=""margin:0 0 8px"">Place the order now with your delivery address. " &
+                      "The studio then returns it to you with the <b>final price and shipping fee</b>, and only " &
+                      "then do the payment methods open here.</p>")
+            sb.Append(WebUi.NoCancelNote("an order is placed"))
             sb.Append("<div class=""frow"">")
             sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">lock</span><span>Place Order</span></button>")
             sb.Append("<button type=""button"" class=""btn ghost"" id=""btnCancelCheckout""><span class=""ic ms"">arrow_back</span><span>Back to Cart</span></button>")
             sb.Append("</div>")
             sb.Append("</div>")
 
-            ' The Scan to Pay popup lives inside the checkout form on purpose: its
-            ' primary button is a real submit carrying scanConfirmed=1, and that POST
-            ' is what finally creates the order. Nothing is written before then.
-            If showQrModal AndAlso PaymentSetting.IsEWallet(d.PaymentMethod) Then
-                sb.Append(WebUi.QrPaymentModal(paySettings.GetByChannel(d.PaymentMethod),
-                                               d.PaymentMethod, goodsTotal, True, True))
-            End If
             sb.Append("</form>")
             sb.Append("</div>")
 

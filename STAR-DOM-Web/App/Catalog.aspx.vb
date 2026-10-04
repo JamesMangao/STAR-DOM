@@ -34,10 +34,11 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.Section("Handcrafted Products & Art", "CATALOG DISCOVERY",
                                     "Browse every SKU in the atelier — search, filter by category, and add to your cart."))
 
-            ' No bundle-deals banner here. It spelled out the group prices ("any 4 for
-            ' ₱100") above a grid of ₱30 cards, which is exactly the mismatch the
-            ' pricing rule forbids: BasePrice on every card, discount only once the
-            ' group is in the cart. CartService.BundleDiscount still applies it.
+            ' The bundle legend ("any 4 for ₱100") advertises the deal without moving
+            ' any price: the cards below still print BasePrice and
+            ' CartService.BundleDiscount is what takes the money off, once the group
+            ' is in the cart. It renders empty when no deal bundle is active.
+            sb.Append(WebUi.BundleNoteStrip())
 
             sb.Append("<div class=""row space-between mb"">")
             If q <> "" Then

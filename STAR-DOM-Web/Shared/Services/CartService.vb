@@ -74,6 +74,15 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
+        ''' Every active deal bundle. <see cref="BundleNote"/> joins these into the
+        ''' one-line legend; callers that render the deals separately (one line each,
+        ''' in tight spots like the Bazaar Exclusive tile) read this list instead.
+        ''' </summary>
+        Public Function BundleGroups() As List(Of BundleGroup)
+            Return _cart.ListBundleGroups()
+        End Function
+
+        ''' <summary>
         ''' The active bundle containing a product, or Nothing. Callers use it to show the
         ''' deal (group size, bundle price, and what the members cost separately) before
         ''' the shopper adds anything to the cart.
@@ -122,7 +131,7 @@ Namespace STAR_DOM.Services
         ''' </summary>
         Public Function BundleNote() As String
             Dim parts As New List(Of String)()
-            For Each g As BundleGroup In _cart.ListBundleGroups()
+            For Each g As BundleGroup In BundleGroups()
                 Dim label As String = If(g.Name, "").Trim()
                 If label = "" Then label = "Bundle #" & g.BundleId.ToString()
                 parts.Add(label & " — any " & g.GroupSize.ToString() & " for " & Fmt.PHP(g.GroupPrice))

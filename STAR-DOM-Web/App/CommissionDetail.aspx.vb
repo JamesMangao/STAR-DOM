@@ -29,7 +29,8 @@ Namespace STAR_DOM.Web
                     Out.Text = WebUi.AlertBox("You don't have access to this commission request.")
                     Return
                 End If
-                _svc.MarkRead(id)
+                ' No MarkRead call: it marked CommissionMessages rows as read, and
+                ' that table is gone with the message thread.
 
                 ' Wrap in Trim(), VB's null-safe String trim. Convert.ToString(Nothing)
                 ' hands back Nothing on this runtime, so an instance method chained
@@ -82,9 +83,6 @@ Namespace STAR_DOM.Web
         Private Function HandlePost(cm As Commission) As ServiceResult
             Dim kind As String = Convert.ToString(Request.Form("kind"))
             Select Case kind
-                Case "clarify"
-                    If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
-                    Return _svc.RequestClarification(cm.Id, Convert.ToString(Request.Form("message")))
                 Case "decline"
                     If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
                     Return _svc.Decline(cm.Id, Convert.ToString(Request.Form("note")))
@@ -101,14 +99,9 @@ Namespace STAR_DOM.Web
                     ' No deposit field: the artist sets the price of the finished piece
                     ' and the customer pays that one figure in full.
                     Return _svc.AcceptAndOffer(cm.Id, price, est, Convert.ToString(Request.Form("merchantNotes")))
-                Case "reply"
-                    ' customer (or staff) replies to a clarification request
-                    Return _svc.ReplyToClarification(cm.Id, Convert.ToString(Request.Form("message")), cm)
                 Case "pay"
                     Dim ref As String = Convert.ToString(Request.Form("ref"))
                     Return _svc.MarkPaid(cm.Id, ref)
-                Case "message"
-                    Return _svc.SendMessage(cm.Id, Convert.ToString(Request.Form("message")))
                 Case Else
                     Return ServiceResult.Fail("Unknown action.")
             End Select
@@ -148,6 +141,7 @@ Namespace STAR_DOM.Web
             sb.Append("<p style=""margin:10px 0 0"">" & WebUi.Esc(cm.Description) & "</p>")
             If cm.AdditionalNotes <> "" Then sb.Append("<p class=""sub""><b>Notes:</b> " & WebUi.Esc(cm.AdditionalNotes) & "</p>")
             sb.Append("</div>")
+            sb.Append(ReferenceImages(cm.Id))
 
             ' offer details (merchant side)
             If cm.FinalPrice.HasValue Then
@@ -170,32 +164,15 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""card mb"">" & actions & "</div>")
             End If
 
-            ' ---- message thread ----
-            Dim msgs As List(Of CommissionMessage) = _svc.ListMessages(cm.Id)
-            sb.Append("<div class=""card"">")
-            sb.Append("<h3 style=""margin-bottom:8px"">" & WebUi.Ic("forum", "sm") & " Message thread (" & msgs.Count.ToString() & ")</h3>")
-            If msgs.Count > 0 Then
-                sb.Append("<div class=""flex-col"" style=""max-height:340px;overflow:auto;padding:2px"">")
-                For Each m As CommissionMessage In msgs
-                    Dim mine As Boolean = m.SenderId = STAR_DOM.Helpers.Session.CurrentUser.Id
-                    sb.Append("<div class=""card"" style=""align-self:" & If(mine, "flex-end;background:var(--surface-low)", "flex-start") &
-                              ";width:88%;padding:10px 12px"">")
-                    sb.Append("<b style=""font-size:12px"">" & WebUi.Esc(m.SenderName) & "</b> " &
-                              "<span class=""sub"" style=""font-size:11px"">" & WebUi.Esc(m.CreatedAt.ToString("MMM d, h:mm tt")) & "</span>")
-                    sb.Append("<p style=""margin:4px 0 0"">" & WebUi.Esc(m.Message) & "</p>")
-                    sb.Append("</div>")
-                Next
-                sb.Append("</div>")
-            Else
-                sb.Append(WebUi.EmptyRow("No messages yet."))
-            End If
-
-            ' message composer
-            sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """>")
-            sb.Append("<input type=""hidden"" name=""kind"" value=""message"">")
-            sb.Append("<div class=""field"" style=""margin-top:10px""><textarea name=""message"" required style=""min-height:60px"" placeholder=""Send a message…""></textarea></div>")
-            sb.Append("<button class=""btn secondary"" type=""submit""><span class=""ic ms"">send</span><span>Send Message</span></button>")
-            sb.Append("</form>")
+            ' ---- commission policy notice ----
+            ' The message thread and "Request Clarification" are gone. The studio
+            ' takes a request or declines it, so a vague brief has nowhere to go
+            ' but a declined request; the policy is stated up front instead.
+            sb.Append("<div class=""card mb"" style=""border-color:#eec200;background:var(--yellow-soft)"">")
+            sb.Append("<h3 style=""margin-bottom:6px"">" & WebUi.Ic("info", "sm") & " Before you commission</h3>")
+            sb.Append("<p class=""sub"" style=""margin:0 0 6px"">Please provide a detailed description. Vague requests are " &
+                      "subjected to be declined.</p>")
+            sb.Append("<p class=""sub"" style=""margin:0"">Note that once a commission is in production, it cannot be canceled.</p>")
             sb.Append("</div>")
             sb.Append("</div>")
 
@@ -229,6 +206,38 @@ Namespace STAR_DOM.Web
 
         ' ---------- contextual action panels ----------
 
+        Private Function ReferenceImages(cmId As Integer) As String
+            ' CommissionReferenceImages rows were written on upload since forever, but
+            ' nothing ever read them: ListReferenceImages() had no caller, so the
+            ' artwork the customer attached was invisible to both sides. Files live
+            ' under /Uploads/comm and are served straight off disk (the folder is
+            ' git-ignored), so the stored relative path is the URL.
+            Dim refs As List(Of CommissionReferenceImage) = _svc.ReferenceImages(cmId)
+            If refs Is Nothing OrElse refs.Count = 0 Then Return ""
+
+            Dim sb As New StringBuilder()
+            sb.Append("<div class=""card mb"">")
+            sb.Append("<h3 style=""margin-bottom:8px"">" & WebUi.Ic("image", "sm") & " Reference images (" & refs.Count.ToString() & ")</h3>")
+            sb.Append("<div style=""display:flex;gap:10px;flex-wrap:wrap"">")
+            For Each r In refs
+                Dim url As String = "/" & If(r.ImageFile, "").TrimStart("/"c)
+                Dim isPdf As Boolean = url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                sb.Append("<a href=""" & WebUi.Attr(url) & """ target=""_blank"" rel=""noopener"" " &
+                          "style=""display:block;border:1px solid var(--line);border-radius:12px;overflow:hidden;" &
+                          "max-width:190px;background:var(--surface-low)"" title=""" & WebUi.Attr(r.FileName) & """>")
+                If isPdf Then
+                    sb.Append("<span style=""display:flex;align-items:center;justify-content:center;height:120px; " &
+                              "font-size:12px;font-weight:700;color:var(--primary)"">PDF</span>")
+                Else
+                    sb.Append("<img src=""" & WebUi.Attr(url) & """ alt=""" & WebUi.Attr(r.FileName) & """ " &
+                              "style=""width:190px;height:120px;object-fit:cover;display:block"" loading=""lazy"" />")
+                End If
+                sb.Append("</a>")
+            Next
+            sb.Append("</div></div>")
+            Return sb.ToString()
+        End Function
+
         Private Function BuildActions(cm As Commission) As String
             Dim sb As New StringBuilder()
             Dim st As String = cm.Status.ToUpperInvariant()
@@ -240,9 +249,8 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""frow"">")
 
             If isMerchant Then
-                If st = "PENDING REVIEW" OrElse st = "CLARIFICATION REQUESTED" OrElse st = "SUBMITTED" Then
+                If st = "PENDING REVIEW" OrElse st = "SUBMITTED" Then
                     sb.Append(PanelLink(cm, "offer", "Accept & Send Offer", "primary", showPanel, "send"))
-                    sb.Append(PanelLink(cm, "clarify", "Request Clarification", "secondary", showPanel, "help"))
                     sb.Append(PanelLink(cm, "decline", "Decline", "ghost", showPanel, "thumb_down"))
                 ElseIf st = "PAID" Then
                     sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=startprod""><span class=""ic ms"">factory</span><span>Start Production</span></a>")
@@ -261,10 +269,7 @@ Namespace STAR_DOM.Web
                 If st = "PAYMENT PENDING" OrElse st = "CUSTOMER CONFIRMED" OrElse st = "PAID" Then
                     sb.Append(PanelLink(cm, "pay", "Pay in Full", "primary", showPanel, "payments"))
                 End If
-                If st = "CLARIFICATION REQUESTED" Then
-                    sb.Append(PanelLink(cm, "reply", "Reply & Resubmit", "primary", showPanel, "reply"))
-                End If
-                If st = "PENDING REVIEW" OrElse st = "SUBMITTED" OrElse st = "CLARIFICATION REQUESTED" OrElse st = "OFFER SENT" Then
+                If st = "PENDING REVIEW" OrElse st = "SUBMITTED" OrElse st = "OFFER SENT" Then
                     sb.Append("<a class=""btn danger"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() &
                               "&act=cancel"" data-confirm=""Cancel this request?"" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Cancel Request</span></a>")
                 End If
@@ -280,15 +285,9 @@ Namespace STAR_DOM.Web
                                         "<div class=""field""><label>Final price (₱)</label><input name=""price"" type=""number"" step=""0.01"" required></div>" &
                                         "<div class=""field""><label>Estimated completion</label><input name=""est"" type=""date""></div>" &
                                         "<div class=""field""><label>Notes for the customer</label><textarea name=""merchantNotes"" style=""min-height:60px""></textarea></div>"))
-                Case "clarify"
-                    sb.Append(PanelForm(cm, "clarify", "Request clarification from the customer",
-                                        "<div class=""field""><label>What do you need clarified?</label><textarea name=""message"" required style=""min-height:80px""></textarea></div>"))
                 Case "decline"
                     sb.Append(PanelForm(cm, "decline", "Decline this request",
                                         "<div class=""field""><label>Reason (shared with the customer)</label><textarea name=""note"" required style=""min-height:80px""></textarea></div>"))
-                Case "reply"
-                    sb.Append(PanelForm(cm, "reply", "Reply to the merchant's clarification",
-                                        "<div class=""field""><label>Your reply / updated details</label><textarea name=""message"" required style=""min-height:100px""></textarea></div>"))
                 Case "pay"
                     Dim due As Decimal = If(cm.FinalPrice.HasValue, cm.FinalPrice.Value, 0D)
                     sb.Append(PanelForm(cm, "pay", "Record full payment (simulated)",

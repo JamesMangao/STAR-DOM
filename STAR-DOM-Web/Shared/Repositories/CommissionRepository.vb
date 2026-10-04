@@ -10,7 +10,7 @@ Namespace STAR_DOM.Repositories
             "SELECT cm.*, cu.FullName AS CustomerName, cu.Email AS CustomerEmail, m.FullName AS MerchantName, " &
             "c.Name AS CategoryName, " &
             "(SELECT COUNT(*) FROM CommissionReferenceImages ri WHERE ri.CommissionId = cm.Id) AS ReferenceCount, " &
-            "(SELECT COUNT(*) FROM CommissionMessages msg WHERE msg.CommissionId = cm.Id) AS MessageCount " &
+            "0 AS MessageCount " &
             "FROM Commissions cm " &
             "JOIN Users cu ON cu.Id = cm.CustomerId " &
             "JOIN Users m ON m.Id = cm.MerchantId " &
@@ -90,7 +90,7 @@ Namespace STAR_DOM.Repositories
             Dim counts As New Dictionary(Of Integer, Integer)()
             Dim rows As List(Of DataRow) = Db.Rows(
                 "SELECT MerchantId, COUNT(*) AS Cnt FROM Commissions WHERE Status IN " &
-                "('SUBMITTED','PENDING REVIEW','CLARIFICATION REQUESTED','ACCEPTED','OFFER SENT','CUSTOMER CONFIRMED'," &
+                "('SUBMITTED','PENDING REVIEW','ACCEPTED','OFFER SENT','CUSTOMER CONFIRMED'," &
                 "'PAYMENT PENDING','PAID','IN PRODUCTION','REVISION','FINALIZED') GROUP BY MerchantId")
             For Each r As DataRow In rows
                 counts(RowReader.AsInt(r, "MerchantId")) = RowReader.AsInt(r, "Cnt")
@@ -142,28 +142,9 @@ Namespace STAR_DOM.Repositories
         End Sub
 
         ' ----- Messages ---------------------------------------------------------
-
-        Public Sub AddMessage(commissionId As Integer, senderId As Integer, message As String)
-            Db.Exec("INSERT INTO CommissionMessages (CommissionId, SenderId, Message, IsRead, CreatedAt) " &
-                    "VALUES (@c, @s, @m, 0, NOW())",
-                    Db.P("@c", commissionId), Db.P("@s", senderId), Db.P("@m", message))
-        End Sub
-
-        Public Function ListMessages(commissionId As Integer) As List(Of CommissionMessage)
-            Return Db.Rows(
-                "SELECT msg.*, u.FullName AS SenderName FROM CommissionMessages msg " &
-                "JOIN Users u ON u.Id = msg.SenderId WHERE msg.CommissionId = @c ORDER BY msg.CreatedAt ASC",
-                Db.P("@c", commissionId)).Select(Function(r) New CommissionMessage With {
-                .Id = RowReader.AsInt(r, "Id"), .CommissionId = RowReader.AsInt(r, "CommissionId"),
-                .SenderId = RowReader.AsInt(r, "SenderId"), .SenderName = RowReader.AsStr(r, "SenderName"),
-                .Message = RowReader.AsStr(r, "Message"), .IsRead = RowReader.AsBool(r, "IsRead"),
-                .CreatedAt = RowReader.AsDate(r, "CreatedAt")}).ToList()
-        End Function
-
-        Public Sub MarkMessagesRead(commissionId As Integer, readerId As Integer)
-            Db.Exec("UPDATE CommissionMessages SET IsRead = TRUE WHERE CommissionId = @c AND SenderId <> @r",
-                    Db.P("@c", commissionId), Db.P("@r", readerId))
-        End Sub
+        ' The CommissionMessages table is dropped: the clarification round-trip and
+        ' its message thread were retired. Nothing inserts or reads messages now,
+        ' and CommissionService no longer exposes the entry points that did.
 
         ' ----- Reference images -------------------------------------------------
 
@@ -203,7 +184,7 @@ Namespace STAR_DOM.Repositories
         Public Function OpenSlotCount(merchantId As Integer) As Integer
             Return Db.ScalarInt(
                 "SELECT COUNT(*) FROM Commissions WHERE MerchantId = @m AND Status IN " &
-                "('SUBMITTED','PENDING REVIEW','CLARIFICATION REQUESTED','ACCEPTED','OFFER SENT','CUSTOMER CONFIRMED'," &
+                "('SUBMITTED','PENDING REVIEW','ACCEPTED','OFFER SENT','CUSTOMER CONFIRMED'," &
                 "'PAYMENT PENDING','PAID','IN PRODUCTION','REVISION','FINALIZED')",
                 Db.P("@m", merchantId))
         End Function

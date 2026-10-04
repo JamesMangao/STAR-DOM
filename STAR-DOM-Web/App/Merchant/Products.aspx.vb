@@ -116,17 +116,19 @@ Namespace STAR_DOM.Web
 
             ' Search for this page only. The header box is hidden from the studio
             ' (it searches the public catalog), so the filter staff actually
-            ' wanted lives here. GET so it needs no CSRF token and survives reload.
-            sb.Append("<form method=""get"" action=""/App/Merchant/Products.aspx"" style=""display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center"">")
+            ' wanted lives here. Not a <form>: the shell form in Site.master
+            ' swallows it (see the data-gosearch handler there), the button
+            ' navigates to ?q= instead.
+            sb.Append("<div style=""display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center"">")
             sb.Append("<div class=""searchbox"" style=""flex:1;min-width:240px;margin:0"">")
-            sb.Append("<input type=""text"" name=""q"" value=""" & WebUi.Attr(q) & """ placeholder=""Search by product name or SKU…"" aria-label=""Search products by name or SKU"" />")
-            sb.Append("<button type=""submit"" aria-label=""Search products""><span class=""ms sm"">search</span></button>")
+            sb.Append("<input type=""search"" name=""q"" id=""prodSearch"" data-gosearch-input value=""" & WebUi.Attr(q) & """ placeholder=""Search by product name or SKU…"" aria-label=""Search products by name or SKU"" />")
+            sb.Append("<button type=""button"" data-gosearch=""prodSearch"" data-gourl=""/App/Merchant/Products.aspx"" aria-label=""Search products""><span class=""ms sm"">search</span></button>")
             sb.Append("</div>")
             If q <> "" Then
                 sb.Append("<a class=""btn ghost sm"" href=""/App/Merchant/Products.aspx"">Clear</a>")
                 sb.Append("<span class=""sub"" style=""font-size:12px"">matching &ldquo;" & WebUi.Esc(q) & "&rdquo;</span>")
             End If
-            sb.Append("</form>")
+            sb.Append("</div>")
             If low.Count > 0 Then
                 sb.Append(WebUi.AlertBox(low.Count.ToString() & " product(s) at or below low-stock threshold.", "info"))
             End If

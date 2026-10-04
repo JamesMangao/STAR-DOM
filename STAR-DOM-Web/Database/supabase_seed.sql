@@ -208,7 +208,7 @@ INSERT INTO Commissions (Id, CommissionNumber, CustomerId, MerchantId, CategoryI
 (2, 'REQ-2026-083', 1, 5, 8, 'Sneak Peek Character Bust',
  'A bust-up illustration of my OC in your cyberpunk style. Want a neon city background.',
  1, 'A4 digital', '2026-10-05 00:00:00', 1500.00, 2500.00, '',
- NULL, NULL, '', NULL, 'CLARIFICATION REQUESTED', '2026-08-30 15:00:00'),
+ NULL, NULL, '', NULL, 'PENDING REVIEW', '2026-08-30 15:00:00'),
 (3, 'REQ-2026-082', 1, 5, 2, 'Convention Poster Art (11x17)',
  'Full-bleed print poster for our booth wall featuring the guardian mech.',
  1, '11x17 metallic matte', '2026-10-15 00:00:00', 4000.00, 6000.00, '',
@@ -229,7 +229,7 @@ INSERT INTO Commissions (Id, CommissionNumber, CustomerId, MerchantId, CategoryI
 INSERT INTO CommissionStatusHistory (CommissionId, FromStatus, ToStatus, ChangedBy, Note, CreatedAt) VALUES
 (1, '', 'SUBMITTED', 'Bella Santos', 'Customer submitted request', '2026-09-01 10:30:00'),
 (2, '', 'SUBMITTED', 'Bella Santos', 'Customer submitted request', '2026-08-30 15:00:00'),
-(2, 'SUBMITTED', 'CLARIFICATION REQUESTED', 'STAR:DOM Admin', 'Need reference for the OC', '2026-08-31 09:00:00'),
+(2, '', 'PENDING REVIEW', 'STAR:DOM Admin', 'Request received for review', '2026-08-31 09:00:00'),
 (3, '', 'SUBMITTED', 'Bella Santos', 'Customer submitted request', '2026-08-28 09:00:00'),
 (3, 'SUBMITTED', 'OFFER SENT', 'STAR:DOM Admin', 'Artist accepted and sent offer', '2026-08-29 11:00:00'),
 (4, '', 'SUBMITTED', 'Bella Santos', 'Customer submitted request', '2026-08-25 11:00:00'),
@@ -247,9 +247,8 @@ INSERT INTO CommissionStatusHistory (CommissionId, FromStatus, ToStatus, Changed
 (6, '', 'SUBMITTED', 'Bella Santos', 'Customer submitted request', '2026-08-18 09:00:00'),
 (6, 'SUBMITTED', 'DECLINED', 'STAR:DOM Admin', 'Slot already full', '2026-08-19 10:00:00');
 
-INSERT INTO CommissionMessages (CommissionId, SenderId, Message, IsRead, CreatedAt) VALUES
-(2, 5, 'Hi Bella! Could you share a reference of your OC, or a color palette? Also, do you want the bust at waist level or shoulders-up?', FALSE, '2026-08-31 09:02:00'),
-(3, 1, 'Hi! Looking forward to the poster! Will the file include a print-ready 300dpi version?', FALSE, '2026-08-31 17:30:00');
+-- CommissionMessages is intentionally not seeded: the table is dropped with the
+-- commission clarification round-trip and message thread.
 
 -- ---------- Notifications ----------
 INSERT INTO Notifications (UserId, Title, Message, NotificationType, LinkPath, IsRead, CreatedAt) VALUES

@@ -32,6 +32,18 @@ Namespace STAR_DOM.Web
                 ' Payment confirmation is a POST with password re-entry (plus the
                 ' e-wallet reference for GCash/GOtyme) — never a plain GET link.
                 If Guard.IsPost() AndAlso Request.Form("payOrder") = o.Id.ToString() Then
+                    ' The channel is chosen here, not at checkout, so record it before
+                    ' confirming: ConfirmPayment reads the order row for the brand and
+                    ' whether a reference number is required.
+                    Dim picked As String = Convert.ToString(Request.Form("payMethod")).Trim().ToUpperInvariant()
+                    If picked = "GCASH" OrElse picked = "GOTYME" OrElse picked = "COD" Then
+                        Dim pickResult As ServiceResult = _orders.ChoosePaymentMethod(o.Id, picked)
+                        If Not pickResult.Success Then
+                            Session("flash_msg") = pickResult.Message
+                            Session("flash_ok") = False
+                            Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
+                        End If
+                    End If
                     Dim r As ServiceResult = _orders.ConfirmPayment(o.OrderNumber, Request.Form("payRef"), Request.Form("payPassword"))
                     Session("flash_msg") = r.Message
                     Session("flash_ok") = r.Success
@@ -117,12 +129,27 @@ Namespace STAR_DOM.Web
             ' actions
             Dim method As String = If(o.PaymentMethod, "").Trim().ToUpperInvariant()
             Dim isEWallet As Boolean = PaymentSetting.IsEWallet(method)
-            Dim canPay As Boolean = (o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso
-                                     o.Status <> "CANCELLED" AndAlso isEWallet)
+            Dim quoted As Boolean = o.ShippingFeeConfirmed
+            ' Payment is closed until the studio returns the order with the final
+            ' price and shipping fee. Before that the total on this page is not the
+            ' amount due, so offering a channel would collect the wrong figure.
+            Dim canPay As Boolean = (quoted AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso
+                                     o.Status <> "CANCELLED")
             Dim canMarkReceived As Boolean = (isOwner AndAlso o.Status = "DELIVERED")
-            Dim canCancel As Boolean = (o.Status = "PENDING")
-            If canPay OrElse canMarkReceived OrElse canCancel Then
+            ' A placed order cannot be pulled back by the customer; the studio
+            ' handles cancellations once it is processing.
+            Dim canCancel As Boolean = False
+            If canPay OrElse canMarkReceived OrElse canCancel OrElse (isOwner AndAlso Not quoted AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING") Then
                 sb.Append("<div style=""margin-top:16px;display:flex;flex-direction:column;gap:12px"">")
+                If Not quoted AndAlso isOwner AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING" Then
+                    sb.Append("<div class=""card"" style=""border-color:#eec200;background:var(--yellow-soft)"">")
+                    sb.Append("<b style=""display:block;margin-bottom:4px"">Waiting for the final price</b>")
+                    sb.Append("<p class=""sub"" style=""margin:0 0 8px;color:var(--ink)"">Your order is placed. " &
+                              "The studio will return it with the <b>final price and shipping fee</b>. " &
+                              "Payment methods open here once that is done.</p>")
+                    sb.Append(WebUi.NoCancelNote("an order"))
+                    sb.Append("</div>")
+                End If
                 If canPay Then
                     Dim brandName As String = WebUi.ChannelBrand(method)
                     Dim brandTitle As String = brandName & " Payment Verification"
@@ -144,6 +171,21 @@ Namespace STAR_DOM.Web
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<input type=""hidden"" name=""payOrder"" value=""" & o.Id.ToString() & """>")
 
+                    ' Channel chooser. The order was placed with PaymentMethod
+                    ' "PENDING" because the studio quotes first, so if no real
+                    ' channel is stored yet the customer picks it here.
+                    Dim chosen As String = If(o.PaymentMethod, "").Trim().ToUpperInvariant()
+                    If chosen <> "GCASH" AndAlso chosen <> "GOTYME" AndAlso chosen <> "COD" Then
+                        Dim ps As New PaymentSettingRepository()
+                        sb.Append("<div style=""margin-bottom:12px""><label style=""display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"">Payment method *</label>")
+                        sb.Append("<select name=""payMethod"" required style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink);outline:none"">")
+                        sb.Append("<option value="""">Choose a payment method…</option>")
+                        If ps.IsChannelEnabled(PaymentSettingRepository.Gcash) Then sb.Append("<option value=""GCASH"">GCash</option>")
+                        If ps.IsChannelEnabled(PaymentSettingRepository.Gotyme) Then sb.Append("<option value=""GOTYME"">GOtyme</option>")
+                        sb.Append("<option value=""COD"">Cash on Delivery</option>")
+                        sb.Append("</select></div>")
+                    End If
+
                     sb.Append("<div style=""display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px"">")
                     ' Reference Input
                     sb.Append("<div><label style=""display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px"">" & WebUi.Esc(brandName) & " Reference No. *</label>")
@@ -159,6 +201,12 @@ Namespace STAR_DOM.Web
                     sb.Append("<button class=""btn primary"" type=""submit"" style=""padding:10px 20px;border-radius:10px;font-weight:700;display:inline-flex;align-items:center;gap:8px;box-shadow:var(--sh-1)""><span class=""ic ms"">check_circle</span><span>Confirm &amp; I've Paid</span></button>")
                     sb.Append("</div>")
                     sb.Append("</form></div>")
+                    sb.Append(WebUi.NoCancelNote("this order"))
+                    ' If the reference number was rejected the customer needs a human,
+                    ' not just a red flash that disappears on the next page load.
+                    If o.PaymentStatus = "FAILED" OrElse o.PaymentStatus = "REFUNDED" Then
+                        sb.Append(WebUi.PaymentFailureNote())
+                    End If
                 End If
 
                 If canMarkReceived Then

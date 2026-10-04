@@ -400,16 +400,9 @@ CREATE TABLE IF NOT EXISTS CommissionReferenceImages (
     CONSTRAINT FK_CommRefs_Commission FOREIGN KEY (CommissionId) REFERENCES Commissions(Id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS CommissionMessages (
-    Id SERIAL PRIMARY KEY,
-    CommissionId INT NOT NULL,
-    SenderId INT NOT NULL,
-    Message TEXT NOT NULL,
-    IsRead BOOLEAN NOT NULL DEFAULT FALSE,
-    CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT FK_CommMessages_Commission FOREIGN KEY (CommissionId) REFERENCES Commissions(Id) ON DELETE CASCADE,
-    CONSTRAINT FK_CommMessages_Sender FOREIGN KEY (SenderId) REFERENCES Users(Id)
-);
+-- CommissionMessages is intentionally NOT created here. The commission
+-- clarification round-trip and its message thread were retired; see the
+-- DROP TABLE IF EXISTS further down, which also cleans up older databases.
 
 CREATE TABLE IF NOT EXISTS CommissionStatusHistory (
     Id SERIAL PRIMARY KEY,
@@ -578,8 +571,6 @@ CREATE INDEX IF NOT EXISTS IDX_Reviews_User ON Reviews (UserId);
 CREATE INDEX IF NOT EXISTS IDX_Commissions_Merchant ON Commissions (MerchantId, Status);
 CREATE INDEX IF NOT EXISTS IDX_Commissions_Customer ON Commissions (CustomerId, Status);
 CREATE INDEX IF NOT EXISTS IDX_CommRefs_Commission ON CommissionReferenceImages (CommissionId);
-CREATE INDEX IF NOT EXISTS IDX_CommMessages_Commission ON CommissionMessages (CommissionId);
-CREATE INDEX IF NOT EXISTS IDX_CommMessages_Sender ON CommissionMessages (SenderId);
 CREATE INDEX IF NOT EXISTS IDX_CommHistory_Commission ON CommissionStatusHistory (CommissionId);
 CREATE INDEX IF NOT EXISTS IDX_Notifications_User ON Notifications (UserId, IsRead);
 CREATE INDEX IF NOT EXISTS IDX_AppErrors_Created ON AppErrors (CreatedAt);
@@ -593,6 +584,18 @@ CREATE INDEX IF NOT EXISTS IDX_AppErrors_Created ON AppErrors (CreatedAt);
 -- older database up to date; they are no-ops on a fresh one.
 ALTER TABLE Bundles ADD COLUMN IF NOT EXISTS GroupSize INT NOT NULL DEFAULT 0;
 ALTER TABLE Bundles ADD COLUMN IF NOT EXISTS BundlePrice DECIMAL(12,2) NOT NULL DEFAULT 0;
+
+-- Commission clarification round-trips are retired. The studio accepts a
+-- request or declines it, so "CLARIFICATION REQUESTED" and the message
+-- thread it hung off are gone from the product.
+--
+-- Anything parked in CLARIFICATION REQUESTED goes back to PENDING REVIEW so it
+-- is not stranded in a status nothing renders any more: it still has a valid
+-- brief and can be accepted or declined. Commissions.Status is a plain VARCHAR
+-- with no CHECK constraint, so no constraint has to be dropped here.
+UPDATE Commissions SET Status = 'PENDING REVIEW' WHERE Status = 'CLARIFICATION REQUESTED';
+DELETE FROM CommissionStatusHistory WHERE ToStatus = 'CLARIFICATION REQUESTED';
+DROP TABLE IF EXISTS CommissionMessages;
 
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedBy INT NULL;

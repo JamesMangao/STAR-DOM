@@ -182,6 +182,16 @@ Namespace STAR_DOM.Repositories
                     Db.P("@s", paymentStatus), Db.P("@id", orderId))
         End Sub
 
+        ''' <summary>
+        ''' Records which channel the customer chose. Checkout parks the method as
+        ''' "PENDING" because the studio quotes the order first, so the real channel
+        ''' is only known at payment time.
+        ''' </summary>
+        Public Sub SetPaymentMethod(orderId As Integer, method As String)
+            Db.Exec("UPDATE Orders SET PaymentMethod = @m, UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@m", method), Db.P("@id", orderId))
+        End Sub
+
         ' ----- Payments ---------------------------------------------------------
 
         Public Function CreatePayment(p As Payment) As Integer

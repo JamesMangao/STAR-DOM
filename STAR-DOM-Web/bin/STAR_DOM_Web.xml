@@ -169,6 +169,52 @@ STAR_DOM_Web
  so both shapes render correctly without a data migration.
  </remarks>
 </member>
+<member name="M:STAR_DOM.Web.WebUi.PaymentFailureNote(System.String)">
+ <summary>
+ Shown wherever an order or payment did not go through. The customer is
+ pointed at a human instead of a dead-end error, so this must stay in
+ step with the number published by the studio.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.NoCancelNote(System.String)">
+ <summary>
+ "You cannot cancel from here" notice. Once the studio has the order or
+ commission moving it is off the customer's hands, so say so before they
+ reach for a cancel button.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.BundleNote">
+ <summary>
+ Shopper-facing "N for ₱M" bundle legend, e.g. "Stickers Bundle — any 4 for
+ ₱100 · Button Pins Bundle — any 3 for ₱100". Returns an empty string when no
+ deal bundle is active, so callers can append it unconditionally.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.BundleNoteStrip">
+ <summary>
+ Banner form of <see cref="M:STAR_DOM.Web.WebUi.BundleNote"/>, for the browsing pages (catalog,
+ marketplace, public landing) so the deal is visible before the cart. It only
+ advertises the group rule — product cards still show BasePrice, and
+ CartService.BundleDiscount is what actually takes the money off — so this
+ never contradicts the price printed on a card.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.BundleNoteLines">
+ <summary>
+ One line per active bundle, e.g. "Stickers Bundle · 4 for ₱100". For tight
+ spots where the joined legend from <see cref="M:STAR_DOM.Web.WebUi.BundleNote"/> would wrap over
+ too many lines, such as the marketplace Bazaar Exclusive tile. Names are
+ escaped; the separator is real markup. Empty list when none is active.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.WebUi.BundleNoteBlock">
+ <summary>
+ The bundle block for the yellow promo tiles: one compact line per deal,
+ separated from the tile's own copy by a rule. Colours suit the yellow tile
+ background. Returns an empty string when no deal bundle is active, so
+ callers can append it unconditionally.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.WebUi.OutLink(System.String,System.String,System.Boolean)">
  <summary>Category/filter chip link.</summary>
 </member>
@@ -818,6 +864,13 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.OrderRepository.RestoreOrderStock(System.Int32)">
  <summary>Put sold units back on the shelf when an order is cancelled.</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.SetPaymentMethod(System.Int32,System.String)">
+ <summary>
+ Records which channel the customer chose. Checkout parks the method as
+ "PENDING" because the studio quotes the order first, so the real channel
+ is only known at payment time.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.PurchaseOrderId(System.Int32,System.Int32)">
  <summary>
  Id of the user's most recent non-cancelled order containing the product.
@@ -946,6 +999,13 @@ STAR_DOM_Web
  between the members' cart value and the bundle price (sale prices honoured).
  </summary>
 </member>
+<member name="M:STAR_DOM.Services.CartService.BundleGroups">
+ <summary>
+ Every active deal bundle. <see cref="M:STAR_DOM.Services.CartService.BundleNote"/> joins these into the
+ one-line legend; callers that render the deals separately (one line each,
+ in tight spots like the Bazaar Exclusive tile) read this list instead.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Services.CartService.BundleForProduct(System.Int32)">
  <summary>
  The active bundle containing a product, or Nothing. Callers use it to show the
@@ -1004,6 +1064,13 @@ STAR_DOM_Web
  amount settles here.
  </summary>
 </member>
+<member name="M:STAR_DOM.Services.CommissionService.ReferenceImages(System.Int32)">
+ <summary>
+ Reference artwork the customer attached to a commission. Empty when they
+ attached none. The rows have existed since uploads were introduced, but
+ nothing ever read them, so both sides saw no pictures at all.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Services.OrderService.StockShortageException">
  <summary>
  Raised inside the checkout transaction when a conditional stock decrement
@@ -1018,12 +1085,17 @@ STAR_DOM_Web
  id so it can never collide under concurrent checkouts.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.OrderService.ConfirmPayment(System.String,System.String,System.String)">
+<member name="M:STAR_DOM.Services.OrderService.ChoosePaymentMethod(System.Int32,System.String)">
  <summary>
  Payment confirmation is password-gated for whoever records it — the buyer
  confirming their own e-wallet payment, or a merchant/admin recording one.
  GCash/GOtyme (the only accepted e-payments) must carry the reference number
  from the e-wallet receipt; COD needs only the password.
+ </summary>
+ <summary>
+ Records the channel the customer picked at payment time. Checkout parks the
+ method as "PENDING" because the studio quotes the order first, so this is
+ where the real channel is chosen.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.MarkReceived(System.Int32)">

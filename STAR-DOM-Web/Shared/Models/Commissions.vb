@@ -50,15 +50,8 @@ Namespace STAR_DOM.Models
         Public Property SortOrder As Integer
     End Class
 
-    Public Class CommissionMessage
-        Public Property Id As Integer
-        Public Property CommissionId As Integer
-        Public Property SenderId As Integer
-        Public Property SenderName As String
-        Public Property Message As String
-        Public Property IsRead As Boolean
-        Public Property CreatedAt As Date
-    End Class
+    ' CommissionMessage is intentionally gone: its table is dropped along with the
+    ' commission clarification round-trip and message thread.
 
     Public Class CommissionStatusHistory
         Public Property Id As Integer
@@ -74,7 +67,6 @@ Namespace STAR_DOM.Models
     Public Module CommissionStatuses
         Public Const Submitted As String = "SUBMITTED"
         Public Const PendingReview As String = "PENDING REVIEW"
-        Public Const ClarificationRequested As String = "CLARIFICATION REQUESTED"
         Public Const Accepted As String = "ACCEPTED"
         Public Const OfferSent As String = "OFFER SENT"
         Public Const CustomerConfirmed As String = "CUSTOMER CONFIRMED"
@@ -88,7 +80,7 @@ Namespace STAR_DOM.Models
         Public Const Cancelled As String = "CANCELLED"
 
         Public ReadOnly Property All As String() = {
-            Submitted, PendingReview, ClarificationRequested, Accepted, OfferSent,
+            Submitted, PendingReview, Accepted, OfferSent,
             CustomerConfirmed, PaymentPending, Paid, InProduction, Revision,
             Finalized, Completed, Declined, Cancelled
         }

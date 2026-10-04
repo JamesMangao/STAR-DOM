@@ -21,26 +21,6 @@ Namespace STAR_DOM.Web
             Try
                 Integer.TryParse(Request.QueryString("id"), _editingId)
 
-                ' inventory + sale actions on an existing event
-                If Request.QueryString("addinv") <> "" Then
-                    Dim pid As Integer = 0
-                    Integer.TryParse(Request.QueryString("addinv"), pid)
-                    Dim stock As Integer = 5
-                    Integer.TryParse(Request.QueryString("stock"), stock)
-                    If pid > 0 AndAlso _editingId > 0 Then
-                        Dim r As ServiceResult = _events.AddInventory(_editingId, pid, stock, Request.QueryString("excl") = "1")
-                        Session("flash_msg") = r.Message
-                        Session("flash_ok") = r.Success
-                    End If
-                    Response.Redirect("/App/Merchant/EventEdit.aspx?id=" & _editingId.ToString(), True)
-                End If
-                If Request.QueryString("delinv") <> "" Then
-                    Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("delinv"), id)
-                    If id > 0 Then _events.RemoveInventory(id)
-                    Response.Redirect("/App/Merchant/EventEdit.aspx?id=" & _editingId.ToString(), True)
-                End If
-
                 If Guard.IsPost() Then
                     SaveEvent()
                     Return
@@ -61,6 +41,13 @@ Namespace STAR_DOM.Web
                 End If
             Else
                 ev = New PopUpEvent()
+                ' These three are NOT NULL with no default in the insert path, and a
+                ' fresh PopUpEvent leaves them Nothing. Db.P() turns Nothing into
+                ' DBNull, so creating an event died on
+                ' "null value in column imagefile". Seed them to "" here.
+                ev.FeaturedGuest = ""
+                ev.LineupText = ""
+                ev.ImageFile = ""
             End If
 
             ev.Name = Trim(Convert.ToString(Request.Form("name")))
@@ -68,7 +55,10 @@ Namespace STAR_DOM.Web
             ev.BoothNumber = Convert.ToString(Request.Form("booth"))
             ev.OpenTime = Convert.ToString(Request.Form("open"))
             ev.CloseTime = Convert.ToString(Request.Form("close"))
-            ev.FeaturedGuest = Convert.ToString(Request.Form("guest"))
+            ev.FeaturedGuest = If(_editingId > 0, ev.FeaturedGuest, "")
+            ' "guest" is no longer posted: the field was removed from the editor.
+            ' Keep whatever is already stored so an edit does not blank the column,
+            ' which is NOT NULL, and seed "" on create.
             ' "lineup" removed from the form: single-owner brand, no creator lineups.
             ev.LineupText = ""
             ev.Description = Convert.ToString(Request.Form("description"))
@@ -104,7 +94,7 @@ Namespace STAR_DOM.Web
                                     "EVENT & BOOTH MANAGER", "Set venue, dates, hours and booth details."))
 
             sb.Append("<div class=""row"" style=""align-items:flex-start;gap:24px"">")
-            sb.Append("<form method=""post"" action=""/App/Merchant/EventEdit.aspx" & If(_editingId > 0, "?id=" & _editingId.ToString(), "") & """ style=""flex:1.4;min-width:340px"">")
+            sb.Append("<form method=""post"" action=""/App/Merchant/EventEdit.aspx" & If(_editingId > 0, "?id=" & _editingId.ToString(), "") & """ style=""flex:1;min-width:320px"">")
             ' Nested inside the shell form, which the browser closes at this tag — so the
             ' shell's token is not submitted with this form. Carry its own.
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
@@ -132,59 +122,29 @@ Namespace STAR_DOM.Web
                 sb.Append("<option" & sel & ">" & s & "</option>")
             Next
             sb.Append("</select></div>")
-            sb.Append(Field("guest", "Featured guest / artist", If(ev IsNot Nothing, ev.FeaturedGuest, "")))
             sb.Append("<div class=""field""><label>Description</label><textarea name=""description"" style=""min-height:70px"">" &
                       WebUi.Esc(If(ev IsNot Nothing, ev.Description, "")) & "</textarea></div>")
             sb.Append("<div class=""frow"">")
             sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">save</span><span>Save Event</span></button>")
             sb.Append(WebUi.BtnHref("/App/Merchant/Events.aspx", "Cancel", "ghost", "close"))
             sb.Append("</div></div></form>")
-
-            ' right column: event inventory (only when editing)
-            sb.Append("<div style=""flex:1.2;min-width:320px"">")
-            If _editingId > 0 Then
-                ' add inventory
-                sb.Append("<div class=""card mb"">")
-                sb.Append("<h3 style=""margin-bottom:6px"">Event inventory</h3>")
-                sb.Append("<form method=""get"" action=""/App/Merchant/EventEdit.aspx"" style=""display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end"">")
-                sb.Append("<input type=""hidden"" name=""id"" value=""" & _editingId.ToString() & """>")
-                sb.Append("<div class=""field"" style=""flex:1;min-width:150px;margin:0""><label>Product</label><select name=""addinv"">")
-                For Each p As Product In _products.ListActive()
-                    sb.Append("<option value=""" & p.Id.ToString() & """>" & WebUi.Esc(p.Name) & "</option>")
-                Next
-                sb.Append("</select></div>")
-                sb.Append("<div class=""field"" style=""margin:0""><label>Stock</label><input name=""stock"" type=""number"" value=""5"" style=""width:70px""></div>")
-                sb.Append("<button class=""btn primary sm"" type=""submit""><span class=""ic ms"">add</span><span>Add</span></button>")
-                sb.Append("</form>")
-
-                Dim inv As List(Of EventInventory) = _events.Inventory(_editingId)
-                If inv.Count > 0 Then
-                    sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
-                    For Each h As String In {"PRODUCT", "START", "SOLD", "LEFT", ""}
-                        sb.Append("<th>" & h & "</th>")
-                    Next
-                    sb.Append("</tr></thead><tbody>")
-                    For Each it As EventInventory In inv
-                        sb.Append("<tr><td>" & WebUi.Esc(it.ProductName) & If(it.IsEventExclusive, " " & WebUi.Pill("EXCLUSIVE", "red"), "") & "</td>")
-                        sb.Append("<td>" & it.StartingStock.ToString() & "</td>")
-                        sb.Append("<td>" & it.SoldQuantity.ToString() & "</td>")
-                        sb.Append("<td><b>" & it.RemainingStock.ToString() & "</b></td>")
-                        sb.Append("<td class=""rowact""><a href=""/App/Merchant/EventEdit.aspx?id=" & _editingId.ToString() & "&delinv=" &
-                                  it.Id.ToString() & """ data-confirm=""Remove this item from the event inventory?"" data-confirm-danger"">Remove</a></td></tr>")
-                    Next
-                    sb.Append("</tbody></table></div>")
-                End If
-                sb.Append("</div>")
-            End If
-            sb.Append("</div>")
+            ' The right-hand "Event inventory" column and the "Featured guest / artist"
+            ' field are gone: a single-owner brand has no guest lineup and no
+            ' per-event stock to manage. EventInventory rows stay in the database
+            ' untouched; only the editing UI was removed.
             sb.Append("</div>")
             Out.Text = sb.ToString()
         End Sub
 
         Private Function Field(name As String, label As String, value As String, Optional required As Boolean = False,
                                Optional type As String = "text") As String
+            ' No backslash before the closing quote. The old "& "\""" emitted
+            ' value="Stall A-12\", so every field submitted with a trailing "\":
+            ' booth saved as "4\", and a datetime-local value of
+            ' "2026-09-04T10:00\" is invalid, so the browser sent an EMPTY date and
+            ' DateRange() rejected the save. That is why edits appeared not to save.
             Return "<div class=""field""><label for=""" & name & """>" & WebUi.Esc(label) & "</label>" &
-                   "<input id=""" & name & """ name=""" & name & """ type=""" & type & """ value=""" & WebUi.Attr(value) & "\""" &
+                   "<input id=""" & name & """ name=""" & name & """ type=""" & type & """ value=""" & WebUi.Attr(value) & """" &
                    If(required, " required", "") & "></div>"
         End Function
 

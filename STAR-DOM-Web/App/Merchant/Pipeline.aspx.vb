@@ -31,12 +31,12 @@ Namespace STAR_DOM.Web
                 shown = all.Where(Function(c) String.Equals(c.Status, filter, StringComparison.OrdinalIgnoreCase)).ToList()
             End If
 
-            Dim pending As Integer = all.Where(Function(c) c.Status = "PENDING REVIEW" OrElse c.Status = "CLARIFICATION REQUESTED").Count()
+            Dim pending As Integer = all.Where(Function(c) c.Status = "PENDING REVIEW").Count()
             sb.Append(WebUi.Section("Commission Pipeline", "MERCHANT STUDIO / REQUESTS",
                                     "Review requests, clarify, quote, and drive production to delivery."))
 
             sb.Append("<div class=""frow"">")
-            For Each chip As String In {"", "PENDING REVIEW", "CLARIFICATION REQUESTED", "OFFER SENT", "PAID", "IN PRODUCTION", "COMPLETED", "DECLINED"}
+            For Each chip As String In {"", "PENDING REVIEW", "OFFER SENT", "PAID", "IN PRODUCTION", "COMPLETED", "DECLINED"}
                 Dim label As String = If(chip = "", "ALL", chip.Replace("_", " "))
                 Dim url As String = If(chip = "", "/App/Merchant/Pipeline.aspx", "/App/Merchant/Pipeline.aspx?st=" & Server.UrlEncode(chip))
                 sb.Append(WebUi.OutLink(url, label, String.Equals(filter, chip, StringComparison.OrdinalIgnoreCase)))

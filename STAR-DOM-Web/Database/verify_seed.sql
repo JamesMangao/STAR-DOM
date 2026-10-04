@@ -48,7 +48,6 @@ FROM (
     UNION ALL SELECT 'orphaned user references',          COUNT(*)::text, '0' FROM (
         SELECT c.CustomerId AS uid FROM Commissions c
         UNION ALL SELECT n.UserId FROM Notifications n
-        UNION ALL SELECT m.SenderId FROM CommissionMessages m
         UNION ALL SELECT r.UserId FROM Reviews r
     ) x WHERE x.uid NOT IN (SELECT Id FROM Users)
 ) t;

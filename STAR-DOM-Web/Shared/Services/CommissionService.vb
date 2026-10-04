@@ -114,22 +114,8 @@ Namespace STAR_DOM.Services
         End Function
 
         ' ----- Merchant actions -------------------------------------------------
-
-        Public Function RequestClarification(commissionId As Integer, message As String) As ServiceResult
-            Dim cm As Commission = _repo.GetById(commissionId)
-            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
-            If String.IsNullOrWhiteSpace(message) Then Return ServiceResult.Fail("Please enter a clarification message.")
-
-            Dim err As String = _repo.UpdateStatus(commissionId, "", CommissionStatuses.ClarificationRequested,
-                                                   Session.DisplayName, "Merchant requested clarification")
-            If err IsNot Nothing Then Return ServiceResult.Fail(err)
-            _repo.AddMessage(commissionId, Session.CurrentUser.Id, message)
-            _notif.Notify(cm.CustomerId, "Clarification requested – " & cm.CommissionNumber,
-                          "The merchant asked a question about your commission. Please reply to continue.",
-                          "COMMISSION", "commission-hub")
-            Return ServiceResult.Ok("Clarification requested and sent to the customer.")
-        End Function
+        ' RequestClarification is gone: the studio accepts a request or declines
+        ' it, so a vague brief has nowhere to go but a declined request.
 
         ''' <summary>
         ''' The artist accepts the request and prices it themselves — there is no
@@ -167,24 +153,7 @@ Namespace STAR_DOM.Services
         End Function
 
         ' ----- Customer actions -------------------------------------------------
-
-        Public Function ReplyToClarification(commissionId As Integer, message As String, updated As Commission) As ServiceResult
-            Dim cm As Commission = _repo.GetById(commissionId)
-            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If cm.CustomerId <> Session.CurrentUser.Id Then Return ServiceResult.Fail("Not your commission.")
-            If Not String.Equals(cm.Status, CommissionStatuses.ClarificationRequested, StringComparison.OrdinalIgnoreCase) Then
-                Return ServiceResult.Fail("This commission is not awaiting clarification.")
-            End If
-
-            If updated IsNot Nothing Then _repo.UpdateRequestDetails(updated)
-            If Not String.IsNullOrWhiteSpace(message) Then _repo.AddMessage(commissionId, Session.CurrentUser.Id, message)
-            _repo.UpdateStatus(commissionId, CommissionStatuses.ClarificationRequested, CommissionStatuses.PendingReview,
-                               Session.DisplayName, "Customer replied to clarification")
-            _notif.Notify(cm.MerchantId, "Clarification reply – " & cm.CommissionNumber,
-                          Session.DisplayName & " replied. The request is back in PENDING REVIEW.",
-                          "COMMISSION", "commission-pipeline")
-            Return ServiceResult.Ok("Reply sent; your request is back under review.")
-        End Function
+        ' ReplyToClarification is gone with the clarification round-trip.
 
         Public Function ConfirmOffer(commissionId As Integer) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
@@ -270,6 +239,15 @@ Namespace STAR_DOM.Services
 
         ' ----- Queries ----------------------------------------------------------
 
+        ''' <summary>
+        ''' Reference artwork the customer attached to a commission. Empty when they
+        ''' attached none. The rows have existed since uploads were introduced, but
+        ''' nothing ever read them, so both sides saw no pictures at all.
+        ''' </summary>
+        Public Function ReferenceImages(commissionId As Integer) As List(Of CommissionReferenceImage)
+            Return _repo.ListReferenceImages(commissionId)
+        End Function
+
         Public Function ListMyCommissions() As List(Of Commission)
             If Not Session.IsAuthenticated Then Return New List(Of Commission)()
             Return _repo.ListByCustomer(Session.CurrentUser.Id)
@@ -283,26 +261,6 @@ Namespace STAR_DOM.Services
         Public Function GetCommission(id As Integer) As Commission
             Return _repo.GetById(id)
         End Function
-
-        Public Function ListMessages(commissionId As Integer) As List(Of CommissionMessage)
-            Return _repo.ListMessages(commissionId)
-        End Function
-
-        Public Function SendMessage(commissionId As Integer, message As String) As ServiceResult
-            Dim cm As Commission = _repo.GetById(commissionId)
-            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If Not CanAccess(cm) Then Return ServiceResult.Fail("Not authorized.")
-            If String.IsNullOrWhiteSpace(message) Then Return ServiceResult.Fail("Message cannot be empty.")
-            _repo.AddMessage(commissionId, Session.CurrentUser.Id, message)
-            Dim recipient As Integer = If(cm.CustomerId = Session.CurrentUser.Id, cm.MerchantId, cm.CustomerId)
-            _notif.Notify(recipient, "New message – " & cm.CommissionNumber, message, "COMMISSION",
-                          If(recipient = cm.MerchantId, "commission-pipeline", "commission-hub"))
-            Return ServiceResult.Ok("Message sent.")
-        End Function
-
-        Public Sub MarkRead(commissionId As Integer)
-            If Session.IsAuthenticated Then _repo.MarkMessagesRead(commissionId, Session.CurrentUser.Id)
-        End Sub
 
         Public Function ListStatusHistory(commissionId As Integer) As List(Of CommissionStatusHistory)
             Return _repo.ListStatusHistory(commissionId)

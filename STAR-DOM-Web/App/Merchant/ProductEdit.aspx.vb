@@ -146,8 +146,11 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Function Field(name As String, label As String, value As String, required As Boolean) As String
+            ' No backslash before the closing quote: the old "& "\""" emitted
+            ' value="Sticker\", so every field submitted with a trailing "\" and the
+            ' saved product carried it. Same bug as EventEdit's Field().
             Return "<div class=""field""><label for=""" & name & """>" & WebUi.Esc(label) & "</label>" &
-                   "<input id=""" & name & """ name=""" & name & """ value=""" & WebUi.Attr(value) & "\""" &
+                   "<input id=""" & name & """ name=""" & name & """ value=""" & WebUi.Attr(value) & """" &
                    If(required, " required", "") & "></div>"
         End Function
 

@@ -92,10 +92,13 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""card"" style=""padding:0;overflow:hidden"">" & WebUi.ProductImg(b.PrimaryImageFile, b.Id, b.Name, "height:120px") &
                       "<div style=""padding:8px 10px;font-size:12px""><b>" & WebUi.Esc(b.Name) & "</b><br>" &
                       WebUi.Money(b.BasePrice) & "</div></div>")
+            ' Same bundle block as the marketplace Bazaar Exclusive tile, so the
+            ' public hero advertises the deals too.
             sb.Append("<div class=""card"" style=""background:var(--yellow);border-color:#eec200;display:flex;flex-direction:column;justify-content:center;gap:4px"">" &
                       "<span class=""k-label"" style=""font-size:9px;letter-spacing:.12em;font-weight:800"">POP-UP EXCLUSIVE</span>" &
                       "<span style=""font-weight:800;font-size:20px"">" & WebUi.Money(b.BasePrice) & "</span>" &
-                      "<span style=""font-size:12px"">Nationwide J&amp;T delivery</span></div>")
+                      "<span style=""font-size:12px"">Nationwide J&amp;T delivery</span>" &
+                      WebUi.BundleNoteBlock() & "</div>")
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -189,6 +192,11 @@ Namespace STAR_DOM.Web
             sb.Append("<div><div class=""eyebrow"">FRESH FROM THE STUDIO</div><h2>Featured Pieces</h2></div>")
             sb.Append("<div class=""sub"">" & featured.Count.ToString() & " picks from the catalog</div>")
             sb.Append("</div>")
+
+            ' Same bundle legend the signed-in catalog shows. Anonymous visitors get
+            ' it too: CartService.BundleNote only reads the Bundles tables, so it
+            ' needs no session, and the strip renders empty when nothing is active.
+            sb.Append(WebUi.BundleNoteStrip())
 
             If featured.Count = 0 Then
                 sb.Append(WebUi.EmptyRow("No products available yet - check back soon."))
