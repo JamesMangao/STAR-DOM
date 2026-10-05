@@ -148,42 +148,22 @@ Namespace STAR_DOM.Repositories
                 .ImageFile = RowReader.AsStr(r, "ImageFile")}).ToList()
         End Function
 
-        Public Function ListEventExclusiveProducts(eventId As Integer) As List(Of Product)
-            Return Db.Rows(
-                "SELECT p.*, c.Name AS CategoryName, u.FullName AS MerchantName, " &
-                "(SELECT pi.ImageFile FROM ProductImages pi WHERE pi.ProductId = p.Id AND pi.IsPrimary = TRUE LIMIT 1) AS PrimaryImageFile " &
-                "FROM EventInventory ei JOIN Products p ON p.Id = ei.ProductId " &
-                "LEFT JOIN Categories c ON c.Id = p.CategoryId " &
-                "LEFT JOIN Users u ON u.Id = p.MerchantId " &
-                "WHERE ei.EventId = @e AND ei.IsEventExclusive = TRUE AND p.IsActive = TRUE",
-                Db.P("@e", eventId)).Select(Function(r) New Product With {
-                .Id = RowReader.AsInt(r, "Id"), .MerchantId = RowReader.AsInt(r, "MerchantId"),
-                .CategoryId = RowReader.AsInt(r, "CategoryId"), .Name = RowReader.AsStr(r, "Name"),
-                .Description = RowReader.AsStr(r, "Description"), .BasePrice = RowReader.AsDec(r, "BasePrice"),
-                .SalePrice = RowReader.AsNullableDec(r, "SalePrice"), .StockQuantity = RowReader.AsInt(r, "StockQuantity"),
-                .Sku = RowReader.AsStr(r, "Sku"), .BrandName = RowReader.AsStr(r, "BrandName"),
-                .IsActive = RowReader.AsBool(r, "IsActive"), .BadgeLabel = RowReader.AsStr(r, "BadgeLabel"),
-                .CategoryName = RowReader.AsStr(r, "CategoryName"), .MerchantName = RowReader.AsStr(r, "MerchantName"),
-                .PrimaryImageFile = RowReader.AsStr(r, "PrimaryImageFile")}).ToList()
-        End Function
-
-        Public Function AddInventory(eventId As Integer, productId As Integer, startingStock As Integer, isExclusive As Boolean) As String
+        Public Function AddInventory(eventId As Integer, productId As Integer, startingStock As Integer) As String
             If startingStock < 0 Then Return "Starting stock cannot be negative."
             Dim dup As Integer = Db.ScalarInt("SELECT COUNT(*) FROM EventInventory WHERE EventId = @e AND ProductId = @p",
                                               Db.P("@e", eventId), Db.P("@p", productId))
             If dup > 0 Then Return "This product is already assigned to the event."
             Db.Exec("INSERT INTO EventInventory (EventId, ProductId, StartingStock, SoldQuantity, RemainingStock, IsEventExclusive, IsActive) " &
-                    "VALUES (@e, @p, @s, 0, @s, @x, 1)",
-                    Db.P("@e", eventId), Db.P("@p", productId), Db.P("@s", startingStock),
-                    Db.P("@x", isExclusive))
+                    "VALUES (@e, @p, @s, 0, @s, FALSE, 1)",
+                    Db.P("@e", eventId), Db.P("@p", productId), Db.P("@s", startingStock))
             Return Nothing
         End Function
 
-        Public Sub UpdateInventory(id As Integer, startingStock As Integer, isExclusive As Boolean, isActive As Boolean)
+        Public Sub UpdateInventory(id As Integer, startingStock As Integer, isActive As Boolean)
             Db.Exec(
                 "UPDATE EventInventory SET StartingStock = @s, " &
-                "RemainingStock = GREATEST(@s - SoldQuantity, 0), IsEventExclusive = @x, IsActive = @a WHERE Id = @id",
-                Db.P("@s", startingStock), Db.P("@x", isExclusive),
+                "RemainingStock = GREATEST(@s - SoldQuantity, 0), IsActive = @a WHERE Id = @id",
+                Db.P("@s", startingStock),
                 Db.P("@a", isActive), Db.P("@id", id))
         End Sub
 

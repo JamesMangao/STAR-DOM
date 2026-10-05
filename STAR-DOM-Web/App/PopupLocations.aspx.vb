@@ -15,7 +15,7 @@ Namespace STAR_DOM.Web
         Private ReadOnly _catalog As New CatalogService()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
-            ' Public: the tour schedule, venue details, map, and event-exclusive
+            ' Public: the tour schedule, venue details and map.
             ' inventory are marketing content like the storefront. Buying from here
             ' still needs an account, handled by the gate popup on the add buttons.
             Try
@@ -189,23 +189,6 @@ Namespace STAR_DOM.Web
             If ev.FeaturedGuest <> "" Then sb.Append("<dt>Featured</dt><dd>" & WebUi.Esc(ev.FeaturedGuest) & "</dd>")
             sb.Append("<dt>Status</dt><dd>" & WebUi.Badge(ev.Status) & "</dd>")
             sb.Append("</div></div>")
-
-            ' event-exclusive offers
-            Dim exclusives As List(Of Product) = _events.EventExclusive(id)
-            If exclusives.Count > 0 Then
-                sb.Append("<div class=""sec-head"" style=""margin-top:24px""><div>")
-                sb.Append("<div class=""eyebrow"">BOOTH INVENTORY &amp; LIVE OFFERINGS</div>")
-                sb.Append("<h2>Event-exclusive Products</h2></div></div>")
-                sb.Append("<div class=""grid cards4"">")
-                For Each p As Product In exclusives
-                    sb.Append("<div class=""pcard"">")
-                    sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name, "height:150px"))
-                    sb.Append("<div class=""pbody""><b>" & WebUi.Esc(p.Name) & "</b>" & WebUi.Money(p.BasePrice) &
-                              WebUi.AddCartButton(p, Server.UrlEncode("/App/PopupLocations.aspx?id=" & id.ToString()), "Add to bag") &
-                              "</div></div>")
-                Next
-                sb.Append("</div>")
-            End If
             Out.Text = sb.ToString()
         End Sub
 

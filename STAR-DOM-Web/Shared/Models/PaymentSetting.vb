@@ -74,6 +74,29 @@ Namespace STAR_DOM.Models
             End Select
         End Function
 
+        ''' <summary>
+        ''' Where a customer goes when a payment cannot be confirmed. Held here, not in
+        ''' the page layer, because the service layer writes the same sentence into its
+        ''' failure messages — and a customer who reads a different phone number on the
+        ''' order page than on the merchant console has been told to trust two stores.
+        ''' </summary>
+        Public Shared ReadOnly Property SupportContact As String =
+            "For concerns please message @star.d0mm on instagram or contact 09701375033."
+
+        ''' <summary>
+        ''' A failed-payment sentence. It always opens with the same fixed line the
+        ''' customer is told to quote when they get in touch, then gives the reason,
+        ''' then who to talk to. The fixed line comes FIRST on purpose: it is the
+        ''' sentence support reads back, and a reason that varies per cause used to
+        ''' push it off the end of the flash on long ones.
+        ''' </summary>
+        Public Shared Function PaymentFailedMessage(detail As String) As String
+            Const headline As String = "Order / payment failed."
+            Dim why As String = If(detail, "").Trim()
+            If why = "" Then why = "The payment could not be verified."
+            Return headline & " " & why & " " & SupportContact
+        End Function
+
         Public Shared Function NormalizeMode(raw As String) As String
             Dim m As String = If(raw, "").Trim().ToUpperInvariant()
             Select Case m

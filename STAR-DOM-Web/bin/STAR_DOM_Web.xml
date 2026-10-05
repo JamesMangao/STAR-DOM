@@ -169,6 +169,13 @@ STAR_DOM_Web
  so both shapes render correctly without a data migration.
  </remarks>
 </member>
+<member name="P:STAR_DOM.Web.WebUi.PaymentFailureContact">
+ <summary>
+ The plain-text contact sentence that closes every failed-payment message.
+ Lives on PaymentSetting, not here, because the service layer writes the
+ same sentence into its flash messages — the two must never drift apart.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.WebUi.PaymentFailureNote(System.String)">
  <summary>
  Shown wherever an order or payment did not go through. The customer is
@@ -316,6 +323,13 @@ STAR_DOM_Web
  fields. Nothing is read back out of the session, so it needs no serialization.
  </summary>
 </member>
+<member name="F:STAR_DOM.Web.CheckoutPage.CheckoutDraft.PaymentMethod">
+ <summary>
+ Parked method. The studio prices the order and returns it with the J&amp;T
+ fee before any money moves, so the channel is chosen on the order page,
+ not here — see Checkout's "How payment works" card.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.CheckoutPage.Posted(System.String)">
  <summary>One posted value, trimmed, or "" when the field was not sent.</summary>
  <remarks>
@@ -332,6 +346,14 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.CheckoutPage.ComposeAddress(STAR_DOM.Web.CheckoutPage.CheckoutDraft)">
  <summary>
  Joins the split address inputs into the single line the orders table stores.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.OrderDetailPage.ReviewQueue(STAR_DOM.Models.Order)">
+ <summary>
+ The review queue for a received order: every item on it that this
+ customer has not written about yet. Without this the only way to review
+ was to find the product in the catalog, and nothing on the order ever
+ said that reviewing was now possible.
  </summary>
 </member>
 <member name="T:STAR_DOM.Web.PaymentQrPage">
@@ -424,6 +446,12 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.CommissionRequestPage.StepHint(System.Int32)">
  <summary>One line telling the buyer what this step wants from them.</summary>
 </member>
+<member name="M:STAR_DOM.Web.CommissionDetailPage.PaymentStateLine(STAR_DOM.Models.Commission)">
+ <summary>
+ How the money stands. A reference on file is not a confirmed payment:
+ the studio still has to verify it, and production stays shut until then.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
 </member>
@@ -436,6 +464,28 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderActions(System.Text.StringBuilder,STAR_DOM.Models.Order)">
  <summary>Per-row actions: quote shipping and confirm, advance status, book J&amp;T, confirm hand-over, record payment.</summary>
+ <remarks>
+ The row is a strict sequence, one form at a time, and that is the point:
+ every step below asks the merchant to re-enter their password, so rendering
+ two of them side by side put two identical-looking "Your password" boxes in
+ one cell with nothing to tell them apart. So a row shows exactly one of:
+   1. the shipping quote, while the order is still unquoted;
+   2. the payment confirmation, once quoted but not yet paid;
+   3. plain advance links, once paid;
+   4. the J&amp;T booking form, when it is ready to go.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.ActionKey(System.String@,System.Int32@)">
+ <summary>
+ Picks one row action out of a POST: the pressed submit button is named
+ act_&lt;kind&gt;_&lt;orderId&gt;. False when the body carries no action button.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.CanRecordPayment(STAR_DOM.Models.Order)">
+ <summary>
+ True while a payment is still outstanding and can still be recorded:
+ not paid, not refunded, and not on a cancelled order.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.NeedsShippingQuote(STAR_DOM.Models.Order)">
  <summary>
@@ -448,6 +498,27 @@ STAR_DOM_Web
  Inline form that quotes the J&amp;T fee and confirms the order. Password-gated
  in the service layer, same as recording a payment, because it commits the
  customer's final total.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderConfirmPayForm(STAR_DOM.Models.Order)">
+ <summary>
+ Payment confirmation: the reference number read off the customer's
+ e-wallet receipt, plus the password. Only rendered once the order is
+ quoted, so the figure being confirmed is the final one.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderBookJntForm(STAR_DOM.Models.Order)">
+ <summary>The J&amp;T hand-off form: tracking number in, SHIPPED out.</summary>
+</member>
+<member name="T:STAR_DOM.Web.ReviewsPage">
+ <summary>
+ Read-only view of what customers have written about the catalogue.
+
+ The approve / hide / delete controls are gone. Moderation existed to guard a
+ review that any account could post about a product it had never bought; that
+ hole is closed at the source instead — a review is only accepted from a
+ customer who confirmed the parcel arrived, so it is published on submit and
+ the studio has nothing left to arbitrate.
  </summary>
 </member>
 <member name="T:STAR_DOM.Web.AdminPaymentSettingsPage">
@@ -710,6 +781,22 @@ STAR_DOM_Web
 <member name="T:STAR_DOM.Models.Commission">
  <summary>Commission request with the full merchant-atelier lifecycle.</summary>
 </member>
+<member name="P:STAR_DOM.Models.Commission.ShippingFee">
+ <summary>
+ Shipping on a commission is always free. Unlike an order, the quoted
+ price is the whole price and the studio covers the courier, so there is
+ never a shipping line to add or argue about.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Models.Commission.PaymentConfirmed">
+ <summary>True once the studio has verified the payment reference.</summary>
+</member>
+<member name="P:STAR_DOM.Models.Commission.DeliveryStatusLine">
+ <summary>
+ Customer-facing courier sentence. The studio states where the piece is;
+ live tracking happens on J&amp;T's own site.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Models.CommissionStatuses">
  <summary>All known commission statuses, in workflow order.</summary>
 </member>
@@ -763,6 +850,23 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Models.PaymentSetting.IsEWallet(System.String)">
  <summary>True for either e-wallet, which always need a reference number.</summary>
 </member>
+<member name="P:STAR_DOM.Models.PaymentSetting.SupportContact">
+ <summary>
+ Where a customer goes when a payment cannot be confirmed. Held here, not in
+ the page layer, because the service layer writes the same sentence into its
+ failure messages — and a customer who reads a different phone number on the
+ order page than on the merchant console has been told to trust two stores.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Models.PaymentSetting.PaymentFailedMessage(System.String)">
+ <summary>
+ A failed-payment sentence. It always opens with the same fixed line the
+ customer is told to quote when they get in touch, then gives the reason,
+ then who to talk to. The fixed line comes FIRST on purpose: it is the
+ sentence support reads back, and a reason that varies per cause used to
+ push it off the end of the flash on long ones.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Reports.ReportRow">
  <summary>Key/value row used by report grids and chart series.</summary>
 </member>
@@ -798,6 +902,26 @@ STAR_DOM_Web
  ListAll() is untouched — the merchant studio still needs to see and manage
  empty categories in order to put products into them.
  </remarks>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionRepository.SetPaymentReference(System.Int32,System.String)">
+ <summary>
+ Stores the e-wallet transaction number the customer paid against and parks
+ the commission in PAYMENT PENDING. Nothing about the payment is confirmed
+ here — the studio still has to verify it, exactly as with an order.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionRepository.MarkPaymentConfirmed(System.Int32)">
+ <summary>Studio verification of the commission payment; stamps the moment it happened.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionRepository.SetDelivery(System.Int32,System.String)">
+ <summary>
+ Courier hand-off. Blank tracking is allowed and kept as blank: a personal
+ handover or a pickup has no waybill, and inventing one would put a dead
+ tracking link in front of the customer.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionRepository.MarkReceived(System.Int32)">
+ <summary>Customer confirmation that the finished piece reached them.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.CommissionRepository.OpenSlotCounts">
  <summary>Open-slot counts for all merchants at once (single query instead of 1-per-merchant).</summary>
@@ -877,6 +1001,22 @@ STAR_DOM_Web
  Reviews are only allowed for verified purchases, so this gates SubmitReview.
  </summary>
 </member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.ReceivedPurchaseOrderIds(System.Int32,System.Int32,System.Int32)">
+ <summary>
+ Ids of this user's orders containing the product that reached RECEIVED,
+ newest first. RECEIVED is written only by MarkReceived, i.e. by the customer,
+ so an id coming back from here is evidence the goods actually landed —
+ which is what a review is meant to attest to. Bounded by `limit` so the
+ caller cannot pull an unbounded order history into memory.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.ListForProduct(System.Int32)">
+ <summary>
+ Reviews shown on a product page. There is no approval gate any more: a
+ review can only be written by a customer who confirmed the parcel arrived,
+ which is the verification worth having, so every review is public on submit.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Repositories.PaymentSettingRepository">
  <summary>
  Read/write access to the PaymentSettings table (one row per e-wallet channel:
@@ -936,6 +1076,21 @@ STAR_DOM_Web
  merchant, so an admin signing into Merchant Studio would otherwise see an
  empty "My products" table.
  </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ProductRepository.LowStock(System.Nullable{System.Int32})">
+ <summary>
+ Products at or below their low-stock threshold.
+ </summary>
+ <remarks>
+ merchantId scopes the result to one studio; pass Nothing for the whole
+ catalogue. STAR:DOM is a single-owner brand and the owner signs in as the
+ admin, who owns none of the seeded SKUs themselves — every Product row
+ belongs to a creator studio. Filtering on the signed-in user therefore
+ returned nothing at all, and the dashboard cheerfully reported "All good —
+ nothing low" over a catalogue with dozens of low-stock items in it. The
+ owner sees the whole catalogue, which is what a reorder alert has to mean
+ when there is one warehouse behind it.
+ </remarks>
 </member>
 <member name="T:STAR_DOM.Repositories.ReceiptRepository">
  <summary>Issues and retrieves BIR-style official receipts (OR) for confirmed payments.</summary>
@@ -1057,11 +1212,46 @@ STAR_DOM_Web
  full once they confirm the offer.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.CommissionService.MarkPaid(System.Int32,System.String)">
+<member name="M:STAR_DOM.Services.CommissionService.SubmitPayment(System.Int32,System.String)">
  <summary>
- Records the single full payment for the finished piece. Nothing partial
- and nothing upfront: the artist quotes, the customer confirms, the whole
- amount settles here.
+ The customer says they have paid the quoted price in full. The reference
+ number from their e-wallet receipt is mandatory: without it there is nothing
+ to trace the money back to, and the studio would be confirming a payment on
+ the strength of someone's word alone.
+
+ This does NOT confirm the payment. It parks the commission in PAYMENT
+ PENDING so the studio can verify it — the same two-step an order goes
+ through, and the reason production never starts on an unverified transfer.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.ConfirmPayment(System.Int32)">
+ <summary>
+ Studio-side verification of a submitted commission payment. Production is
+ gated on this, exactly as J&amp;T booking is gated on an order's confirmed
+ payment, so an unverified transfer can never be worked on.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.DenyPayment(System.Int32)">
+ <summary>
+ The seller declines a customer's submitted payment reference — the amount
+ on the e-wallet receipt does not match, or the transfer cannot be traced.
+ The commission moves to PAYMENT DECLINED and the customer is handed the
+ support contact immediately.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.MarkDelivered(System.Int32,System.String)">
+ <summary>
+ Hand the finished piece over. A commission is delivered the same way an
+ order is: booking a courier is optional (most are collected in person, so
+ the tracking number may stay blank), but the customer is the one who
+ confirms receipt — the studio cannot mark its own parcel as received.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.MarkReceived(System.Int32)">
+ <summary>
+ Customer confirms the finished piece reached them. Only ever written from
+ DELIVERED, so a non-null ReceivedAt is the buyer's word rather than the
+ studio's — which is what closes the loop the same way an order does.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CommissionService.ReferenceImages(System.Int32)">
@@ -1069,6 +1259,14 @@ STAR_DOM_Web
  Reference artwork the customer attached to a commission. Empty when they
  attached none. The rows have existed since uploads were introduced, but
  nothing ever read them, so both sides saw no pictures at all.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.PaymentFailedMessage(System.String)">
+ <summary>
+ Shown whenever a payment cannot be confirmed. The store never guesses at a
+ customer's money: a failed confirmation leaves the order exactly where it
+ was and hands the customer a human to talk to, which is the only honest
+ answer available when a reference number does not check out.
  </summary>
 </member>
 <member name="T:STAR_DOM.Services.OrderService.StockShortageException">
@@ -1118,14 +1316,46 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Services.OrderService.UpdateOrderState(System.Int32,System.String,System.String)">
  <summary>Merchant updates fulfilment state, keeping the payment status consistent.</summary>
 </member>
+<member name="M:STAR_DOM.Services.OrderService.DenyPayment(System.Int32)">
+ <summary>
+ The seller declines a customer's submitted payment reference — the amount
+ on the e-wallet receipt does not match, or the transfer cannot be traced.
+ The order's PaymentStatus is flagged FAILED so the customer can resubmit,
+ and the customer is handed the support contact immediately.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.SubmitReview(System.Int32,System.Nullable{System.Int32},System.Int32,System.String)">
+ <summary>
+ A review is only honest if the parcel actually reached the buyer, so it is
+ gated on the order being RECEIVED — the state only the customer can set,
+ and only once they have seen the piece land. Merely having bought something
+ is not enough.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.ReceivedPurchaseOrderId(System.Int32,System.Int32)">
+ <summary>
+ The most recent order for this product that reached RECEIVED, or Nothing.
+ RECEIVED is the gate: the customer marks it themselves, so a row carrying
+ it is proof the goods landed rather than a claim that they did.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Services.OrderService.CanReview(System.Int32)">
- <summary>Whether the current user bought this product (non-cancelled order).</summary>
+ <summary>Whether the current user may review this product right now — i.e. they confirmed it arrived.</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.PurchaseOrderId(System.Int32)">
+ <summary>The RECEIVED order this product sits in, or Nothing when none has arrived yet.</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.PendingReviewItems(System.Int32)">
+ <summary>
+ Every product on a RECEIVED order this shopper has not reviewed yet — the
+ "write a review" queue on My Orders.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.IssueReceiptByPaymentId(System.Int32)">
- <summary>Merchant-side: force-issue a receipt for a payment. Prepaid payments need PAID; COD warrants one even unpaid.</summary>
+ <summary>Merchant-side: force-issue a receipt for a payment. Every channel is prepaid, so it needs PAID.</summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.IssueReceiptFor(STAR_DOM.Models.Order)">
- <summary>Issue an official receipt whenever a payment becomes PAID (prepaid or COD on delivery).</summary>
+ <summary>Issue an official receipt whenever a payment becomes PAID.</summary>
 </member>
 </members>
 </doc>

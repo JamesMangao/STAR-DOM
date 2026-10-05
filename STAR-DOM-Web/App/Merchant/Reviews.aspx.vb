@@ -7,6 +7,15 @@ Imports STAR_DOM.Services
 
 Namespace STAR_DOM.Web
 
+    ''' <summary>
+    ''' Read-only view of what customers have written about the catalogue.
+    '''
+    ''' The approve / hide / delete controls are gone. Moderation existed to guard a
+    ''' review that any account could post about a product it had never bought; that
+    ''' hole is closed at the source instead — a review is only accepted from a
+    ''' customer who confirmed the parcel arrived, so it is published on submit and
+    ''' the studio has nothing left to arbitrate.
+    ''' </summary>
     Public Class ReviewsPage
         Inherits Page
 
@@ -16,24 +25,6 @@ Namespace STAR_DOM.Web
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireMerchant()
             Try
-                If Request.QueryString("approve") <> "" Then
-                    Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("approve"), id)
-                    If id > 0 Then _orders.SetReviewApproved(id, True)
-                    Response.Redirect("/App/Merchant/Reviews.aspx", True)
-                End If
-                If Request.QueryString("hide") <> "" Then
-                    Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("hide"), id)
-                    If id > 0 Then _orders.SetReviewApproved(id, False)
-                    Response.Redirect("/App/Merchant/Reviews.aspx", True)
-                End If
-                If Request.QueryString("del") <> "" Then
-                    Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("del"), id)
-                    If id > 0 Then _orders.DeleteReview(id)
-                    Response.Redirect("/App/Merchant/Reviews.aspx", True)
-                End If
                 Render()
             Catch ex As Exception
                 Out.Text = WebUi.AlertBox("Could not load reviews: " & ex.Message)
@@ -42,11 +33,15 @@ Namespace STAR_DOM.Web
 
         Private Sub Render()
             Dim reviews As List(Of Review) = _orders.ListAllReviews("").OrderByDescending(Function(r) r.Id).ToList()
-            Dim pending As Integer = reviews.Where(Function(r) Not r.IsApproved).Count()
+            Dim avg As Double = If(reviews.Count > 0, reviews.Average(Function(r) r.Rating), 0D)
+
             Dim sb As New StringBuilder()
-            sb.Append(WebUi.Section("Customer Reviews & Ratings", "MERCHANT STUDIO / MODERATION",
-                                    "Approve, hide or remove reviews. Only approved ratings appear on the marketplace."))
-            sb.Append("<p class=""sub"">" & reviews.Count.ToString() & " review(s) · " & pending.ToString() & " awaiting approval</p>")
+            sb.Append(WebUi.Section("Customer Reviews & Ratings", "MERCHANT STUDIO / REVIEWS",
+                                    "Everything customers have written, in the order it arrived."))
+            If reviews.Count > 0 Then
+                sb.Append("<p class=""sub"">" & reviews.Count.ToString() & " review(s) · average " &
+                          avg.ToString("0.0") & " / 5</p>")
+            End If
 
             If reviews.Count = 0 Then
                 sb.Append(WebUi.EmptyRow("No reviews yet."))
@@ -55,25 +50,16 @@ Namespace STAR_DOM.Web
             End If
 
             sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
-            For Each h As String In {"PRODUCT", "CUSTOMER", "RATING", "COMMENT", "STATUS", "DATE", "ACTIONS"}
+            For Each h As String In {"PRODUCT", "CUSTOMER", "RATING", "COMMENT", "DATE"}
                 sb.Append("<th>" & h & "</th>")
             Next
             sb.Append("</tr></thead><tbody>")
-            For Each r As Review In reviews
+            For Each r In reviews
                 sb.Append("<tr><td><b>" & WebUi.Esc(r.ProductName) & "</b></td>")
                 sb.Append("<td>" & WebUi.Esc(r.CustomerName) & "</td>")
                 sb.Append("<td>" & WebUi.Stars(r.Rating) & "</td>")
-                sb.Append("<td style=""max-width:320px"">" & WebUi.Esc(r.Comment) & "</td>")
-                sb.Append("<td>" & If(r.IsApproved, WebUi.Badge("APPROVED"), WebUi.Badge("PENDING")) & "</td>")
-                sb.Append("<td>" & WebUi.Esc(r.CreatedAt.ToString("MMM d, yyyy")) & "</td>")
-                sb.Append("<td class=""rowact"">")
-                If Not r.IsApproved Then
-                    sb.Append("<a href=""/App/Merchant/Reviews.aspx?approve=" & r.Id.ToString() & """><span class=""ms sm"">check_circle</span> Approve</a>")
-                Else
-                    sb.Append("<a href=""/App/Merchant/Reviews.aspx?hide=" & r.Id.ToString() & """><span class=""ms sm"">visibility_off</span> Hide</a>")
-                End If
-                sb.Append("<a href=""/App/Merchant/Reviews.aspx?del=" & r.Id.ToString() & """ data-confirm=""Delete this review permanently?"" data-confirm-danger"">Delete</a>")
-                sb.Append("</td></tr>")
+                sb.Append("<td style=""max-width:420px"">" & WebUi.Esc(r.Comment) & "</td>")
+                sb.Append("<td>" & WebUi.Esc(r.CreatedAt.ToString("MMM d, yyyy")) & "</td></tr>")
             Next
             sb.Append("</tbody></table></div>")
             Out.Text = sb.ToString()

@@ -141,7 +141,7 @@ Namespace STAR_DOM.Web
             sb.Append(StepCard("2", "local_shipping", "Enter your delivery address",
                                "Nationwide J&amp;T Express for ₱80 &mdash; free over ₱1,500. Every order ships to your door."))
             sb.Append(StepCard("3", "account_balance_wallet", "Pay your way",
-                               "GCash, GOtyme, or Cash on Delivery. Sign in once and your cart carries straight through to checkout."))
+                               "GCash or GOtyme. Sign in once and your cart carries straight through to checkout."))
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -293,9 +293,9 @@ Namespace STAR_DOM.Web
             sb.Append(TrustCard("storefront", "GCash &amp; GOtyme",
                                 "Pay from your e-wallet and record the reference number &mdash; no card details stored."))
             sb.Append(TrustCard("local_shipping", "J&amp;T Express",
-                                "Flat ₱80 nationwide shipping, free over ₱1,500. Track every parcel from My Orders."))
-            sb.Append(TrustCard("payments", "Cash on Delivery",
-                                "Pay the courier on arrival. No card details are ever stored."))
+                                "Studio-quoted nationwide shipping on every order. Track every parcel from My Orders."))
+            sb.Append(TrustCard("verified", "Paid in full first",
+                                "Every order is paid in full against its final total before it ships. No card details are ever stored."))
             sb.Append("</div>")
             Return sb.ToString()
         End Function

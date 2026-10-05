@@ -382,6 +382,21 @@ CREATE TABLE IF NOT EXISTS Commissions (
     EstimatedCompletionDate TIMESTAMPTZ NULL,
     MerchantNotes VARCHAR(1000) NOT NULL DEFAULT '',
     DepositAmount DECIMAL(12,2) NULL,
+    -- A finished commission is delivered, not handed over across a counter, so the
+    -- request carries its own delivery address and phone exactly like an order.
+    ShippingAddress VARCHAR(255) NOT NULL DEFAULT '',
+    ContactPhone VARCHAR(30) NOT NULL DEFAULT '',
+    -- GCash/GOtyme transaction number the customer paid against. Required when
+    -- they submit; the studio confirms it before production starts.
+    PaymentReference VARCHAR(80) NOT NULL DEFAULT '',
+    PaymentConfirmedAt TIMESTAMPTZ NULL,
+    -- J&T is optional on a commission: most are collected or handed over in
+    -- person, so a tracking number is only recorded when a parcel is booked.
+    TrackingNumber VARCHAR(80) NOT NULL DEFAULT '',
+    DeliveredAt TIMESTAMPTZ NULL,
+    -- Written by the customer once the finished piece reached them, never by
+    -- the studio asserting that it did.
+    ReceivedAt TIMESTAMPTZ NULL,
     Status VARCHAR(30) NOT NULL DEFAULT 'SUBMITTED',
     CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP ,
@@ -465,6 +480,16 @@ CREATE TABLE IF NOT EXISTS PaymentSettings (
 
 -- Older installs: create the table if it is missing, then bring any existing
 -- table up to date (fresh installs already have the columns above).
+-- Commissions were given the same delivery hand-off as orders; these columns
+-- carry the address, the payment reference and the J&T/received trail. Written
+-- with IF NOT EXISTS so re-running this file against a live database is safe.
+ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS ShippingAddress VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS ContactPhone VARCHAR(30) NOT NULL DEFAULT '';
+ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS PaymentReference VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS PaymentConfirmedAt TIMESTAMPTZ NULL;
+ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS TrackingNumber VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS DeliveredAt TIMESTAMPTZ NULL;
+ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS ReceivedAt TIMESTAMPTZ NULL;
 ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS AccountName VARCHAR(120) NOT NULL DEFAULT '';
 ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS AccountNumber VARCHAR(60) NOT NULL DEFAULT '';
 ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS QrImageFile VARCHAR(255) NOT NULL DEFAULT '';

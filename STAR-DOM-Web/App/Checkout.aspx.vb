@@ -33,7 +33,12 @@ Namespace STAR_DOM.Web
             Public Landmark As String = ""
             Public Phone As String = ""
             Public Notes As String = ""
-            Public PaymentMethod As String = "COD"
+            ''' <summary>
+            ''' Parked method. The studio prices the order and returns it with the J&amp;T
+            ''' fee before any money moves, so the channel is chosen on the order page,
+            ''' not here — see Checkout's "How payment works" card.
+            ''' </summary>
+            Public PaymentMethod As String = "PENDING"
         End Class
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
@@ -71,7 +76,7 @@ Namespace STAR_DOM.Web
             d.Phone = Posted("phone")
             d.Notes = Posted("notes")
             d.PaymentMethod = Posted("pm")
-            If d.PaymentMethod = "" Then d.PaymentMethod = "COD"
+            If d.PaymentMethod = "" Then d.PaymentMethod = "PENDING"
             Return d
         End Function
 
@@ -186,7 +191,7 @@ Namespace STAR_DOM.Web
             Dim land As String = ""
             Dim phone As String = ""
             Dim notes As String = ""
-            Dim pmSel As String = "COD"
+            Dim pmSel As String = "PENDING"
             If d IsNot Nothing Then
                 street = d.Street
                 brgy = d.Barangay
@@ -279,7 +284,7 @@ Namespace STAR_DOM.Web
 
             ' No payment method here. The studio prices the order and returns it with
             ' the shipping fee before the customer can pay, so offering GCash /
-            ' GOtyme / COD at this point would collect a figure that is not the
+            ' GOtyme at this point would collect a figure that is not the
             ' final one. The customer picks a channel on the order page once the
             ' studio has quoted it.
             Dim paySettings As New PaymentSettingRepository()
@@ -330,7 +335,7 @@ Namespace STAR_DOM.Web
         Private Function PayOption(value As String, title As String, hint As String, icon As String,
                                         selected As String) As String
             Dim checkedAttr As String = If(value = selected, " checked", "")
-            ' The wallet's own logo when we have one, the Material icon otherwise (COD).
+            ' The wallet's own logo when we have one, the Material icon otherwise.
             Dim mark As String = WebUi.PayLogo(value, 34)
             If mark = "" Then
                 mark = "<span class=""ms"" style=""color:var(--primary);font-size:24px;line-height:1"">" & WebUi.Esc(icon) & "</span>"

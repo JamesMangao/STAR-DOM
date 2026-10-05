@@ -55,7 +55,20 @@ Namespace STAR_DOM.Web
 
             ' left: art + price panel
             sb.Append("<div style=""flex:1;min-width:300px;max-width:430px"">")
-            sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name, "height:360px;border-radius:16px"))
+            ' The art frame crops to fill by default (background-size: cover), which is
+            ' right for a square card and wrong for the one place a shopper decides
+            ' whether to buy: here the whole picture has to be visible, letterboxed
+            ' rather than cut. Clicking it opens the original at full size.
+            Dim fullPic As String = WebUi.AssetUrl(p.PrimaryImageFile)
+            sb.Append("<a href=""" & WebUi.Attr(fullPic) & """ target=""_blank"" rel=""noopener"" " &
+                      "style=""display:block;border-radius:16px"" title=""View the full picture"">")
+            sb.Append(WebUi.ProductImg(p.PrimaryImageFile, p.Id, p.Name,
+                                        "height:360px;border-radius:16px;background-size:contain"))
+            sb.Append("</a>")
+            If fullPic <> "" Then
+                sb.Append("<div class=""sub"" style=""font-size:11px;margin-top:6px;text-align:center"">" &
+                          WebUi.Ic("zoom_out_map", "sm") & " Tap the picture to view it full size</div>")
+            End If
             ' No "bazaar price" banner: the displayed price is always BasePrice. Any
             ' discount is a bundle group that CartService applies once the items are
             ' in the cart, so there is nothing to advertise here.
@@ -128,10 +141,13 @@ Namespace STAR_DOM.Web
                 sb.Append(WebUi.EmptyRow("No reviews yet — be the first to share your experience with this item."))
             End If
 
-            Dim purchased As Integer? = _orders.PurchaseOrderId(p.Id)
-            Dim canReview As Boolean = purchased.HasValue AndAlso Not _orders.HasReviewed(p.Id)
+            ' The review box opens once this shopper has confirmed the parcel arrived, not
+            ' merely because they once bought the item: a review of goods still in
+            ' transit says nothing about the goods.
+            Dim receivedOrder As Integer? = _orders.PurchaseOrderId(p.Id)
+            Dim canReview As Boolean = receivedOrder.HasValue AndAlso Not _orders.HasReviewed(p.Id)
             If canReview Then
-                sb.Append("<div class=""card"" style=""margin-top:24px;max-width:680px;border-radius:16px;padding:24px;border:1.5px solid var(--line);box-shadow:var(--sh-2);background:linear-gradient(180deg, #ffffff 0%, var(--surface-low) 100%)"">")
+                sb.Append("<div class=""card"" id=""review"" style=""margin-top:24px;max-width:680px;border-radius:16px;padding:24px;border:1.5px solid var(--line);box-shadow:var(--sh-2);background:linear-gradient(180deg, #ffffff 0%, var(--surface-low) 100%)"">")
                 sb.Append("<div style=""display:flex;align-items:center;gap:10px;margin-bottom:14px"">")
                 sb.Append("<div class=""ph-ic"" style=""width:36px;height:36px;font-size:18px;background:var(--yellow);color:var(--on-yellow);border-radius:10px"">" & WebUi.Ic("rate_review", "sm") & "</div>")
                 sb.Append("<div><h3 style=""margin:0;font-size:17px;font-weight:800;letter-spacing:-.3px"">Write a Review</h3><p class=""sub"" style=""margin:2px 0 0;font-size:12px"">Share your genuine feedback with other shoppers and creators</p></div>")
@@ -157,14 +173,14 @@ Namespace STAR_DOM.Web
                 sb.Append("<button class=""btn primary"" type=""submit"" style=""padding:10px 22px;border-radius:10px;font-weight:700;display:inline-flex;align-items:center;gap:8px;box-shadow:var(--sh-1)""><span class=""ic ms"">send</span><span>Submit Review</span></button>")
                 sb.Append("</div>")
                 sb.Append("</form></div>")
-            ElseIf purchased.HasValue Then
+            ElseIf _orders.HasReviewed(p.Id) Then
                 sb.Append("<div class=""card"" style=""margin-top:18px;max-width:680px;border-radius:12px;padding:14px 18px;background:var(--surface-low);border:1px solid var(--line);display:flex;align-items:center;gap:10px"">")
                 sb.Append("<span class=""ms sm"" style=""color:var(--green);font-size:20px"">task_alt</span>")
                 sb.Append("<span style=""font-size:13px;color:var(--ink-soft)"">You have already submitted a review for this product. Thank you for your feedback!</span></div>")
             Else
                 sb.Append("<div class=""card"" style=""margin-top:18px;max-width:680px;border-radius:12px;padding:14px 18px;background:var(--surface-low);border:1px solid var(--line);display:flex;align-items:center;gap:10px"">")
                 sb.Append("<span class=""ms sm"" style=""color:var(--ink-soft);font-size:20px"">verified_user</span>")
-                sb.Append("<span style=""font-size:13px;color:var(--ink-soft)"">Only verified purchasers of this item can leave a review.</span></div>")
+                sb.Append("<span style=""font-size:13px;color:var(--ink-soft)"">Only verified buyers can review this item, and only after you confirm you received it from <a href=""/App/Orders.aspx"" style=""color:var(--primary);font-weight:700"">My Orders</a>.</span></div>")
             End If
 
             Out.Text = sb.ToString()

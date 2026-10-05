@@ -36,7 +36,7 @@ Namespace STAR_DOM.Web
                     ' confirming: ConfirmPayment reads the order row for the brand and
                     ' whether a reference number is required.
                     Dim picked As String = Convert.ToString(Request.Form("payMethod")).Trim().ToUpperInvariant()
-                    If picked = "GCASH" OrElse picked = "GOTYME" OrElse picked = "COD" Then
+                    If picked = "GCASH" OrElse picked = "GOTYME" Then
                         Dim pickResult As ServiceResult = _orders.ChoosePaymentMethod(o.Id, picked)
                         If Not pickResult.Success Then
                             Session("flash_msg") = pickResult.Message
@@ -136,10 +136,14 @@ Namespace STAR_DOM.Web
             Dim canPay As Boolean = (quoted AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso
                                      o.Status <> "CANCELLED")
             Dim canMarkReceived As Boolean = (isOwner AndAlso o.Status = "DELIVERED")
+            ' Reviews open the moment the customer confirms the parcel arrived — that is
+            ' the only point at which they have actually held the item, so this is
+            ' where they are offered.
+            Dim canReviewItems As Boolean = (isOwner AndAlso o.Status = "RECEIVED")
             ' A placed order cannot be pulled back by the customer; the studio
             ' handles cancellations once it is processing.
             Dim canCancel As Boolean = False
-            If canPay OrElse canMarkReceived OrElse canCancel OrElse (isOwner AndAlso Not quoted AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING") Then
+            If canPay OrElse canMarkReceived OrElse canCancel OrElse canReviewItems OrElse (isOwner AndAlso Not quoted AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING") Then
                 sb.Append("<div style=""margin-top:16px;display:flex;flex-direction:column;gap:12px"">")
                 If Not quoted AndAlso isOwner AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING" Then
                     sb.Append("<div class=""card"" style=""border-color:#eec200;background:var(--yellow-soft)"">")
@@ -175,14 +179,13 @@ Namespace STAR_DOM.Web
                     ' "PENDING" because the studio quotes first, so if no real
                     ' channel is stored yet the customer picks it here.
                     Dim chosen As String = If(o.PaymentMethod, "").Trim().ToUpperInvariant()
-                    If chosen <> "GCASH" AndAlso chosen <> "GOTYME" AndAlso chosen <> "COD" Then
+                    If chosen <> "GCASH" AndAlso chosen <> "GOTYME" Then
                         Dim ps As New PaymentSettingRepository()
                         sb.Append("<div style=""margin-bottom:12px""><label style=""display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"">Payment method *</label>")
                         sb.Append("<select name=""payMethod"" required style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink);outline:none"">")
                         sb.Append("<option value="""">Choose a payment method…</option>")
                         If ps.IsChannelEnabled(PaymentSettingRepository.Gcash) Then sb.Append("<option value=""GCASH"">GCash</option>")
                         If ps.IsChannelEnabled(PaymentSettingRepository.Gotyme) Then sb.Append("<option value=""GOTYME"">GOtyme</option>")
-                        sb.Append("<option value=""COD"">Cash on Delivery</option>")
                         sb.Append("</select></div>")
                     End If
 
@@ -216,6 +219,10 @@ Namespace STAR_DOM.Web
                     sb.Append("<input type=""hidden"" name=""receivedOrder"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<button class=""btn primary"" type=""submit"" data-confirm=""Confirm this order has arrived?""><span class=""ic ms"">task_alt</span><span>Mark as received</span></button>")
                     sb.Append("</form>")
+                End If
+
+                If canReviewItems Then
+                    sb.Append(ReviewQueue(o))
                 End If
 
                 If canCancel Then
@@ -314,6 +321,37 @@ Namespace STAR_DOM.Web
 
         Private Function DisplayPay(pm As String) As String
             Return WebUi.ChannelBrand(pm)
+        End Function
+
+        ''' <summary>
+        ''' The review queue for a received order: every item on it that this
+        ''' customer has not written about yet. Without this the only way to review
+        ''' was to find the product in the catalog, and nothing on the order ever
+        ''' said that reviewing was now possible.
+        ''' </summary>
+        Private Function ReviewQueue(o As Order) As String
+            Dim todo As List(Of OrderItem) = _orders.PendingReviewItems(o.Id)
+            If todo.Count = 0 Then
+                Return "<div class=""card"" style=""border-color:#15803d;background:#e9f7ee;display:flex;align-items:center;gap:10px"">" &
+                       WebUi.Ic("task_alt", "sm") &
+                       "<span style=""font-size:13px;color:var(--ink)"">Thanks — you have reviewed everything in this order.</span></div>"
+            End If
+            Dim sb As New StringBuilder()
+            sb.Append("<div class=""card"" style=""border-color:#eec200;background:var(--yellow-soft)"">")
+            sb.Append("<b style=""display:block;margin-bottom:8px"">" & WebUi.Ic("rate_review", "sm") & " Rate what you received</b>")
+            sb.Append("<p class=""sub"" style=""margin:0 0 10px;color:var(--ink)"">Your order is marked received. " &
+                      "Tell other shoppers how it turned out.</p>")
+            sb.Append("<div style=""display:flex;flex-direction:column;gap:8px"">")
+            For Each it In todo
+                sb.Append("<a href=""/App/Product.aspx?id=" & it.ProductId.ToString() & "#review"" " &
+                          "style=""display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);" &
+                          "border-radius:10px;padding:8px 10px;text-decoration:none"">" &
+                          WebUi.ProductImg(it.ImageFile, it.ProductId, it.ProductName, "width:38px;height:38px;border-radius:8px;flex-shrink:0") &
+                          "<span style=""font-weight:700;font-size:13px;color:var(--ink)"">" & WebUi.Esc(it.ProductName) & "</span>" &
+                          "<span style=""margin-left:auto;font-weight:700;font-size:12px;color:var(--primary);white-space:nowrap"">Write a review</span></a>")
+            Next
+            sb.Append("</div></div>")
+            Return sb.ToString()
         End Function
 
     End Class

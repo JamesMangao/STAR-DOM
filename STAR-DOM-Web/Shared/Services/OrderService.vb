@@ -8,6 +8,16 @@ Namespace STAR_DOM.Services
 
     Public Class OrderService
 
+        ''' <summary>
+        ''' Shown whenever a payment cannot be confirmed. The store never guesses at a
+        ''' customer's money: a failed confirmation leaves the order exactly where it
+        ''' was and hands the customer a human to talk to, which is the only honest
+        ''' answer available when a reference number does not check out.
+        ''' </summary>
+        Public Shared Function PaymentFailedMessage(detail As String) As String
+            Return PaymentSetting.PaymentFailedMessage(detail)
+        End Function
+
         Private ReadOnly _orders As New OrderRepository()
         Private ReadOnly _paySettings As New PaymentSettingRepository()
         Private ReadOnly _receipts As New ReceiptRepository()
@@ -48,15 +58,17 @@ Namespace STAR_DOM.Services
             ' offered — the accepted e-payments are GCash and GOtyme.
             '
             ' "PENDING" is the parked method for the quote-first flow: the customer
-            ' places the order before choosing a channel, and picks GCash / GOtyme /
-            ' COD on the order page once the studio has returned the final total.
+            ' places the order before choosing a channel, and picks GCash / GOtyme
+            ' on the order page once the studio has returned the final total.
             ' Orders.PaymentMethod is NOT NULL, so the column needs a value now.
+            ' Cash on Delivery is gone: every parcel is booked with J&T and paid
+            ' for up front against the final total.
             Dim method As String = If(paymentMethod, "").Trim().ToUpperInvariant()
             If method = PaymentSettingRepository.LegacyMaya Then method = PaymentSettingRepository.Gotyme
             If method = "" Then method = "PENDING"
             If method <> "PENDING" AndAlso
-               method <> "GCASH" AndAlso method <> "GOTYME" AndAlso method <> "COD" Then
-                Return ServiceResult.Fail("Please choose GCash, GOtyme, or Cash on Delivery.")
+               method <> "GCASH" AndAlso method <> "GOTYME" Then
+                Return ServiceResult.Fail("Please choose GCash or GOtyme.")
             End If
 
 
@@ -165,13 +177,8 @@ Namespace STAR_DOM.Services
             ' Receipt and notifications run AFTER the commit on purpose: they are
             ' best-effort side effects, and a failure in either must never be able to
             ' roll back an order the customer has already successfully placed.
-            ' Cash on Delivery warrants an official receipt at checkout, even before
-            ' the cash is collected.
-            Dim placed As Order = _orders.GetById(orderId)
-            If paymentMethod.Trim().ToUpperInvariant() = "COD" AndAlso placed IsNot Nothing Then
-                IssueReceiptFor(placed)
-            End If
-
+            ' No receipt is issued here: nothing is paid for yet. The official
+            ' receipt is issued when the payment is confirmed.
             Dim notif As New NotificationService()
             notif.Notify(Session.CurrentUser.Id, "Order placed – " & orderNumber,
                          "Your order of " & Fmt.PHP(total) & " via " & method & " has been received. " &
@@ -208,10 +215,10 @@ Namespace STAR_DOM.Services
                                           "once the studio returns the final total and shipping fee.")
             End If
             Dim pick As String = If(method, "").Trim().ToUpperInvariant()
-            If pick <> "GCASH" AndAlso pick <> "GOTYME" AndAlso pick <> "COD" Then
-                Return ServiceResult.Fail("Choose a payment method.")
+            If pick <> "GCASH" AndAlso pick <> "GOTYME" Then
+                Return ServiceResult.Fail("Choose GCash or GOtyme.")
             End If
-            If Not _paySettings.IsChannelEnabled(pick) AndAlso pick <> "COD" Then
+            If Not _paySettings.IsChannelEnabled(pick) Then
                 Return ServiceResult.Fail("That payment method is not available right now.")
             End If
             _orders.SetPaymentMethod(orderId, pick)
@@ -238,26 +245,32 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail("Your order is still being priced. You can pay once the studio " &
                                           "returns it with the final total and shipping fee.")
             End If
+            If order.PaymentStatus = "FAILED" Then
+                Return ServiceResult.Fail(PaymentFailedMessage(
+                    "This payment is flagged as failed. Please pay again with a valid reference number."))
+            End If
 
             ' Password re-entry gate. Verified against a fresh DB read (not the session
             ' copy) so a password changed mid-session is honoured immediately.
+            ' Every rejection past this point is a failed payment, so it carries the
+            ' contact line: the customer needs a human, not a silent red flash.
             If String.IsNullOrEmpty(password) Then
-                Return ServiceResult.Fail("Enter your password to confirm the payment.")
+                Return ServiceResult.Fail(PaymentFailedMessage("Enter your password to confirm the payment."))
             End If
             Dim freshUser As User = New UserRepository().GetById(Session.CurrentUser.Id)
             If freshUser Is Nothing OrElse Not PasswordHasher.Verify(password, freshUser.PasswordHash) Then
-                Return ServiceResult.Fail("Password incorrect — payment was not confirmed.")
+                Return ServiceResult.Fail(PaymentFailedMessage("Password incorrect — payment was not confirmed."))
             End If
 
             Dim method As String = order.PaymentMethod.Trim().ToUpperInvariant()
             Dim ref As String = If(reference, "").Trim()
-            If PaymentSetting.IsEWallet(method) Then
-                If ref = "" Then
-                    Return ServiceResult.Fail("Enter the " & PaymentSetting.DisplayName(method) &
-                                              " reference number from your payment receipt.")
-                End If
+            ' GCash and GOtyme are the only channels, and both hand out a transaction
+            ' number, so the reference is required rather than auto-generated: a payment
+            ' we cannot trace back to a receipt is not one we should call confirmed.
+            If ref = "" Then
+                Return ServiceResult.Fail(PaymentFailedMessage(
+                    "Enter the " & PaymentSetting.DisplayName(method) & " reference number from your payment receipt."))
             End If
-            If ref = "" Then ref = "REF-" & Guid.NewGuid().ToString("N").Substring(0, 10).ToUpperInvariant()
             Try
                 Db.InTransaction(Of Boolean)(Function() As Boolean
                     Db.Exec(
@@ -270,7 +283,7 @@ Namespace STAR_DOM.Services
                 End Function)
             Catch ex As Exception
                 Db.LogError("ConfirmPayment", ex)
-                Return ServiceResult.Fail("Payment update failed: " & ex.Message)
+                Return ServiceResult.Fail(PaymentFailedMessage("Payment update failed: " & ex.Message))
             End Try
 
             IssueReceiptFor(order)
@@ -377,10 +390,10 @@ Namespace STAR_DOM.Services
             ' Same password re-entry gate as ConfirmPayment, so a left-open merchant
             ' session cannot quietly commit a customer's total.
             Dim pwd As String = If(password, "").Trim()
-            If pwd = "" Then Return ServiceResult.Fail("Enter your password to confirm the order.")
+            If pwd = "" Then Return ServiceResult.Fail(PaymentFailedMessage("Enter your password to confirm the order."))
             Dim freshUser As User = New UserRepository().GetById(Session.CurrentUser.Id)
             If freshUser Is Nothing OrElse Not PasswordHasher.Verify(pwd, freshUser.PasswordHash) Then
-                Return ServiceResult.Fail("Password incorrect — the order was not confirmed.")
+                Return ServiceResult.Fail(PaymentFailedMessage("Password incorrect — the order was not confirmed."))
             End If
 
             Try
@@ -390,7 +403,7 @@ Namespace STAR_DOM.Services
                 End Function)
             Catch ex As Exception
                 Db.LogError("ConfirmWithShippingFee", ex)
-                Return ServiceResult.Fail("Could not save the shipping fee: " & ex.Message)
+                Return ServiceResult.Fail(PaymentFailedMessage("Could not save the shipping fee: " & ex.Message))
             End Try
 
             ' Re-read: the transaction is the authority on the new total, and the
@@ -423,6 +436,23 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail("Enter the J&T shipping fee to confirm this order — the customer is quoted the final total at that point.")
             End If
 
+            ' No parcel leaves the studio on an unpaid order. SHIPPED and DELIVERED are
+            ' both physical hand-offs to J&T, so both wait on a confirmed payment. This
+            ' used to be enforced nowhere, and marking an order DELIVERED also stamped
+            ' PaymentStatus = PAID — so an order nobody paid for could walk the whole
+            ' pipeline and come out the other end looking settled, receipt included.
+            If (newStatus = "SHIPPED" OrElse newStatus = "DELIVERED") AndAlso order.PaymentStatus <> "PAID" Then
+                Return ServiceResult.Fail(PaymentFailedMessage(
+                    "Payment is not confirmed for this order, so it cannot be booked with J&T yet."))
+            End If
+
+            ' Tracking must be entered manually — never auto-generated. A shipped or
+            ' delivered order always carries a real J&T waybill the customer can trace,
+            ' so a blank one is refused rather than invented.
+            If (newStatus = "SHIPPED" OrElse newStatus = "DELIVERED") AndAlso String.IsNullOrWhiteSpace(tracking) Then
+                Return ServiceResult.Fail("Enter the J&T tracking number before marking this order as " & newStatus & ".")
+            End If
+
             Dim wasCancelled As Boolean = order.Status = "CANCELLED"
 
             ' Validate state machine loosely (same-state is allowed for re-saves)
@@ -430,11 +460,6 @@ Namespace STAR_DOM.Services
 
             If newStatus = "SHIPPED" OrElse newStatus = "DELIVERED" Then
                 _orders.UpdateShipping(orderId, "J&T Express", tracking, newStatus)
-            End If
-            If newStatus = "DELIVERED" Then
-                Dim wasPaid As Boolean = order.PaymentStatus = "PAID"
-                _orders.UpdatePaymentStatus(orderId, "PAID")
-                If Not wasPaid Then IssueReceiptFor(order)
             End If
             If newStatus = "CANCELLED" Then
                 _orders.UpdatePaymentStatus(orderId, "REFUNDED")
@@ -448,21 +473,62 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Order updated to " & newStatus & ".")
         End Function
 
+        ''' <summary>
+        ''' The seller declines a customer's submitted payment reference — the amount
+        ''' on the e-wallet receipt does not match, or the transfer cannot be traced.
+        ''' The order's PaymentStatus is flagged FAILED so the customer can resubmit,
+        ''' and the customer is handed the support contact immediately.
+        ''' </summary>
+        Public Function DenyPayment(orderId As Integer) As ServiceResult
+            If Not Session.CanManageStore Then Return ServiceResult.Fail("Only the store team can do this.")
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
+            If order.PaymentStatus = "PAID" Then Return ServiceResult.Ok("Payment already confirmed.")
+            If order.PaymentStatus = "REFUNDED" Then Return ServiceResult.Fail("This payment was already refunded.")
+            _orders.UpdatePaymentStatus(orderId, "FAILED")
+            Dim notif As New NotificationService()
+            notif.Notify(order.UserId, "Payment declined – " & order.OrderNumber,
+                         PaymentFailedMessage("The seller could not confirm your payment. " &
+                                          "Please check your reference number and try again."),
+                         "ORDER", "my-orders")
+            Return ServiceResult.Ok("Payment declined. The customer has been notified.")
+        End Function
+
         ' ----- Reviews ----------------------------------------------------------
 
+        ''' <summary>
+        ''' A review is only honest if the parcel actually reached the buyer, so it is
+        ''' gated on the order being RECEIVED — the state only the customer can set,
+        ''' and only once they have seen the piece land. Merely having bought something
+        ''' is not enough.
+        ''' </summary>
         Public Function SubmitReview(productId As Integer, orderId As Integer?, rating As Integer, comment As String) As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
             If rating < 1 OrElse rating > 5 Then Return ServiceResult.Fail("Rating must be 1–5 stars.")
             If _orders.UserReviewedProduct(Session.CurrentUser.Id, productId) Then
                 Return ServiceResult.Fail("You already reviewed this product.")
             End If
-            ' Reviews are only allowed for verified purchases
-            Dim purchaseId As Integer? = _orders.PurchaseOrderId(Session.CurrentUser.Id, productId)
-            If Not purchaseId.HasValue Then
-                Return ServiceResult.Fail("Only verified purchasers can review this product.")
+            ' Reviews are only allowed for a delivered-and-received purchase of this
+            ' exact product, not just any order the shopper has ever placed.
+            Dim receivedId As Integer? = ReceivedPurchaseOrderId(Session.CurrentUser.Id, productId)
+            If Not receivedId.HasValue Then
+                Return ServiceResult.Fail("You can review this item once you confirm you received it " &
+                                          "from your order.")
             End If
-            _orders.AddReview(Session.CurrentUser.Id, productId, If(orderId.HasValue, orderId, purchaseId), rating, comment)
+            _orders.AddReview(Session.CurrentUser.Id, productId, receivedId.Value, rating, comment)
             Return ServiceResult.Ok("Thank you for your review!")
+        End Function
+
+        ''' <summary>
+        ''' The most recent order for this product that reached RECEIVED, or Nothing.
+        ''' RECEIVED is the gate: the customer marks it themselves, so a row carrying
+        ''' it is proof the goods landed rather than a claim that they did.
+        ''' </summary>
+        Public Function ReceivedPurchaseOrderId(userId As Integer, productId As Integer) As Integer?
+            Dim rows As List(Of Integer) = _orders.ReceivedPurchaseOrderIds(userId, productId, 1)
+            If rows.Count = 0 Then Return Nothing
+            Return rows(0)
         End Function
 
         Public Function ReviewsForProduct(productId As Integer) As List(Of Review)
@@ -478,24 +544,26 @@ Namespace STAR_DOM.Services
             Return _orders.ListAllReviews(search)
         End Function
 
-        Public Sub SetReviewApproved(reviewId As Integer, approved As Boolean)
-            _orders.SetReviewApproved(reviewId, approved)
-        End Sub
-
-        ''' <summary>Whether the current user bought this product (non-cancelled order).</summary>
+        ''' <summary>Whether the current user may review this product right now — i.e. they confirmed it arrived.</summary>
         Public Function CanReview(productId As Integer) As Boolean
             If Not Session.IsAuthenticated Then Return False
-            Return _orders.PurchaseOrderId(Session.CurrentUser.Id, productId).HasValue
+            Return ReceivedPurchaseOrderId(Session.CurrentUser.Id, productId).HasValue
         End Function
 
+        ''' <summary>The RECEIVED order this product sits in, or Nothing when none has arrived yet.</summary>
         Public Function PurchaseOrderId(productId As Integer) As Integer?
             If Not Session.IsAuthenticated Then Return Nothing
-            Return _orders.PurchaseOrderId(Session.CurrentUser.Id, productId)
+            Return ReceivedPurchaseOrderId(Session.CurrentUser.Id, productId)
         End Function
 
-        Public Sub DeleteReview(reviewId As Integer)
-            _orders.DeleteReview(reviewId)
-        End Sub
+        ''' <summary>
+        ''' Every product on a RECEIVED order this shopper has not reviewed yet — the
+        ''' "write a review" queue on My Orders.
+        ''' </summary>
+        Public Function PendingReviewItems(orderId As Integer) As List(Of OrderItem)
+            Dim all As List(Of OrderItem) = _orders.GetItems(orderId)
+            Return all.Where(Function(i) Not _orders.UserReviewedProduct(Session.CurrentUser.Id, i.ProductId)).ToList()
+        End Function
 
         Public Function ListPayments(Optional search As String = "", Optional limit As Integer = 0) As List(Of Payment)
             Return _orders.ListPayments(search, limit)
@@ -521,11 +589,11 @@ Namespace STAR_DOM.Services
             Return _receipts.GetByNumber(receiptNumber)
         End Function
 
-        ''' <summary>Merchant-side: force-issue a receipt for a payment. Prepaid payments need PAID; COD warrants one even unpaid.</summary>
+        ''' <summary>Merchant-side: force-issue a receipt for a payment. Every channel is prepaid, so it needs PAID.</summary>
         Public Function IssueReceiptByPaymentId(paymentId As Integer) As Receipt
             Dim p As Payment = _orders.GetPaymentById(paymentId)
             If p Is Nothing Then Return Nothing
-            If p.Status <> "PAID" AndAlso p.PaymentMethod.Trim().ToUpperInvariant() <> "COD" Then Return Nothing
+            If p.Status <> "PAID" Then Return Nothing
             Dim o As Order = _orders.GetById(p.OrderId)
             If o Is Nothing Then Return Nothing
             Dim items As List(Of OrderItem) = _orders.GetItems(o.Id)
@@ -533,7 +601,7 @@ Namespace STAR_DOM.Services
             Return _receipts.Issue(o, items, p.Id, p.PaymentMethod, paidAt)
         End Function
 
-        ''' <summary>Issue an official receipt whenever a payment becomes PAID (prepaid or COD on delivery).</summary>
+        ''' <summary>Issue an official receipt whenever a payment becomes PAID.</summary>
         Private Sub IssueReceiptFor(order As Order)
             If order Is Nothing Then Return
             Dim pays As List(Of Payment) = _orders.ListPaymentsByOrder(order.Id)

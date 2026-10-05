@@ -19,16 +19,51 @@ Namespace STAR_DOM.Repositories
         Public Function Create(cm As Commission) As Integer
             Return Db.ExecIdentity(
                 "INSERT INTO Commissions (CommissionNumber, CustomerId, MerchantId, CategoryId, Title, Description, " &
-                "Quantity, PreferredSize, PreferredDeadline, BudgetMin, BudgetMax, AdditionalNotes, Status, CreatedAt, UpdatedAt) " &
-                "VALUES (@num, @c, @m, @cat, @t, @d, @q, @s, @pd, @bmin, @bmax, @an, @st, NOW(), NOW())",
+                "Quantity, PreferredSize, PreferredDeadline, BudgetMin, BudgetMax, AdditionalNotes, " &
+                "ShippingAddress, ContactPhone, Status, CreatedAt, UpdatedAt) " &
+                "VALUES (@num, @c, @m, @cat, @t, @d, @q, @s, @pd, @bmin, @bmax, @an, @addr, @ph, @st, NOW(), NOW())",
                 Db.P("@num", cm.CommissionNumber), Db.P("@c", cm.CustomerId), Db.P("@m", cm.MerchantId),
                 Db.P("@cat", cm.CategoryId), Db.P("@t", cm.Title), Db.P("@d", cm.Description),
                 Db.P("@q", cm.Quantity), Db.P("@s", cm.PreferredSize),
                 Db.P("@pd", If(cm.PreferredDeadline.HasValue, CObj(cm.PreferredDeadline.Value), DBNull.Value)),
                 Db.P("@bmin", If(cm.BudgetMin.HasValue, CObj(cm.BudgetMin.Value), DBNull.Value)),
                 Db.P("@bmax", If(cm.BudgetMax.HasValue, CObj(cm.BudgetMax.Value), DBNull.Value)),
-                Db.P("@an", cm.AdditionalNotes), Db.P("@st", cm.Status))
+                Db.P("@an", cm.AdditionalNotes),
+                Db.P("@addr", If(cm.ShippingAddress, "")), Db.P("@ph", If(cm.ContactPhone, "")),
+                Db.P("@st", cm.Status))
         End Function
+
+        ''' <summary>
+        ''' Stores the e-wallet transaction number the customer paid against and parks
+        ''' the commission in PAYMENT PENDING. Nothing about the payment is confirmed
+        ''' here — the studio still has to verify it, exactly as with an order.
+        ''' </summary>
+        Public Sub SetPaymentReference(id As Integer, reference As String)
+            Db.Exec("UPDATE Commissions SET PaymentReference = @r, UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@r", reference), Db.P("@id", id))
+        End Sub
+
+        ''' <summary>Studio verification of the commission payment; stamps the moment it happened.</summary>
+        Public Sub MarkPaymentConfirmed(id As Integer)
+            Db.Exec("UPDATE Commissions SET PaymentConfirmedAt = NOW(), UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@id", id))
+        End Sub
+
+        ''' <summary>
+        ''' Courier hand-off. Blank tracking is allowed and kept as blank: a personal
+        ''' handover or a pickup has no waybill, and inventing one would put a dead
+        ''' tracking link in front of the customer.
+        ''' </summary>
+        Public Sub SetDelivery(id As Integer, tracking As String)
+            Db.Exec("UPDATE Commissions SET TrackingNumber = @t, DeliveredAt = NOW(), UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@t", If(tracking, "")), Db.P("@id", id))
+        End Sub
+
+        ''' <summary>Customer confirmation that the finished piece reached them.</summary>
+        Public Sub MarkReceived(id As Integer)
+            Db.Exec("UPDATE Commissions SET ReceivedAt = NOW(), UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@id", id))
+        End Sub
 
         Public Sub SetCommissionNumber(id As Integer, number As String)
             Db.Exec("UPDATE Commissions SET CommissionNumber = @num WHERE Id = @id",
@@ -203,6 +238,13 @@ Namespace STAR_DOM.Repositories
                 .EstimatedCompletionDate = RowReader.AsNullableDate(r, "EstimatedCompletionDate"),
                 .MerchantNotes = RowReader.AsStr(r, "MerchantNotes"),
                 .DepositAmount = RowReader.AsNullableDec(r, "DepositAmount"),
+                .ShippingAddress = RowReader.AsStr(r, "ShippingAddress"),
+                .ContactPhone = RowReader.AsStr(r, "ContactPhone"),
+                .PaymentReference = RowReader.AsStr(r, "PaymentReference"),
+                .PaymentConfirmedAt = RowReader.AsNullableDate(r, "PaymentConfirmedAt"),
+                .TrackingNumber = RowReader.AsStr(r, "TrackingNumber"),
+                .DeliveredAt = RowReader.AsNullableDate(r, "DeliveredAt"),
+                .ReceivedAt = RowReader.AsNullableDate(r, "ReceivedAt"),
                 .Status = RowReader.AsStr(r, "Status"), .CreatedAt = RowReader.AsDate(r, "CreatedAt"),
                 .UpdatedAt = RowReader.AsDate(r, "UpdatedAt"), .CustomerName = RowReader.AsStr(r, "CustomerName"),
                 .CustomerEmail = RowReader.AsStr(r, "CustomerEmail"), .MerchantName = RowReader.AsStr(r, "MerchantName"),

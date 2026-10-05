@@ -33,10 +33,10 @@ Namespace STAR_DOM.Web
 
             Dim pending As Integer = all.Where(Function(c) c.Status = "PENDING REVIEW").Count()
             sb.Append(WebUi.Section("Commission Pipeline", "MERCHANT STUDIO / REQUESTS",
-                                    "Review requests, clarify, quote, and drive production to delivery."))
+                                    "Review requests, quote, confirm payment, and drive production through delivery to receipt."))
 
             sb.Append("<div class=""frow"">")
-            For Each chip As String In {"", "PENDING REVIEW", "OFFER SENT", "PAID", "IN PRODUCTION", "COMPLETED", "DECLINED"}
+            For Each chip As String In {"", "PENDING REVIEW", "PAYMENT PENDING", "PAID", "IN PRODUCTION", "FINALIZED", "DELIVERED", "RECEIVED", "DECLINED"}
                 Dim label As String = If(chip = "", "ALL", chip.Replace("_", " "))
                 Dim url As String = If(chip = "", "/App/Merchant/Pipeline.aspx", "/App/Merchant/Pipeline.aspx?st=" & Server.UrlEncode(chip))
                 sb.Append(WebUi.OutLink(url, label, String.Equals(filter, chip, StringComparison.OrdinalIgnoreCase)))

@@ -481,25 +481,84 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl-orders .pay { white-space: nowrap; }
 .tbl-orders .col-actions { min-width: 296px; }
 
-.act-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
-.act-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.act-form input {
-  border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px;
-  font-size: 12px; font-family: var(--font-body); background: #fff;
-  min-width: 0; transition: border-color .15s ease, box-shadow .15s ease;
+.act-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; }
+
+/* ---------------------------------------------------------------------
+   Row actions: one form per row, shown as a small inset panel.
+   A row shows exactly one form at a time, so its fields stack with the
+   caption above the box. The class sits on a wrapper <div>, not on the
+   <form>: these per-row forms are nested inside the shell form in
+   Site.master, which HTML forbids, so the browser drops the inner <form>
+   tag and any class hanging off it. A plain div survives that and keeps
+   the layout. Each input is wrapped in its own <label>, which binds the
+   caption to the box without a for/id pair - a placeholder is not a
+   label, it vanishes on typing.
+   --------------------------------------------------------------------- */
+.act-form { display: block; }
+
+.act-fields {
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 8px; width: 100%;
+  padding: 11px 12px 12px;
+  background: var(--surface-low);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  border-radius: 11px;
+  box-shadow: 0 1px 0 rgba(30, 27, 25, .03);
 }
-.act-form input::placeholder { color: var(--ink-faint); }
-.act-form input:hover { border-color: var(--line-hi); }
-.act-form input:focus { outline: none; border-color: var(--ink); box-shadow: var(--focus-ring); }
-.act-form .i-fee { width: 84px; }
-.act-form .i-ref { width: 100px; }
-.act-form .i-pw { width: 124px; }
-.act-form .i-track { width: 124px; }
-/* The submit button always takes its own full-width line, so a row reads the
-   same way every time: the inputs sit together, the button sits below them.
-   Without this the button lands wherever the leftover width happens to run out. */
-.act-form .btn.sm { flex: 1 1 100%; justify-content: center; }
-.act-hint { font-size: 11px; color: var(--ink-soft); line-height: 1.4; }
+
+.act-fields .act-fld { display: flex; flex-direction: column; gap: 4px; }
+
+.act-fields .act-label {
+  font-family: var(--font-display); font-size: 9.5px; font-weight: 800;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--ink-soft);
+  display: flex; align-items: center; gap: 4px;
+}
+/* The caption's trailing * is set in the markup as required-marker text; give it
+   the brand colour so a glance says which box blocks the button. */
+.act-fields .act-label { line-height: 1.2; }
+
+.act-fields input {
+  width: 100%;
+  border: 1.5px solid var(--line); border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 12.5px; font-family: var(--font-body);
+  color: var(--ink); background: #fff;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  box-shadow: inset 0 1px 2px rgba(30, 27, 25, .04);
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.act-fields input::placeholder { color: var(--ink-faint); font-style: italic; }
+.act-fields input:hover { border-color: var(--line-hi); }
+.act-fields input:focus {
+  outline: none; background: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--focus-ring), inset 0 1px 2px rgba(30, 27, 25, .04);
+}
+/* A number box with the spin buttons crowd the digits on a narrow cell, and the
+   native arrows do nothing useful here - the fee is typed, not nudged. */
+.act-fields input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.act-fields input[type=number]::-webkit-outer-spin-button,
+.act-fields input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.act-fields input[type=number] { text-align: right; }
+/* Tracking and reference numbers are identifiers: mono reads them faster and
+   lines the digits up against each other. */
+.act-fields .i-track, .act-fields .i-ref { font-family: var(--font-mono); font-size: 12px; letter-spacing: .01em; }
+
+.act-fields .btn.sm {
+  margin-top: 2px; width: 100%; justify-content: center;
+  border-radius: 9px; padding: 9px 12px;
+  font-family: var(--font-display); font-size: 11.5px; font-weight: 800;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.act-fields .btn.sm:hover { transform: translateY(-1px); }
+.act-fields .btn.sm:active { transform: translateY(0); }
+
+.act-hint {
+  font-size: 11px; color: var(--ink-soft); line-height: 1.45;
+  padding: 0 2px; max-width: 30ch;
+}
 .act-links { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .act-links a { font-weight: 700; color: var(--primary); font-size: 12.5px; }
 .act-links a.danger-link { color: var(--ink-soft); }

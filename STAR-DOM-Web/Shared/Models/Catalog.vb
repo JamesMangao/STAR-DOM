@@ -26,7 +26,6 @@ Namespace STAR_DOM.Models
         Public Property IsActive As Boolean
         Public Property IsFeatured As Boolean
         Public Property IsBoothExclusive As Boolean
-        Public Property IsEventExclusive As Boolean
         Public Property BadgeLabel As String
         Public Property MaterialDetails As String
         Public Property RatingAvg As Decimal

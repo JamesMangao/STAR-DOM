@@ -99,18 +99,14 @@ Namespace STAR_DOM.Services
             Return _repo.ListInventory(eventId)
         End Function
 
-        Public Function EventExclusive(eventId As Integer) As List(Of Product)
-            Return _repo.ListEventExclusiveProducts(eventId)
-        End Function
-
-        Public Function AddInventory(eventId As Integer, productId As Integer, startingStock As Integer, isExclusive As Boolean) As ServiceResult
-            Dim err As String = _repo.AddInventory(eventId, productId, startingStock, isExclusive)
+        Public Function AddInventory(eventId As Integer, productId As Integer, startingStock As Integer) As ServiceResult
+            Dim err As String = _repo.AddInventory(eventId, productId, startingStock)
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
             Return ServiceResult.Ok("Product assigned to event inventory.")
         End Function
 
-        Public Function UpdateInventory(id As Integer, startingStock As Integer, isExclusive As Boolean, isActive As Boolean) As ServiceResult
-            _repo.UpdateInventory(id, startingStock, isExclusive, isActive)
+        Public Function UpdateInventory(id As Integer, startingStock As Integer, isActive As Boolean) As ServiceResult
+            _repo.UpdateInventory(id, startingStock, isActive)
             Return ServiceResult.Ok("Inventory updated.")
         End Function
 

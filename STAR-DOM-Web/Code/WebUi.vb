@@ -462,6 +462,17 @@ Namespace STAR_DOM.Web
         End Function
 
         ''' <summary>
+        ''' The plain-text contact sentence that closes every failed-payment message.
+        ''' Lives on PaymentSetting, not here, because the service layer writes the
+        ''' same sentence into its flash messages — the two must never drift apart.
+        ''' </summary>
+        Public ReadOnly Property PaymentFailureContact As String
+            Get
+                Return Models.PaymentSetting.SupportContact
+            End Get
+        End Property
+
+        ''' <summary>
         ''' Shown wherever an order or payment did not go through. The customer is
         ''' pointed at a human instead of a dead-end error, so this must stay in
         ''' step with the number published by the studio.

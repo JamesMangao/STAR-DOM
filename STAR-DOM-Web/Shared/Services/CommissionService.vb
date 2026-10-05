@@ -26,15 +26,36 @@ Namespace STAR_DOM.Services
         Public Function Submit(merchantId As Integer, categoryId As Integer, title As String, description As String,
                                quantity As Integer, preferredSize As String, deadline As Date?,
                                budgetMin As Decimal?, budgetMax As Decimal?, additionalNotes As String,
-                               references As List(Of (file As String, name As String, kb As Integer))) As ServiceResult
+                               references As List(Of (file As String, name As String, kb As Integer)),
+                               Optional shippingAddress As String = "",
+                               Optional contactPhone As String = "") As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
             If merchantId <= 0 Then merchantId = PrimaryMerchantId()
+
+            ' Normalise before anything else. An optional field the buyer never
+            ' touched - notes is the one everybody skips - is absent from the POST
+            ' entirely, and .Trim() on that null threw a NullReferenceException out
+            ' of this method. The request page caught it and answered with a bare
+            ' Object reference not set to an instance of an object, so a perfectly
+            ' valid commission could not be created at all. The delivery fields
+            ' below have the same exposure, so every string is collapsed to a
+            ' non-null value here once instead of being defended at each use.
+            title = If(title, "").Trim()
+            description = If(description, "").Trim()
+            preferredSize = If(preferredSize, "").Trim()
+            additionalNotes = If(additionalNotes, "").Trim()
+            shippingAddress = If(shippingAddress, "").Trim()
+            contactPhone = If(contactPhone, "").Trim()
 
             Dim errors As New List(Of String)()
             errors.Add(Validators.Required(title, "Title"))
             errors.Add(Validators.Required(description, "Commission description"))
             errors.Add(Validators.IntegerValue(quantity.ToString(), "Quantity", 1, 99999))
             errors.Add(Validators.Required(preferredSize, "Preferred size"))
+            ' The finished piece is delivered, so the address is collected up front
+            ' rather than chased at the end — there is no map pin to fall back on.
+            errors.Add(Validators.Required(shippingAddress, "Delivery address"))
+            errors.Add(Validators.Phone(contactPhone))
             If budgetMin.HasValue AndAlso budgetMax.HasValue AndAlso budgetMax.Value < budgetMin.Value Then
                 errors.Add("Maximum budget must be at least the minimum budget.")
             End If
@@ -56,14 +77,16 @@ Namespace STAR_DOM.Services
                 .CustomerId = Session.CurrentUser.Id,
                 .MerchantId = merchantId,
                 .CategoryId = categoryId,
-                .Title = title.Trim(),
-                .Description = description.Trim(),
+                .Title = title,
+                .Description = description,
                 .Quantity = quantity,
                 .PreferredSize = preferredSize,
                 .PreferredDeadline = deadline,
                 .BudgetMin = budgetMin,
                 .BudgetMax = budgetMax,
-                .AdditionalNotes = additionalNotes.Trim(),
+                .AdditionalNotes = additionalNotes,
+                .ShippingAddress = shippingAddress,
+                .ContactPhone = contactPhone,
                 .Status = CommissionStatuses.Submitted
             }
             Dim id As Integer = _repo.Create(cm)
@@ -171,25 +194,101 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
-        ''' Records the single full payment for the finished piece. Nothing partial
-        ''' and nothing upfront: the artist quotes, the customer confirms, the whole
-        ''' amount settles here.
+        ''' The customer says they have paid the quoted price in full. The reference
+        ''' number from their e-wallet receipt is mandatory: without it there is nothing
+        ''' to trace the money back to, and the studio would be confirming a payment on
+        ''' the strength of someone's word alone.
+        '''
+        ''' This does NOT confirm the payment. It parks the commission in PAYMENT
+        ''' PENDING so the studio can verify it — the same two-step an order goes
+        ''' through, and the reason production never starts on an unverified transfer.
         ''' </summary>
-        Public Function MarkPaid(commissionId As Integer, reference As String) As ServiceResult
+        Public Function SubmitPayment(commissionId As Integer, reference As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
-            If Not CanAccess(cm) Then Return ServiceResult.Fail("Not authorized.")
+            If cm.CustomerId <> Session.CurrentUser.Id Then Return ServiceResult.Fail("Not your commission.")
             If Not (String.Equals(cm.Status, CommissionStatuses.CustomerConfirmed, StringComparison.OrdinalIgnoreCase) OrElse
-                    String.Equals(cm.Status, CommissionStatuses.PaymentPending, StringComparison.OrdinalIgnoreCase)) Then
-                Return ServiceResult.Fail("Payment can only be recorded after the offer is confirmed.")
+                    String.Equals(cm.Status, CommissionStatuses.PaymentPending, StringComparison.OrdinalIgnoreCase) OrElse
+                    String.Equals(cm.Status, CommissionStatuses.PaymentDeclined, StringComparison.OrdinalIgnoreCase)) Then
+                Return ServiceResult.Fail("You can only pay once you have confirmed the offer.")
             End If
-            _repo.UpdateStatus(commissionId, "", CommissionStatuses.Paid, Session.DisplayName,
-                               "Payment recorded (ref " & reference & ")")
-            _notif.Notify(cm.MerchantId, "Commission paid – " & cm.CommissionNumber,
-                          Session.DisplayName & " paid " & Fmt.PHP(If(cm.FinalPrice.HasValue, cm.FinalPrice.Value, 0D)) &
-                          ". You may begin production.",
+            If String.Equals(cm.Status, CommissionStatuses.PaymentPending, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Ok("Payment already submitted — waiting for the studio to confirm it.")
+            End If
+
+            Dim ref As String = If(reference, "").Trim()
+            If ref = "" Then
+                Return ServiceResult.Fail(PaymentSetting.PaymentFailedMessage(
+                    "Enter the GCash or GOtyme reference number from your payment receipt."))
+            End If
+
+            _repo.SetPaymentReference(commissionId, ref)
+            Dim fromStatus As String = If(String.Equals(cm.Status, CommissionStatuses.PaymentDeclined, StringComparison.OrdinalIgnoreCase),
+                                          CommissionStatuses.PaymentDeclined, CommissionStatuses.CustomerConfirmed)
+            Dim err As String = _repo.UpdateStatus(commissionId, fromStatus,
+                                                    CommissionStatuses.PaymentPending, Session.DisplayName,
+                                                    "Customer submitted payment (ref " & ref & ")")
+            If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            _notif.Notify(cm.MerchantId, "Payment submitted – " & cm.CommissionNumber,
+                          Session.DisplayName & " submitted their payment (ref " & ref & "). " &
+                          "Please verify it so production can start.",
                           "COMMISSION", "commission-pipeline")
-            Return ServiceResult.Ok("Payment recorded. Production can begin.")
+            _notif.Notify(cm.CustomerId, "Payment submitted – " & cm.CommissionNumber,
+                          "We've got your payment details. The studio will confirm it shortly.",
+                          "COMMISSION", "commission-hub")
+            Return ServiceResult.Ok("Payment submitted. The studio will confirm it before production starts.")
+        End Function
+
+        ''' <summary>
+        ''' Studio-side verification of a submitted commission payment. Production is
+        ''' gated on this, exactly as J&amp;T booking is gated on an order's confirmed
+        ''' payment, so an unverified transfer can never be worked on.
+        ''' </summary>
+        Public Function ConfirmPayment(commissionId As Integer) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
+            If Not String.Equals(cm.Status, CommissionStatuses.PaymentPending, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Fail("There is no submitted payment waiting to be confirmed.")
+            End If
+            If String.IsNullOrWhiteSpace(cm.PaymentReference) Then
+                Return ServiceResult.Fail(PaymentSetting.PaymentFailedMessage(
+                    "No reference number was submitted, so this payment cannot be verified."))
+            End If
+            _repo.MarkPaymentConfirmed(commissionId)
+            Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.PaymentPending,
+                                                    CommissionStatuses.Paid, Session.DisplayName,
+                                                    "Payment confirmed (ref " & cm.PaymentReference & ")")
+            If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            _notif.Notify(cm.CustomerId, "Payment confirmed – " & cm.CommissionNumber,
+                          "Your payment (ref " & cm.PaymentReference & ") is confirmed. Production is starting.",
+                          "COMMISSION", "commission-hub")
+            Return ServiceResult.Ok("Payment confirmed. Production can begin.")
+        End Function
+
+        ''' <summary>
+        ''' The seller declines a customer's submitted payment reference — the amount
+        ''' on the e-wallet receipt does not match, or the transfer cannot be traced.
+        ''' The commission moves to PAYMENT DECLINED and the customer is handed the
+        ''' support contact immediately.
+        ''' </summary>
+        Public Function DenyPayment(commissionId As Integer) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
+            If Not String.Equals(cm.Status, CommissionStatuses.PaymentPending, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Fail("There is no submitted payment waiting to be declined.")
+            End If
+            Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.PaymentPending,
+                                                    CommissionStatuses.PaymentDeclined, Session.DisplayName,
+                                                    "Seller declined the payment reference")
+            If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            _notif.Notify(cm.CustomerId, "Payment declined – " & cm.CommissionNumber,
+                          PaymentSetting.PaymentFailedMessage(
+                              "The seller could not confirm your payment for this commission. " &
+                              "Please check your reference number and resubmit."),
+                          "COMMISSION", "commission-hub")
+            Return ServiceResult.Ok("Payment declined. The customer has been notified.")
         End Function
 
         Public Function Cancel(commissionId As Integer) As ServiceResult
@@ -214,15 +313,57 @@ Namespace STAR_DOM.Services
             Return MerchantTransition(commissionId, CommissionStatuses.InProduction, CommissionStatuses.Finalized, "Work finalized")
         End Function
 
-        Public Function Complete(commissionId As Integer) As ServiceResult
+        ''' <summary>
+        ''' Hand the finished piece over. A commission is delivered the same way an
+        ''' order is: booking a courier is optional (most are collected in person, so
+        ''' the tracking number may stay blank), but the customer is the one who
+        ''' confirms receipt — the studio cannot mark its own parcel as received.
+        ''' </summary>
+        Public Function MarkDelivered(commissionId As Integer, Optional tracking As String = "") As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
             If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
-            _repo.UpdateStatus(commissionId, "", CommissionStatuses.Completed, Session.DisplayName, "Delivered to customer")
-            _notif.Notify(cm.CustomerId, "Commission completed – " & cm.CommissionNumber,
-                          "Your commission has been completed and delivered. Enjoy!",
+            If Not String.Equals(cm.Status, CommissionStatuses.Finalized, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Fail("Only a finalized commission can be delivered.")
+            End If
+            If String.IsNullOrWhiteSpace(cm.ShippingAddress) Then
+                Return ServiceResult.Fail("This commission has no delivery address on file.")
+            End If
+            _repo.SetDelivery(commissionId, Trim(If(tracking, "")))
+            Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.Finalized,
+                                                    CommissionStatuses.Delivered, Session.DisplayName,
+                                                    "Delivered to customer")
+            If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            _notif.Notify(cm.CustomerId, "Commission delivered – " & cm.CommissionNumber,
+                          "Your commission has been delivered. Please confirm you received it.",
                           "COMMISSION", "commission-hub")
-            Return ServiceResult.Ok("Commission marked completed.")
+            Return ServiceResult.Ok("Commission delivered — waiting for the customer to confirm receipt.")
+        End Function
+
+        ''' <summary>
+        ''' Customer confirms the finished piece reached them. Only ever written from
+        ''' DELIVERED, so a non-null ReceivedAt is the buyer's word rather than the
+        ''' studio's — which is what closes the loop the same way an order does.
+        ''' </summary>
+        Public Function MarkReceived(commissionId As Integer) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            If cm.CustomerId <> Session.CurrentUser.Id Then Return ServiceResult.Fail("Not your commission.")
+            If String.Equals(cm.Status, CommissionStatuses.Received, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Ok("You already confirmed this commission.")
+            End If
+            If Not String.Equals(cm.Status, CommissionStatuses.Delivered, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Fail("You can confirm this once it shows as delivered.")
+            End If
+            _repo.MarkReceived(commissionId)
+            Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.Delivered,
+                                                    CommissionStatuses.Received, Session.DisplayName,
+                                                    "Customer confirmed receipt")
+            If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            _notif.Notify(cm.MerchantId, "Commission received – " & cm.CommissionNumber,
+                          Session.DisplayName & " confirmed your commission arrived. Enjoy!",
+                          "COMMISSION", "commission-pipeline")
+            Return ServiceResult.Ok("Thanks for confirming! Enjoy your art.")
         End Function
 
         Private Function MerchantTransition(commissionId As Integer, fromStatus As String, toStatus As String, note As String) As ServiceResult

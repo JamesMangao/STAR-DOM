@@ -27,11 +27,6 @@ Namespace STAR_DOM.Services
             Return _products.ListFeatured(limit)
         End Function
 
-        Public Function EventExclusive(eventId As Integer) As List(Of Product)
-            If eventId <= 0 Then Return New List(Of Product)()
-            Return (New EventRepository()).ListEventExclusiveProducts(eventId)
-        End Function
-
         ''' <summary>Open commission slot cards for merchants with capacity (drives the hub + marketplace sections).</summary>
         Public Function CommissionSlots() As List(Of CommissionSlotView)
             Dim slots As New List(Of CommissionSlotView)()

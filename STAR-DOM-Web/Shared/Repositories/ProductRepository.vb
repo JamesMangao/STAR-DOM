@@ -70,15 +70,15 @@ Namespace STAR_DOM.Repositories
         Public Function Create(p As Product) As Integer
 Return Db.ExecIdentity(
                 "INSERT INTO Products (CategoryId, MerchantId, Name, Description, BasePrice, SalePrice, StockQuantity, " &
-                "LowStockThreshold, Sku, BrandName, IsActive, IsFeatured, IsBoothExclusive, IsEventExclusive, BadgeLabel, " &
+                "LowStockThreshold, Sku, BrandName, IsActive, IsFeatured, IsBoothExclusive, BadgeLabel, " &
                 "MaterialDetails, CreatedAt, UpdatedAt) " &
-                "VALUES (@cat, @m, @n, @d, @bp, @sp, @q, @lt, @sku, @b, @a, @f, @be, @ee, @bl, @md, NOW(), NOW())",
+                "VALUES (@cat, @m, @n, @d, @bp, @sp, @q, @lt, @sku, @b, @a, @f, @be, @bl, @md, NOW(), NOW())",
                 Db.P("@cat", p.CategoryId), Db.P("@m", p.MerchantId), Db.P("@n", p.Name),
                 Db.P("@d", p.Description), Db.P("@bp", p.BasePrice),
                 Db.P("@sp", If(p.SalePrice.HasValue, CObj(p.SalePrice.Value), DBNull.Value)),
                 Db.P("@q", p.StockQuantity), Db.P("@lt", p.LowStockThreshold), Db.P("@sku", p.Sku),
                 Db.P("@b", p.BrandName), Db.P("@a", p.IsActive), Db.P("@f", p.IsFeatured),
-                Db.P("@be", p.IsBoothExclusive), Db.P("@ee", p.IsEventExclusive),
+                Db.P("@be", p.IsBoothExclusive),
                 Db.P("@bl", p.BadgeLabel), Db.P("@md", p.MaterialDetails))
         End Function
 
@@ -86,13 +86,13 @@ Return Db.ExecIdentity(
             Db.Exec(
                 "UPDATE Products SET CategoryId = @c, Name = @n, Description = @d, BasePrice = @bp, SalePrice = @sp, " &
                 "StockQuantity = @q, LowStockThreshold = @lt, Sku = @sku, BrandName = @b, IsActive = @a, " &
-                "IsFeatured = @f, IsBoothExclusive = @be, IsEventExclusive = @ee, BadgeLabel = @bl, MaterialDetails = @md, " &
+                "IsFeatured = @f, IsBoothExclusive = @be, BadgeLabel = @bl, MaterialDetails = @md, " &
                 "UpdatedAt = NOW() WHERE Id = @id",
                 Db.P("@c", p.CategoryId), Db.P("@n", p.Name), Db.P("@d", p.Description), Db.P("@bp", p.BasePrice),
                 Db.P("@sp", If(p.SalePrice.HasValue, CObj(p.SalePrice.Value), DBNull.Value)),
                 Db.P("@q", p.StockQuantity), Db.P("@lt", p.LowStockThreshold), Db.P("@sku", p.Sku),
                 Db.P("@b", p.BrandName), Db.P("@a", p.IsActive), Db.P("@f", p.IsFeatured),
-                Db.P("@be", p.IsBoothExclusive), Db.P("@ee", p.IsEventExclusive),
+                Db.P("@be", p.IsBoothExclusive),
                 Db.P("@bl", p.BadgeLabel), Db.P("@md", p.MaterialDetails), Db.P("@id", p.Id))
         End Sub
 
@@ -121,9 +121,28 @@ Return Db.ExecIdentity(
                     Db.P("@q", quantity), Db.P("@id", productId))
         End Sub
 
-        Public Function LowStock(merchantId As Integer) As List(Of Product)
-            Return Db.Rows(BaseSelect & "WHERE p.MerchantId = @m AND p.IsActive = TRUE AND p.StockQuantity <= p.LowStockThreshold " &
-                           "ORDER BY p.StockQuantity ASC", Db.P("@m", merchantId)).Select(Function(r) Map(r)).ToList()
+        ''' <summary>
+        ''' Products at or below their low-stock threshold.
+        ''' </summary>
+        ''' <remarks>
+        ''' merchantId scopes the result to one studio; pass Nothing for the whole
+        ''' catalogue. STAR:DOM is a single-owner brand and the owner signs in as the
+        ''' admin, who owns none of the seeded SKUs themselves — every Product row
+        ''' belongs to a creator studio. Filtering on the signed-in user therefore
+        ''' returned nothing at all, and the dashboard cheerfully reported "All good —
+        ''' nothing low" over a catalogue with dozens of low-stock items in it. The
+        ''' owner sees the whole catalogue, which is what a reorder alert has to mean
+        ''' when there is one warehouse behind it.
+        ''' </remarks>
+        Public Function LowStock(Optional merchantId As Integer? = Nothing) As List(Of Product)
+            Dim sql As String = BaseSelect & "WHERE p.IsActive = TRUE AND p.StockQuantity <= p.LowStockThreshold "
+            Dim ps As New List(Of NpgsqlParameter)()
+            If merchantId.HasValue Then
+                sql &= "AND p.MerchantId = @m "
+                ps.Add(Db.P("@m", merchantId.Value))
+            End If
+            sql &= "ORDER BY p.StockQuantity ASC, p.Name"
+            Return Db.Rows(sql, ps.ToArray()).Select(Function(r) Map(r)).ToList()
         End Function
 
         ' ----- Images -----------------------------------------------------------
@@ -292,7 +311,7 @@ Return Db.ExecIdentity(
                 .StockQuantity = RowReader.AsInt(r, "StockQuantity"), .LowStockThreshold = RowReader.AsInt(r, "LowStockThreshold"),
                 .Sku = RowReader.AsStr(r, "Sku"), .BrandName = RowReader.AsStr(r, "BrandName"),
                 .IsActive = RowReader.AsBool(r, "IsActive"), .IsFeatured = RowReader.AsBool(r, "IsFeatured"),
-                .IsBoothExclusive = RowReader.AsBool(r, "IsBoothExclusive"), .IsEventExclusive = RowReader.AsBool(r, "IsEventExclusive"),
+                .IsBoothExclusive = RowReader.AsBool(r, "IsBoothExclusive"),
                 .BadgeLabel = RowReader.AsStr(r, "BadgeLabel"), .MaterialDetails = RowReader.AsStr(r, "MaterialDetails"),
                 .RatingAvg = RowReader.AsDec(r, "RatingAvg"), .RatingCount = RowReader.AsInt(r, "RatingCount"),
                 .SoldCount = RowReader.AsInt(r, "SoldCount"), .CreatedAt = RowReader.AsDate(r, "CreatedAt"),

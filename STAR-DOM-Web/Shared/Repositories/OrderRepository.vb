@@ -301,9 +301,29 @@ Namespace STAR_DOM.Repositories
             Return RowReader.AsInt(rows(0), "Id")
         End Function
 
+        ''' <summary>
+        ''' Ids of this user's orders containing the product that reached RECEIVED,
+        ''' newest first. RECEIVED is written only by MarkReceived, i.e. by the customer,
+        ''' so an id coming back from here is evidence the goods actually landed —
+        ''' which is what a review is meant to attest to. Bounded by `limit` so the
+        ''' caller cannot pull an unbounded order history into memory.
+        ''' </summary>
+        Public Function ReceivedPurchaseOrderIds(userId As Integer, productId As Integer,
+                                                 Optional limit As Integer = 1) As List(Of Integer)
+            Dim capped As Integer = If(limit < 1, 1, Math.Min(limit, 50))
+            Return Db.Rows(
+                "SELECT o.Id FROM OrderItems oi JOIN Orders o ON o.Id = oi.OrderId " &
+                "WHERE o.UserId = @u AND oi.ProductId = @p AND o.Status = 'RECEIVED' " &
+                "ORDER BY o.ReceivedAt DESC, o.CreatedAt DESC LIMIT @n",
+                Db.P("@u", userId), Db.P("@p", productId), Db.P("@n", capped)
+            ).Select(Function(r) RowReader.AsInt(r, "Id")).ToList()
+        End Function
+
         Public Sub AddReview(userId As Integer, productId As Integer, orderId As Integer?, rating As Integer, comment As String)
+            ' IsApproved stays TRUE on insert. The column is kept only so older rows
+            ' keep their shape; nothing reads it any more.
             Db.Exec("INSERT INTO Reviews (ProductId, OrderId, UserId, Rating, Comment, IsApproved, CreatedAt) " &
-                    "VALUES (@p, @o, @u, @r, @c, 1, NOW())",
+                    "VALUES (@p, @o, @u, @r, @c, TRUE, NOW())",
                     Db.P("@p", productId), Db.P("@o", If(orderId.HasValue, CObj(orderId.Value), DBNull.Value)),
                     Db.P("@u", userId), Db.P("@r", rating), Db.P("@c", comment))
             RecalcRating(productId)
@@ -314,10 +334,15 @@ Namespace STAR_DOM.Repositories
                     "RatingCount = (SELECT COUNT(*) FROM Reviews WHERE ProductId = @p) WHERE Id = @p", Db.P("@p", productId))
         End Sub
 
+        ''' <summary>
+        ''' Reviews shown on a product page. There is no approval gate any more: a
+        ''' review can only be written by a customer who confirmed the parcel arrived,
+        ''' which is the verification worth having, so every review is public on submit.
+        ''' </summary>
         Public Function ListForProduct(productId As Integer) As List(Of Review)
             Return Db.Rows(
                 "SELECT r.*, u.FullName AS CustomerName FROM Reviews r " &
-                "JOIN Users u ON u.Id = r.UserId WHERE r.ProductId = @p AND r.IsApproved = TRUE ORDER BY r.CreatedAt DESC",
+                "JOIN Users u ON u.Id = r.UserId WHERE r.ProductId = @p ORDER BY r.CreatedAt DESC",
                 Db.P("@p", productId)).Select(Function(r) MapReview(r)).ToList()
         End Function
 
@@ -333,17 +358,6 @@ Namespace STAR_DOM.Repositories
             sql &= "ORDER BY r.CreatedAt DESC"
             Return Db.Rows(sql, ps.ToArray()).Select(Function(r) MapReview(r)).ToList()
         End Function
-
-        Public Sub SetReviewApproved(reviewId As Integer, approved As Boolean)
-            Db.Exec("UPDATE Reviews SET IsApproved = @a WHERE Id = @id",
-                    Db.P("@a", approved), Db.P("@id", reviewId))
-        End Sub
-
-        Public Sub DeleteReview(reviewId As Integer)
-            Dim productId As Integer = Db.ScalarInt("SELECT ProductId FROM Reviews WHERE Id = @id", Db.P("@id", reviewId))
-            Db.Exec("DELETE FROM Reviews WHERE Id = @id", Db.P("@id", reviewId))
-            If productId > 0 Then RecalcRating(productId)
-        End Sub
 
         Private Function MapReview(r As DataRow) As Review
             Return New Review With {

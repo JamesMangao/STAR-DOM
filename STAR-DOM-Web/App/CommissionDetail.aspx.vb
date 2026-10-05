@@ -71,8 +71,10 @@ Namespace STAR_DOM.Web
                     Return _svc.RequestRevision(cm.Id)
                 Case "finalize"
                     Return _svc.FinalizeWork(cm.Id)
-                Case "complete"
-                    Return _svc.Complete(cm.Id)
+                Case "confirmpay"
+                    Return _svc.ConfirmPayment(cm.Id)
+                Case "declinepay"
+                    Return _svc.DenyPayment(cm.Id)
                 Case "cancel"
                     Return _svc.Cancel(cm.Id)
                 Case Else
@@ -100,8 +102,15 @@ Namespace STAR_DOM.Web
                     ' and the customer pays that one figure in full.
                     Return _svc.AcceptAndOffer(cm.Id, price, est, Convert.ToString(Request.Form("merchantNotes")))
                 Case "pay"
+                    ' The customer submits what they paid against; it still has to be
+                    ' verified by the studio before production opens.
                     Dim ref As String = Convert.ToString(Request.Form("ref"))
-                    Return _svc.MarkPaid(cm.Id, ref)
+                    Return _svc.SubmitPayment(cm.Id, ref)
+                Case "deliver"
+                    If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
+                    Return _svc.MarkDelivered(cm.Id, Convert.ToString(Request.Form("tracking")))
+                Case "received"
+                    Return _svc.MarkReceived(cm.Id)
                 Case Else
                     Return ServiceResult.Fail("Unknown action.")
             End Select
@@ -137,6 +146,11 @@ Namespace STAR_DOM.Web
             ElseIf cm.BudgetMax.HasValue Then
                 sb.Append("<dt>Budget</dt><dd>up to " & WebUi.Money(cm.BudgetMax) & "</dd>")
             End If
+            ' Delivery details ride along with the request because the finished piece
+            ' is delivered — there is no counter for the customer to collect it from.
+            sb.Append("<dt>Deliver to</dt><dd>" & WebUi.Esc(If(cm.ShippingAddress = "", "— not provided —", cm.ShippingAddress)) & "</dd>")
+            sb.Append("<dt>Phone</dt><dd>" & WebUi.Esc(If(cm.ContactPhone = "", "—", cm.ContactPhone)) & "</dd>")
+            sb.Append("<dt>Shipping</dt><dd>Free — the studio covers the courier</dd>")
             sb.Append("</div>")
             sb.Append("<p style=""margin:10px 0 0"">" & WebUi.Esc(cm.Description) & "</p>")
             If cm.AdditionalNotes <> "" Then sb.Append("<p class=""sub""><b>Notes:</b> " & WebUi.Esc(cm.AdditionalNotes) & "</p>")
@@ -149,10 +163,12 @@ Namespace STAR_DOM.Web
                 sb.Append("<h3 style=""margin-bottom:8px"">" & WebUi.Ic("request_quote", "sm") & " Official offer</h3>")
                 sb.Append("<div class=""kv"">")
                 sb.Append("<dt>Final price</dt><dd>" & WebUi.Money(cm.FinalPrice) & "</dd>")
+                sb.Append("<dt>Shipping</dt><dd>Free</dd>")
                 If cm.EstimatedCompletionDate.HasValue Then
                     sb.Append("<dt>Est. completion</dt><dd>" & WebUi.Esc(cm.EstimatedCompletionDate.Value.ToString("MMM d, yyyy")) & "</dd>")
                 End If
                 sb.Append("<dt>Payment</dt><dd>Paid in full — no deposit</dd>")
+                sb.Append("<dt>Payment state</dt><dd>" & PaymentStateLine(cm) & "</dd>")
                 sb.Append("</div>")
                 If cm.MerchantNotes <> "" Then sb.Append("<p class=""sub"">" & WebUi.Esc(cm.MerchantNotes) & "</p>")
                 sb.Append("</div>")
@@ -183,7 +199,7 @@ Namespace STAR_DOM.Web
             sb.Append("<h3 style=""margin-bottom:8px"">" & WebUi.Ic("history", "sm") & " Status history</h3>")
             If history.Count > 0 Then
                 sb.Append("<ul class=""timeline"">")
-                For Each h As CommissionStatusHistory In history
+                For Each h In history
                     sb.Append("<li class=""now""><b>" & WebUi.Esc(h.ToStatus.Replace("_", " ")) & "</b> — " &
                               WebUi.Esc(h.ChangedByName) & " <time>" & WebUi.Esc(h.CreatedAt.ToString("MMM d, yyyy h:mm tt")) &
                               If(h.Note <> "", " · " & WebUi.Esc(h.Note), "") & "</time></li>")
@@ -198,6 +214,15 @@ Namespace STAR_DOM.Web
             sb.Append("<dt>Submitted</dt><dd>" & WebUi.Esc(cm.CreatedAt.ToString("MMM d, yyyy h:mm tt")) & "</dd>")
             sb.Append("<dt>Last update</dt><dd>" & WebUi.Esc(cm.UpdatedAt.ToString("MMM d, yyyy h:mm tt")) & "</dd>")
             sb.Append("<dt>Customer</dt><dd>" & WebUi.Esc(cm.CustomerName) & "</dd>")
+            ' The courier sentence is the customer's side of the hand-off, so it only
+            ' appears once there is something to say about it.
+            If cm.Status = "DELIVERED" OrElse cm.Status = "RECEIVED" OrElse cm.Status = "COMPLETED" Then
+                sb.Append("<dt>Delivery</dt><dd>" & WebUi.Esc(cm.DeliveryStatusLine))
+                If cm.TrackingUrl <> "" Then
+                    sb.Append(" <a href=""" & WebUi.Attr(cm.TrackingUrl) & """ target=""_blank"" rel=""noopener"">Track on J&amp;T <span class=""ms sm"" style=""vertical-align:-3px"">open_in_new</span></a>")
+                End If
+                sb.Append("</dd>")
+            End If
             sb.Append("</div></div>")
             sb.Append("</div></div>")
 
@@ -205,6 +230,23 @@ Namespace STAR_DOM.Web
         End Sub
 
         ' ---------- contextual action panels ----------
+
+        ''' <summary>
+        ''' How the money stands. A reference on file is not a confirmed payment:
+        ''' the studio still has to verify it, and production stays shut until then.
+        ''' </summary>
+        Private Function PaymentStateLine(cm As Commission) As String
+            If cm.PaymentConfirmed Then
+                Return WebUi.Badge("PAID") & " <span class=""sub"" style=""font-size:11.5px"">confirmed " &
+                       WebUi.Esc(cm.PaymentConfirmedAt.Value.ToString("MMM d, yyyy")) &
+                       If(cm.PaymentReference <> "", " · ref " & WebUi.Esc(cm.PaymentReference), "") & "</span>"
+            End If
+            If cm.PaymentReference <> "" Then
+                Return WebUi.Badge("AWAITING CONFIRMATION") & " <span class=""sub"" style=""font-size:11.5px"">ref " &
+                       WebUi.Esc(cm.PaymentReference) & " — the studio is verifying it</span>"
+            End If
+            Return WebUi.Badge("NOT PAID")
+        End Function
 
         Private Function ReferenceImages(cmId As Integer) As String
             ' CommissionReferenceImages rows were written on upload since forever, but
@@ -252,13 +294,22 @@ Namespace STAR_DOM.Web
                 If st = "PENDING REVIEW" OrElse st = "SUBMITTED" Then
                     sb.Append(PanelLink(cm, "offer", "Accept & Send Offer", "primary", showPanel, "send"))
                     sb.Append(PanelLink(cm, "decline", "Decline", "ghost", showPanel, "thumb_down"))
+                ElseIf st = "PAYMENT PENDING" Then
+                    ' The customer says they paid; the studio verifies before anything
+                    ' gets made. Same gate as an order, same failure message.
+                    sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=confirmpay"" " +
+                              "data-confirm=""Confirm this payment so production can start?""><span class=""ic ms"">verified</span><span>Confirm payment</span></a>")
+                    sb.Append("<a class=""btn danger"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=declinepay"" " +
+                              "data-confirm=""Decline this payment? The customer will be notified."" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Decline payment</span></a>")
+                    sb.Append("<span class=""act-hint"" style=""display:block;margin-top:6px"">Check the customer's reference (" &
+                              WebUi.Esc(cm.PaymentReference) & ") against their wallet receipt first.</span>")
                 ElseIf st = "PAID" Then
                     sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=startprod""><span class=""ic ms"">factory</span><span>Start Production</span></a>")
                 ElseIf st = "IN PRODUCTION" Then
                     sb.Append("<a class=""btn secondary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=finalize""><span class=""ic ms"">check_circle</span><span>Finalize Work</span></a>")
                     sb.Append("<a class=""btn ghost"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=revision""><span class=""ic ms"">refresh</span><span>Request Revision</span></a>")
-                ElseIf st = "FINALIZED" OrElse st = "REVISION" OrElse st = "COMPLETED" Then
-                    sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=complete""><span class=""ic ms"">flag</span><span>Mark Completed</span></a>")
+                ElseIf st = "FINALIZED" OrElse st = "REVISION" Then
+                    sb.Append(PanelLink(cm, "deliver", "Deliver to customer", "primary", showPanel, "local_shipping"))
                 End If
             End If
 
@@ -266,8 +317,17 @@ Namespace STAR_DOM.Web
                 If st = "OFFER SENT" Then
                     sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=confirmoffer""><span class=""ic ms"">how_to_reg</span><span>Confirm Offer</span></a>")
                 End If
-                If st = "PAYMENT PENDING" OrElse st = "CUSTOMER CONFIRMED" OrElse st = "PAID" Then
+                If st = "CUSTOMER CONFIRMED" Then
                     sb.Append(PanelLink(cm, "pay", "Pay in Full", "primary", showPanel, "payments"))
+                End If
+                If st = "DELIVERED" Then
+                    sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ " +
+                              "style=""display:inline-flex"">")
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                    sb.Append("<input type=""hidden"" name=""kind"" value=""received"">")
+                    sb.Append("<button class=""btn primary"" type=""submit"" data-confirm=""Confirm this commission reached you?"">" +
+                              "<span class=""ic ms"">task_alt</span><span>Mark as received</span></button>")
+                    sb.Append("</form>")
                 End If
                 If st = "PENDING REVIEW" OrElse st = "SUBMITTED" OrElse st = "OFFER SENT" Then
                     sb.Append("<a class=""btn danger"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() &
@@ -290,10 +350,18 @@ Namespace STAR_DOM.Web
                                         "<div class=""field""><label>Reason (shared with the customer)</label><textarea name=""note"" required style=""min-height:80px""></textarea></div>"))
                 Case "pay"
                     Dim due As Decimal = If(cm.FinalPrice.HasValue, cm.FinalPrice.Value, 0D)
-                    sb.Append(PanelForm(cm, "pay", "Record full payment (simulated)",
+                    sb.Append(PanelForm(cm, "pay", "Pay in full",
                                         "<p class=""sub"" style=""margin:0 0 10px"">Amount due: <b style=""color:var(--primary)"">" &
-                                        WebUi.Money(due) & "</b> — one payment, no deposit.</p>" &
-                                        "<div class=""field""><label>Payment reference (GCash/GOtyme transaction no.)</label><input name=""ref"" placeholder=""Optional — auto-generated if blank""></div>"))
+                                        WebUi.Money(due) & "</b> — one payment, no deposit. Shipping is free.</p>" &
+                                        "<div class=""field""><label>GCash / GOtyme reference no. *</label>" &
+                                        "<input name=""ref"" required placeholder=""From your payment receipt""></div>" &
+                                        "<p class=""sub"" style=""margin:0"">The studio verifies this before production starts.</p>"))
+                Case "deliver"
+                    sb.Append(PanelForm(cm, "deliver", "Deliver to the customer",
+                                        "<p class=""sub"" style=""margin:0 0 10px"">Delivering to <b>" &
+                                        WebUi.Esc(cm.ShippingAddress) & "</b>. Shipping is free on commissions.</p>" &
+                                        "<div class=""field""><label>J&amp;T tracking no. (optional)</label>" &
+                                        "<input name=""tracking"" placeholder=""Leave blank for pickup or a personal handover""></div>"))
             End Select
             Return sb.ToString()
         End Function

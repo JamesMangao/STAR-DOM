@@ -45,6 +45,10 @@ Namespace STAR_DOM.Web
             If qty < 1 Then qty = 1
             Dim size As String = Convert.ToString(Request.Form("size"))
             Dim notes As String = Convert.ToString(Request.Form("notes"))
+            ' The finished piece is delivered, so the address is collected with the
+            ' request rather than chased once the art is done.
+            Dim address As String = Convert.ToString(Request.Form("address"))
+            Dim phone As String = Convert.ToString(Request.Form("phone"))
 
             Dim deadline As Date? = Nothing
             Dim dl As String = Convert.ToString(Request.Form("deadline"))
@@ -80,7 +84,8 @@ Namespace STAR_DOM.Web
             End If
 
             Dim result As ServiceResult = _svc.Submit(merchantId, catId, title, description, qty, size,
-                                                      deadline, budgetMin, budgetMax, notes, refs)
+                                                      deadline, budgetMin, budgetMax, notes, refs,
+                                                      address, phone)
             If result.Success Then
                 Dim fresh As Commission = _svc.ListMyCommissions().OrderByDescending(Function(c) c.Id).FirstOrDefault()
                 Session("flash_msg") = result.Message
@@ -120,8 +125,11 @@ Namespace STAR_DOM.Web
             done(3) = Filled("size") <> "" OrElse Filled("budgetMin") <> "" OrElse
                       Filled("budgetMax") <> "" OrElse Filled("deadline") <> ""
 
+            ' Delivery: an address and a phone, since the finished piece is shipped.
+            done(4) = Filled("address") <> "" AndAlso Filled("phone") <> ""
+
             ' The last step is the review/submit screen itself: never pre-filled.
-            done(4) = False
+            done(5) = False
             Return done
         End Function
 
@@ -164,6 +172,8 @@ Namespace STAR_DOM.Web
             Dim keepBudgetMin As String = Filled("budgetMin")
             Dim keepBudgetMax As String = Filled("budgetMax")
             Dim keepNotes As String = Filled("notes")
+            Dim keepAddress As String = Filled("address")
+            Dim keepPhone As String = Filled("phone")
             ' An <input type="date"> only accepts yyyy-MM-dd; echo back anything it
             ' would reject as empty rather than as a value the browser silently drops.
             Dim keepDeadline As String = ""
@@ -188,7 +198,7 @@ Namespace STAR_DOM.Web
             ' identically and the rail told the buyer nothing.
             Dim titles As String() = {"1. Select Category", "2. What to Create",
                                       "3. References &amp; Assets", "4. Specifications",
-                                      "5. Review &amp; Submit"}
+                                      "5. Delivery", "6. Review &amp; Submit"}
             Dim stepDone As Boolean() = StepCompletion(titles.Length)
             Dim currentStep As Integer = 0
             For i As Integer = 0 To stepDone.Length - 1
@@ -281,7 +291,20 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""field""><label for=""nt"">Additional notes / bleed requests</label><textarea id=""nt"" name=""notes"" style=""min-height:80px"">" & WebUi.Esc(keepNotes) & "</textarea></div>")
             sb.Append("</div>")
 
-            ' 05 submit
+            ' 05 delivery
+            sb.Append("<div class=""card mb"">")
+            sb.Append("<h3>05 · Delivery</h3>")
+            sb.Append("<p class=""sub"">Your finished piece is delivered by J&amp;T Express. Shipping is free on " &
+                      "commissions — this address is just where it goes.</p>")
+            sb.Append("<div class=""field""><label for=""ad"">Delivery address *</label>")
+            sb.Append("<input id=""ad"" name=""address"" required value=""" & WebUi.Attr(keepAddress) &
+                      """ placeholder=""House number, street, barangay, city, province""></div>")
+            sb.Append("<div class=""field""><label for=""ph"">Contact phone *</label>")
+            sb.Append("<input id=""ph"" name=""phone"" required inputmode=""tel"" value=""" & WebUi.Attr(keepPhone) &
+                      """ placeholder=""09xx xxx xxxx""></div>")
+            sb.Append("</div>")
+
+            ' 06 submit
             sb.Append("<div class=""card"" style=""border-color:var(--yellow)"">")
             sb.Append("<div class=""row space-between"">")
             sb.Append("<div><b>No upfront payment required today</b><br><span class=""sub"">Your request is reviewed by the artist before final pricing.</span></div>")

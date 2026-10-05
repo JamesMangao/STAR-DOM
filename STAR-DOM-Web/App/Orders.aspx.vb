@@ -76,6 +76,11 @@ Namespace STAR_DOM.Web
                     If o.Status = "PENDING" Then
                         sb.Append("<a href=""/App/Orders.aspx?cancel=" & o.Id.ToString() & """ data-confirm=""Cancel this order?"" data-confirm-danger"">Cancel</a>")
                     End If
+                    ' Reviews open once the customer confirms the parcel landed, so a
+                    ' RECEIVED row is where the store offers to write one.
+                    If o.Status = "RECEIVED" AndAlso _orders.PendingReviewItems(o.Id).Count > 0 Then
+                        sb.Append("<a href=""/App/OrderDetail.aspx?id=""" & o.Id.ToString() & """>Write a review</a>")
+                    End If
                     sb.Append("</td></tr>")
                 Next
                 sb.Append("</tbody></table></div>")

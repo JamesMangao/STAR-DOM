@@ -179,15 +179,24 @@ Namespace STAR_DOM.Web
 
         Private Function LowStockPanel() As String
             Dim sb As New StringBuilder()
-            Dim lowStock As List(Of Product) = _products.LowStock(STAR_DOM.Helpers.Session.CurrentUser.Id)
-            sb.Append("<div class=""panel""><div class=""panel-hd""><h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--tertiary)"">" & WebUi.Ic("warning", "sm") & "</span> Low Stock Alerts</h3></div><div class=""panel-bd"">")
+            ' Whole catalogue, not "mine": see ProductRepository.LowStock. Scoping this
+            ' to the signed-in user is what made the panel read "All good" forever.
+            Dim lowStock As List(Of Product) = _products.LowStock()
+            sb.Append("<div class=""panel""><div class=""panel-hd""><h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--tertiary)"">" & WebUi.Ic("warning", "sm") & "</span> Low Stock Alerts" &
+                      "<span class=""htag"">" & lowStock.Count.ToString() & " SKU" & If(lowStock.Count = 1, "", "S") & "</span></h3></div><div class=""panel-bd"">")
             If lowStock.Count = 0 Then
                 sb.Append(WebUi.EmptyRow("All good — nothing low."))
             Else
-                For Each p As Product In lowStock.Take(6)
-                    sb.Append("<div class=""row space-between"" style=""padding:5px 0;border-bottom:1px solid #f3e9e6""><span>" & WebUi.Esc(p.Name) & "</span>" &
-                              "<span style=""color:var(--primary);font-weight:700"">" & p.StockQuantity.ToString() & " left</span></div>")
+                For Each p As Product In lowStock.Take(8)
+                    sb.Append("<div class=""row space-between"" style=""padding:5px 0;border-bottom:1px solid #f3e9e6""><span>" &
+                              WebUi.Esc(p.Name) & " <span class=""sub"" style=""font-size:11px"">· alert at " &
+                              p.LowStockThreshold.ToString() & "</span></span>" &
+                              "<span style=""color:var(--primary);font-weight:700;white-space:nowrap"">" & p.StockQuantity.ToString() & " left</span></div>")
                 Next
+                If lowStock.Count > 8 Then
+                    sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:8px"">+ " &
+                              (lowStock.Count - 8).ToString() & " more at or below threshold</div>")
+                End If
                 sb.Append("<div class=""btn-row"" style=""margin-top:12px"">" & WebUi.BtnHref("/App/Merchant/Products.aspx", "Restock", "ghost", "add_circle") & "</div>")
             End If
             sb.Append("</div></div>")

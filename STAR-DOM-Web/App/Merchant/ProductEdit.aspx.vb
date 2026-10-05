@@ -79,7 +79,6 @@ Namespace STAR_DOM.Web
             p.IsActive = Request.Form("isActive") = "1"
             p.IsFeatured = Request.Form("featured") = "1"
             p.IsBoothExclusive = Request.Form("booth") = "1"
-            p.IsEventExclusive = Request.Form("eventex") = "1"
 
             Try
                 If _editingId > 0 Then
@@ -134,7 +133,6 @@ Namespace STAR_DOM.Web
             sb.Append(Checkbox("isActive", "Active on marketplace", p Is Nothing OrElse p.IsActive))
             sb.Append(Checkbox("featured", "Featured", p IsNot Nothing AndAlso p.IsFeatured))
             sb.Append(Checkbox("booth", "Booth exclusive", p IsNot Nothing AndAlso p.IsBoothExclusive))
-            sb.Append(Checkbox("eventex", "Event exclusive", p IsNot Nothing AndAlso p.IsEventExclusive))
             sb.Append("</div>")
             sb.Append("<div class=""frow"">")
             sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">save</span><span>Save Product</span></button>")

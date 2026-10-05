@@ -108,7 +108,10 @@ Namespace STAR_DOM.Web
             ' The low-stock alert counts the whole catalog, not the filtered view:
             ' it is a warning about what needs reordering, and hiding half of it
             ' because someone typed a letter would make it actively misleading.
-            Dim low As List(Of Product) = _products.LowStock(STAR_DOM.Helpers.Session.CurrentUser.Id)
+            ' The low-stock alert counts the whole catalog, not the filtered view: it is a
+            ' warning about what needs reordering, and the owner signs in as the admin,
+            ' who owns none of the seeded SKUs. See ProductRepository.LowStock.
+            Dim low As List(Of Product) = _products.LowStock()
 
             sb.Append("<div class=""sec-head""><div><h3>" & If(isAdmin, "All products", "My products") &
                       " (" & mine.Count.ToString() & ")</h3></div>" &
@@ -148,7 +151,6 @@ Namespace STAR_DOM.Web
             Else
                 sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
                 Dim headers As New List(Of String) From {"SKU", "PRODUCT", "CATEGORY"}
-                If isAdmin Then headers.Add("MERCHANT")
                 headers.AddRange(New String() {"PRICE", "STOCK", "FLAGS", "ACTIONS"})
                 For Each h As String In headers
                     sb.Append("<th>" & h & "</th>")
@@ -161,7 +163,6 @@ Namespace STAR_DOM.Web
                     sb.Append("<td><b>" & WebUi.Esc(p.Name) & "</b><br><span class=""sub"" style=""font-size:11px"">" &
                               WebUi.Esc(p.BrandName) & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(p.CategoryName) & "</td>")
-                    If isAdmin Then sb.Append("<td>" & WebUi.Esc(p.MerchantName) & "</td>")
                     sb.Append("<td>" & WebUi.Money(p.BasePrice) & "</td>")
                     ' The stock form is nested inside the shell form, which the browser closes at this
                     ' tag — so the shell's token is not submitted with it. It carries its own.
@@ -175,7 +176,6 @@ Namespace STAR_DOM.Web
                     sb.Append("<td>")
                     Dim flags As New List(Of String)()
                     If p.IsBoothExclusive Then flags.Add("BOOTH")
-                    If p.IsEventExclusive Then flags.Add("EVENT")
                     If p.IsFeatured Then flags.Add("FEATURED")
                     ' A set SalePrice is the checkout-time discount, never shown as a price
                     ' anywhere. Flag it so the merchant can tell why the cart differs,
