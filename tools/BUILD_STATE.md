@@ -543,8 +543,10 @@ PRESENTATION-CHEATSHEET) updated to match.
   with the order `SHIPPED/PAID` whose Payments row still says `PENDING` is a
   verification artifact, not a flow the app can produce any more.
 - **psql on Windows quirk (proven again)**: options placed *after* the
-  connection string are silently ignored (exit 0, no work). `tools\reseed-supabase.bat`
-  still has every psql line connection-string-first, so it is a silent no-op — NOT
-  yet fixed (flagged to the user). To query manually put `-c` before the URL,
-  and use delayed expansion if calling via a batch:
+  connection string are silently ignored (exit 0, no work).
+  `tools\reseed-supabase.bat` had every psql line connection-string-first, so it
+  was a silent no-op — **fixed on 2026-10-06**: all 9 psql lines reordered to
+  put `-c`/`-f`/`-v` before `"%SUPABASE_DSN%"` (verified live: the connection
+  test now prints `1`, busy-count lines return real numbers). To query manually
+  put `-c` before the URL, and use delayed expansion if calling via a batch:
   `cmd /v:on /c "call tools\supabase-env.bat && psql -X -t -A -c \"…\" \"!SUPABASE_DB_URL!\""`.

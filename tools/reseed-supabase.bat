@@ -28,7 +28,7 @@ echo ============================================================
 echo   RESET THE SUPABASE DATABASE?
 echo ============================================================
 echo.
-echo   Project:  !SUPABASE_DB_URL!
+echo   Project:  %SUPABASE_DB_URL%
 echo.
 echo   Everything in the public schema will be DROPPED, including
 echo   orders, payments, users, and the uploaded QR images.
@@ -48,14 +48,14 @@ if /i not "%CONFIRM%"=="RESET" (
 
 echo.
 echo   Testing the connection ...
-"%PGBIN%\psql.exe" "%SUPABASE_DSN%" -tAc "SELECT 1" >nul 2>nul
+"%PGBIN%\psql.exe" -tAc "SELECT 1" "%SUPABASE_DSN%" >nul 2>nul
 if errorlevel 1 (
     echo.
     echo   Could not connect to Supabase. Check tools\supabase-credentials.txt --
     echo   the password is usually the problem, and Supabase sometimes needs a
     echo   moment after a password reset. Nothing was changed.
     echo.
-    "%PGBIN%\psql.exe" "%SUPABASE_DSN%" -tAc "SELECT 1"
+    "%PGBIN%\psql.exe" -tAc "SELECT 1" "%SUPABASE_DSN%"
     pause
     exit /b 1
 )
@@ -65,7 +65,7 @@ echo.
 echo   Dropping and recreating the public schema ...
 rem Supabase's PostgREST role needs its grants back on the new schema;
 rem without them the API reads nothing even though the tables exist.
-"%PGBIN%\psql.exe" "%SUPABASE_DSN%" -v ON_ERROR_STOP=1 -q -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO anon; GRANT ALL ON SCHEMA public TO authenticated; GRANT ALL ON SCHEMA public TO service_role;"
+"%PGBIN%\psql.exe" -v ON_ERROR_STOP=1 -q -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO anon; GRANT ALL ON SCHEMA public TO authenticated; GRANT ALL ON SCHEMA public TO service_role;" "%SUPABASE_DSN%"
 if errorlevel 1 (
     echo   Could not reset the schema -- see the error above. Nothing further was done.
     pause
@@ -73,7 +73,7 @@ if errorlevel 1 (
 )
 
 echo   Loading schema ...
-"%PGBIN%\psql.exe" "%SUPABASE_DSN%" -v ON_ERROR_STOP=1 -q -f "%SQLDIR%\supabase_schema.sql"
+"%PGBIN%\psql.exe" -v ON_ERROR_STOP=1 -q -f "%SQLDIR%\supabase_schema.sql" "%SUPABASE_DSN%"
 if errorlevel 1 (
     echo   Schema load FAILED -- see the errors above.
     pause
@@ -81,7 +81,7 @@ if errorlevel 1 (
 )
 
 echo   Loading seed ...
-"%PGBIN%\psql.exe" "%SUPABASE_DSN%" -v ON_ERROR_STOP=1 -q -f "%SQLDIR%\supabase_seed.sql"
+"%PGBIN%\psql.exe" -v ON_ERROR_STOP=1 -q -f "%SQLDIR%\supabase_seed.sql" "%SUPABASE_DSN%"
 if errorlevel 1 (
     echo   Seed load FAILED -- see the errors above.
     pause
@@ -90,10 +90,10 @@ if errorlevel 1 (
 
 echo.
 echo   What is in there now:
-"%PGBIN%\psql.exe" "%SUPABASE_DSN%" -tAc "SELECT '    tables: ' || count(*) FROM information_schema.tables WHERE table_schema='public';"
-"%PGBIN%\psql.exe" "%SUPABASE_DSN%" -tAc "SELECT '    users:   ' || count(*) FROM users;"
-"%PGBIN%\psql.exe" "%SUPABASE_DSN%" -tAc "SELECT '    orders:  ' || count(*) FROM orders;"
-"%PGBIN%\psql.exe" "%SUPABASE_DSN%" -tAc "SELECT '    ' || channel || ' QR image bytes: ' || coalesce(length(qrimagedata),0) FROM paymentsettings ORDER BY channel;"
+"%PGBIN%\psql.exe" -tAc "SELECT '    tables: ' || count(*) FROM information_schema.tables WHERE table_schema='public';" "%SUPABASE_DSN%"
+"%PGBIN%\psql.exe" -tAc "SELECT '    users:   ' || count(*) FROM users;" "%SUPABASE_DSN%"
+"%PGBIN%\psql.exe" -tAc "SELECT '    orders:  ' || count(*) FROM orders;" "%SUPABASE_DSN%"
+"%PGBIN%\psql.exe" -tAc "SELECT '    ' || channel || ' QR image bytes: ' || coalesce(length(qrimagedata),0) FROM paymentsettings ORDER BY channel;" "%SUPABASE_DSN%"
 echo.
 echo   Done. Start the site with run-website.bat so it uses this database.
 echo.
