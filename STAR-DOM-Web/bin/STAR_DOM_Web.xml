@@ -463,16 +463,18 @@ STAR_DOM_Web
  </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderActions(System.Text.StringBuilder,STAR_DOM.Models.Order)">
- <summary>Per-row actions: quote shipping and confirm, advance status, book J&amp;T, confirm hand-over, record payment.</summary>
+ <summary>Per-row actions: quote shipping, verify payment, advance status, book J&amp;T, confirm hand-over.</summary>
  <remarks>
  The row is a strict sequence, one form at a time, and that is the point:
  every step below asks the merchant to re-enter their password, so rendering
  two of them side by side put two identical-looking "Your password" boxes in
  one cell with nothing to tell them apart. So a row shows exactly one of:
    1. the shipping quote, while the order is still unquoted;
-   2. the payment confirmation, once quoted but not yet paid;
-   3. plain advance links, once paid;
-   4. the J&amp;T booking form, when it is ready to go.
+   2. the payment verification form, once the customer has submitted a
+      reference (confirm or decline it with your password);
+   3. a waiting hint, while quoted but the customer has not paid yet;
+   4. plain advance links, once paid;
+   5. the J&amp;T booking form, when it is ready to go.
  </remarks>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.ActionKey(System.String@,System.Int32@)">
@@ -483,8 +485,9 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.CanRecordPayment(STAR_DOM.Models.Order)">
  <summary>
- True while a payment is still outstanding and can still be recorded:
- not paid, not refunded, and not on a cancelled order.
+ True while a payment is still outstanding and the customer has not
+ submitted a reference yet: not paid, not submitted, not refunded, and
+ not on a cancelled order. Renders the waiting hint on the row.
  </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.NeedsShippingQuote(STAR_DOM.Models.Order)">
@@ -500,11 +503,12 @@ STAR_DOM_Web
  customer's final total.
  </summary>
 </member>
-<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderConfirmPayForm(STAR_DOM.Models.Order)">
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderVerifyPayForm(STAR_DOM.Models.Order)">
  <summary>
- Payment confirmation: the reference number read off the customer's
- e-wallet receipt, plus the password. Only rendered once the order is
- quoted, so the figure being confirmed is the final one.
+ Payment verification: the reference the customer submitted, shown read-only
+ so it can be checked against the studio's records, plus the password needed
+ to confirm or decline it. There is no reference input here on purpose —
+ verifying means checking THEIR number, never typing one in on their behalf.
  </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderBookJntForm(STAR_DOM.Models.Order)">
@@ -1118,6 +1122,15 @@ STAR_DOM_Web
 <member name="T:STAR_DOM.Repositories.ReportRepository">
  <summary>All aggregation queries for dashboards and the sales report screens.</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.MarketplaceRevenue">
+ <summary>
+ Online marketplace revenue: paid web orders that are not tied to a pop-up
+ event. Event takings live in EventSales (in-person sales recorded at the
+ booth), so subtracting them from RevenueTotal double-counted channels —
+ the two tables hold different sales, and the difference could even go
+ negative on a fresh database. Same definition as OmnichannelMix.onlineTotal.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.EventRevenueTotal">
  <summary>Sum of all in-person event sales (single query, replaces per-event loops).</summary>
 </member>
@@ -1224,19 +1237,27 @@ STAR_DOM_Web
  through, and the reason production never starts on an unverified transfer.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.CommissionService.ConfirmPayment(System.Int32)">
+<member name="M:STAR_DOM.Services.CommissionService.PasswordOk(System.String)">
+ <summary>
+ Verifies a re-entered password against a fresh hash read, not the copy in
+ session, so a password changed mid-session is honoured immediately. Used by
+ every step that touches money: confirming and declining a payment.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.ConfirmPayment(System.Int32,System.String)">
  <summary>
  Studio-side verification of a submitted commission payment. Production is
  gated on this, exactly as J&amp;T booking is gated on an order's confirmed
- payment, so an unverified transfer can never be worked on.
+ payment, so an unverified transfer can never be worked on. Password-gated:
+ marking money received is the same commitment it is on an order.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.CommissionService.DenyPayment(System.Int32)">
+<member name="M:STAR_DOM.Services.CommissionService.DenyPayment(System.Int32,System.String)">
  <summary>
  The seller declines a customer's submitted payment reference — the amount
  on the e-wallet receipt does not match, or the transfer cannot be traced.
  The commission moves to PAYMENT DECLINED and the customer is handed the
- support contact immediately.
+ support contact immediately. Password-gated, same as confirming.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CommissionService.MarkDelivered(System.Int32,System.String)">
@@ -1285,15 +1306,42 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Services.OrderService.ChoosePaymentMethod(System.Int32,System.String)">
  <summary>
- Payment confirmation is password-gated for whoever records it — the buyer
- confirming their own e-wallet payment, or a merchant/admin recording one.
- GCash/GOtyme (the only accepted e-payments) must carry the reference number
- from the e-wallet receipt; COD needs only the password.
- </summary>
- <summary>
  Records the channel the customer picked at payment time. Checkout parks the
  method as "PENDING" because the studio quotes the order first, so this is
  where the real channel is chosen.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.PasswordOk(System.String)">
+ <summary>
+ Verifies a re-entered password against a fresh hash read, not the copy in
+ session, so a password changed mid-session is honoured immediately. Used by
+ every step that touches money: submitting, confirming and declining.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.SubmitPayment(System.String,System.String,System.String)">
+ <summary>
+ Step 3 of the payment flow - the customer's side. The buyer pays GCash or
+ GOtyme outside the app and hands over the reference number from the receipt
+ plus their password. This does NOT make the order paid: it parks
+ PaymentStatus at SUBMITTED so the studio can check the transfer against its
+ own records first. No receipt is issued, PROCESSING cannot start, and J&amp;T
+ stays shut until the studio confirms below.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.ConfirmPayment(System.Int32,System.String)">
+ <summary>
+ Step 4 (confirm side) - the studio checks the submitted reference against its
+ own records, then and only then marks the money as received. This is the ONLY
+ path to PAID: the customer's submission stops at SUBMITTED, so an unverified
+ transfer can never book J&amp;T, start PROCESSING or produce a receipt.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.DenyPayment(System.Int32,System.String)">
+ <summary>
+ The studio declines a submitted reference - the amount on the e-wallet
+ receipt does not match, or the transfer cannot be traced. The order falls
+ back to FAILED (never PAID), the customer is handed the support contact
+ immediately, and may resubmit a corrected reference afterwards.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.MarkReceived(System.Int32)">
@@ -1315,14 +1363,6 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Services.OrderService.UpdateOrderState(System.Int32,System.String,System.String)">
  <summary>Merchant updates fulfilment state, keeping the payment status consistent.</summary>
-</member>
-<member name="M:STAR_DOM.Services.OrderService.DenyPayment(System.Int32)">
- <summary>
- The seller declines a customer's submitted payment reference — the amount
- on the e-wallet receipt does not match, or the transfer cannot be traced.
- The order's PaymentStatus is flagged FAILED so the customer can resubmit,
- and the customer is handed the support contact immediately.
- </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.SubmitReview(System.Int32,System.Nullable{System.Int32},System.Int32,System.String)">
  <summary>
@@ -1356,6 +1396,9 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Services.OrderService.IssueReceiptFor(STAR_DOM.Models.Order)">
  <summary>Issue an official receipt whenever a payment becomes PAID.</summary>
+</member>
+<member name="M:STAR_DOM.Services.ReportService.MarketplaceRevenue">
+ <summary>Paid web orders not tied to a pop-up event — the digital marketplace KPI.</summary>
 </member>
 </members>
 </doc>

@@ -98,21 +98,38 @@ the local copy is an environment variable and not a code change.
   token is verified for every POST, because pages emit their own raw
   `<form method="post">` markup rather than going through a control.
 
-## Checkout, the one place with a state machine
+## Order & payment state machine — the one place with states
+
+There is no payment method at checkout: the studio must first quote the J&T
+fee — which is what makes the total final — so the customer pays only after
+the order comes back quoted. The two-step payment verification means one side
+alone can never complete a payment.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Form: cart reviewed, fields typed
-    Form --> FormPick: COD chosen<br/>order written immediately
-    Form --> Popup: e-wallet + "Place Order"<br/>NOTHING is written yet
-    Popup --> Form: Back — close popup,<br/>every field kept
-    Popup --> Order: "I Have Scanned &amp; Sent Payment"<br/>PlaceOrder(d, scanConfirmed:=True), cart cleared
-    FormPick --> [*]
-    Order --> [*]
+    [*] --> PENDING: checkout (address + phone)<br/>PaymentMethod parked PENDING, shipping not yet quoted
+    PENDING --> CONFIRMED: studio quotes J&amp;T fee + password<br/>(ConfirmWithShippingFee — total is now final)
+    CONFIRMED --> SUBMITTED: customer pays GCash/GOtyme<br/>enters e-wallet reference + password
+    SUBMITTED --> PAID: studio verifies ref + password<br/>(ConfirmPayment — receipt issued)
+    SUBMITTED --> FAILED: studio declines ref + password<br/>(customer gets support line, may resubmit)
+    FAILED --> SUBMITTED: customer resubmits a corrected reference
+    PAID --> PROCESSING: studio starts fulfilment (refused until PAID)
+    PROCESSING --> SHIPPED: book J&amp;T — waybill typed in
+    SHIPPED --> DELIVERED: delivered — checks the STORED waybill
+    DELIVERED --> RECEIVED: customer "Confirm order received" (unlocks reviews)
+    PENDING --> CANCELLED
+    CONFIRMED --> CANCELLED
+    PROCESSING --> CANCELLED
+    note right of SUBMITTED
+        PaymentStatus lives beside OrderStatus:
+        PENDING -&gt; SUBMITTED -&gt; PAID (or FAILED).
+        SHIPPED/DELIVERED refuse while PaymentStatus &lt;&gt; PAID.
+    end note
 ```
 
-The popup markup is generated once by `WebUi.QrPaymentModal` and reused by
-Checkout and Order Detail, which is why the two cannot drift apart.
+The Scan-to-Pay popup is generated once by `WebUi.QrPaymentModal` and shown
+from **Order Detail** (checkout has no popup any more — the order is written
+immediately and payment waits until the fee is quoted).
 
 ---
 

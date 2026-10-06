@@ -72,7 +72,7 @@ Namespace STAR_DOM.Web
                     sb.Append("<td>" & c.Quantity.ToString() & "</td>")
                     sb.Append("<td>" & WebUi.Badge(c.Status) & "</td>")
                     sb.Append("<td>" & WebUi.Esc(c.UpdatedAt.ToString("MMM d")) & "</td>")
-                    sb.Append("<td class=""rowact""><a href=""/App/CommissionDetail.aspx?id=" & c.Id.ToString() & """>View / Reply</a></td>")
+                    sb.Append("<td class=""rowact""><a href=""/App/CommissionDetail.aspx?id=" & c.Id.ToString() & """>View</a></td>")
                     sb.Append("</tr>")
                 Next
                 sb.Append("</tbody></table></div>")

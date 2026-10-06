@@ -26,8 +26,9 @@ Namespace STAR_DOM.Web
                 ' shared hidden id picked whichever row came first in the body, so quoting
                 ' a fee on one order could book J&T on a different one.
                 '
-                ' Payment recording is password-gated: merchant/admin re-enters their
-                ' own password; GCash/GOtyme also require the reference number.
+                ' Payment verification is password-gated: the customer submits the
+                ' e-wallet reference from their side, and the merchant re-enters
+                ' their own password to confirm or decline that submission.
                 Dim actKind As String = ""
                 Dim actId As Integer = 0
                 If Guard.IsPost() AndAlso ActionKey(actKind, actId) Then
@@ -43,15 +44,14 @@ Namespace STAR_DOM.Web
                                                                 Request.Form("pw" & suffix))
                             Session("flash_msg") = rf.Message
                             Session("flash_ok") = rf.Success
+                        ' Confirm the customer's submitted reference. There is no ref
+                        ' box here on purpose: the number to verify is the one the
+                        ' customer submitted, read from the payment row in the service.
                         Case "pay"
-                            Dim op As Order = _orders.GetOrder(actId)
-                            If op IsNot Nothing Then
-                                Dim rp As ServiceResult = _orders.ConfirmPayment(op.OrderNumber,
-                                                                Request.Form("ref" & suffix),
+                            Dim rp As ServiceResult = _orders.ConfirmPayment(actId,
                                                                 Request.Form("pw" & suffix))
-                                Session("flash_msg") = rp.Message
-                                Session("flash_ok") = rp.Success
-                            End If
+                            Session("flash_msg") = rp.Message
+                            Session("flash_ok") = rp.Success
                         ' Book a delivery order with J&T — the tracking number is
                         ' entered manually; it is never auto-generated. A blank
                         ' tracking number is rejected by the service layer.
@@ -60,11 +60,13 @@ Namespace STAR_DOM.Web
                             Dim r3 As ServiceResult = _orders.UpdateOrderState(actId, "SHIPPED", tracking)
                             Session("flash_msg") = r3.Message
                             Session("flash_ok") = r3.Success
-                        ' The seller declines a payment reference that does not check out.
-                        ' The customer is notified with the support contact message via
-                        ' the service layer (OrderService.DenyPayment).
+                        ' The seller declines a payment reference that does not check
+                        ' out. Password-gated like confirming, and the customer is
+                        ' notified with the support contact message via the service
+                        ' layer (OrderService.DenyPayment).
                         Case "decline"
-                            Dim r4 As ServiceResult = _orders.DenyPayment(actId)
+                            Dim r4 As ServiceResult = _orders.DenyPayment(actId,
+                                                                Request.Form("pw" & suffix))
                             Session("flash_msg") = r4.Message
                             Session("flash_ok") = r4.Success
                     End Select
@@ -132,7 +134,7 @@ Namespace STAR_DOM.Web
             If flash <> "" Then sb.Append(WebUi.AlertBox(flash, If(ok, "ok", "err")))
 
             sb.Append(WebUi.Section("Orders & Payments", "MERCHANT STUDIO / FULFILMENT",
-                                    "Confirm orders, prepare them, then book J&T delivery. Recording a payment requires your password."))
+                                    "Confirm orders, verify submitted payments, prepare them, then book J&T delivery. Payment verification requires your password."))
 
             Dim statusFilter As String = Convert.ToString(Request.QueryString("st"))
             Dim page As Integer = 1
@@ -231,16 +233,18 @@ Namespace STAR_DOM.Web
             Out.Text = sb.ToString()
         End Sub
 
-        ''' <summary>Per-row actions: quote shipping and confirm, advance status, book J&amp;T, confirm hand-over, record payment.</summary>
+        ''' <summary>Per-row actions: quote shipping, verify payment, advance status, book J&amp;T, confirm hand-over.</summary>
         ''' <remarks>
         ''' The row is a strict sequence, one form at a time, and that is the point:
         ''' every step below asks the merchant to re-enter their password, so rendering
         ''' two of them side by side put two identical-looking "Your password" boxes in
         ''' one cell with nothing to tell them apart. So a row shows exactly one of:
         '''   1. the shipping quote, while the order is still unquoted;
-        '''   2. the payment confirmation, once quoted but not yet paid;
-        '''   3. plain advance links, once paid;
-        '''   4. the J&amp;T booking form, when it is ready to go.
+        '''   2. the payment verification form, once the customer has submitted a
+        '''      reference (confirm or decline it with your password);
+        '''   3. a waiting hint, while quoted but the customer has not paid yet;
+        '''   4. plain advance links, once paid;
+        '''   5. the J&amp;T booking form, when it is ready to go.
         ''' </remarks>
         Private Sub RenderActions(sb As StringBuilder, o As Order)
             Dim nextState As String = MapNextState(o.Status)
@@ -257,17 +261,12 @@ Namespace STAR_DOM.Web
             Dim needsQuote As Boolean = NeedsShippingQuote(o)
             If needsQuote Then
                 sb.Append(RenderShippingQuoteForm(o))
+            ElseIf o.PaymentStatus = "SUBMITTED" Then
+                ' The customer has paid outside the app and handed over the reference;
+                ' this is where the studio checks it and confirms or declines.
+                sb.Append(RenderVerifyPayForm(o))
             ElseIf CanRecordPayment(o) Then
-                sb.Append(RenderConfirmPayForm(o))
-                ' The merchant can decline a payment that does not check out.
-                ' The customer is notified with the support contact message.
-                sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
-                sb.Append("<div class=""act-fields"">")
-                sb.Append(STAR_DOM.Web.Csrf.HiddenField())
-                sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""act_decline_" & o.Id.ToString() & """ value=""1"" data-confirm=""Decline this payment? The customer will be notified."">")
-                sb.Append("<span class=""ic ms"">cancel</span><span>Decline payment</span></button>")
-                sb.Append("</div>")
-                sb.Append("</form>")
+                sb.Append("<span class=""act-hint"">Waiting for the customer to submit their payment reference</span>")
             End If
 
             ' Delivery orders: confirm → prepare → book J&T (with tracking) → delivered.
@@ -275,6 +274,11 @@ Namespace STAR_DOM.Web
             If nextState <> "" AndAlso nextState <> "SHIPPED" Then
                 If nextState = "CONFIRMED" AndAlso needsQuote Then
                     ' handled above by RenderShippingQuoteForm
+                ElseIf nextState = "PROCESSING" AndAlso Not paid Then
+                    ' Fulfilment only starts on a confirmed payment. The service layer
+                    ' refuses the transition too; this is here so the console says why
+                    ' instead of showing a link that silently fails.
+                    sb.Append("<span class=""act-hint"">Confirm the payment before moving this order to processing</span>")
                 Else
                     Dim confirmMsg As String = "Advance this order to " & nextState & "?"
                     links.Append("<a href=""/App/Merchant/Orders.aspx?advance=" & o.Id.ToString() & """" &
@@ -324,12 +328,13 @@ Namespace STAR_DOM.Web
         End Function
 
         ''' <summary>
-        ''' True while a payment is still outstanding and can still be recorded:
-        ''' not paid, not refunded, and not on a cancelled order.
+        ''' True while a payment is still outstanding and the customer has not
+        ''' submitted a reference yet: not paid, not submitted, not refunded, and
+        ''' not on a cancelled order. Renders the waiting hint on the row.
         ''' </summary>
         Private Function CanRecordPayment(o As Order) As Boolean
-            Return o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso
-                   o.Status <> "CANCELLED"
+            Return o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
+                   o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED"
         End Function
 
         ''' <summary>
@@ -381,11 +386,12 @@ Namespace STAR_DOM.Web
         End Function
 
         ''' <summary>
-        ''' Payment confirmation: the reference number read off the customer's
-        ''' e-wallet receipt, plus the password. Only rendered once the order is
-        ''' quoted, so the figure being confirmed is the final one.
+        ''' Payment verification: the reference the customer submitted, shown read-only
+        ''' so it can be checked against the studio's records, plus the password needed
+        ''' to confirm or decline it. There is no reference input here on purpose —
+        ''' verifying means checking THEIR number, never typing one in on their behalf.
         ''' </summary>
-        Private Function RenderConfirmPayForm(o As Order) As String
+        Private Function RenderVerifyPayForm(o As Order) As String
             Dim sb As New StringBuilder()
             ' An order that has not picked a channel yet carries "PENDING" as its
             ' method, and DisplayName echoes that straight back — the field was
@@ -393,21 +399,32 @@ Namespace STAR_DOM.Web
             ' receipt". Anything that is not a real brand falls back to "payment".
             Dim brand As String = PaymentSetting.DisplayName(o.PaymentMethod)
             If brand = "" OrElse brand = "PENDING" OrElse brand = "UNPAID" Then brand = "Payment"
+            Dim subRef As String = ""
+            For Each p As Payment In _orders.PaymentsForOrder(o.Id)
+                If p.Status = "SUBMITTED" Then
+                    subRef = p.ReferenceNumber
+                    Exit For
+                End If
+            Next
             sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
             sb.Append("<div class=""act-fields"">")
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
-            sb.Append("<label class=""act-fld""><span class=""act-label"">" & WebUi.Esc(brand) & " reference no. *</span>")
-            sb.Append("<input class=""i-ref"" name=""ref_" & o.Id.ToString() & """ placeholder=""e.g. 10129281921921""></label>")
+            sb.Append("<label class=""act-fld""><span class=""act-label"">Reference submitted (" & WebUi.Esc(brand) & ")</span>")
+            sb.Append("<input class=""i-ref"" value=""" & WebUi.Attr(subRef) & """ readonly></label>")
             sb.Append("<label class=""act-fld""><span class=""act-label"">Your password *</span>")
             sb.Append("<input class=""i-pw"" name=""pw_" & o.Id.ToString() & """ type=""password"" " &
-                      "placeholder=""Re-enter to confirm"" autocomplete=""current-password""></label>")
-            sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""act_pay_" & o.Id.ToString() & """ value=""1"" title=""Record this payment"" " +
-                      "data-confirm=""Record this payment as received? An official receipt will be issued."">" +
-                      "<span class=""ms sm"">payments</span>Confirm pay</button>")
+                      "placeholder=""Re-enter to verify"" autocomplete=""current-password""></label>")
+            sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""act_pay_" & o.Id.ToString() & """ value=""1"" " +
+                      "data-confirm=""Confirm this payment as received? An official receipt will be issued."">" +
+                      "<span class=""ms sm"">payments</span>Confirm payment</button>")
+            sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""act_decline_" & o.Id.ToString() & """ value=""1"" " +
+                      "data-confirm=""Decline this payment? The customer will be notified."">" +
+                      "<span class=""ms sm"">cancel</span>Decline</button>")
             sb.Append("</div>")
             sb.Append("</form>")
-            sb.Append("<span class=""act-hint"">Enter the reference from the customer's " &
-                      WebUi.Esc(If(brand = "Payment", "payment receipt", brand & " receipt")) & "</span>")
+            sb.Append("<span class=""act-hint"">Check the " &
+                      WebUi.Esc(If(brand = "Payment", "payment", brand)) &
+                      " reference against your records before confirming</span>")
             Return sb.ToString()
         End Function
 

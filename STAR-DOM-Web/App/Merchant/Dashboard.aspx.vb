@@ -104,9 +104,10 @@ Namespace STAR_DOM.Web
         End Function
 
         Private Function DigitalMarketplaceKpi() As String
-            Dim rev As Decimal = _reports.RevenueTotal()
-            Dim evRev As Decimal = _reports.EventRevenueTotal()
-            Dim digital As Decimal = Math.Max(0D, rev - evRev)
+            ' Paid web orders only. The old formula subtracted the event sales table
+            ' (in-person booth takings) from PAID orders — two different populations —
+            ' so the KPI read 0.00 or worse even when online orders were landing.
+            Dim digital As Decimal = _reports.MarketplaceRevenue()
             Return "<div class=""kpi k-icon"">" &
                    "<span class=""k-ic"" style=""border-radius:9px;background:var(--tertiary-fixed);color:var(--tertiary)"">" & WebUi.Ic("hub") & "</span>" &
                    "<div class=""k-label"">Digital Marketplace Revenue</div>" &

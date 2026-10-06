@@ -14,6 +14,11 @@ Namespace STAR_DOM.Services
             Return _repo.RevenueTotal()
         End Function
 
+        ''' <summary>Paid web orders not tied to a pop-up event — the digital marketplace KPI.</summary>
+        Public Function MarketplaceRevenue() As Decimal
+            Return _repo.MarketplaceRevenue()
+        End Function
+
         Public Function RevenueForEvent(eventId As Integer) As Decimal
             Return _repo.RevenueForEvent(eventId)
         End Function

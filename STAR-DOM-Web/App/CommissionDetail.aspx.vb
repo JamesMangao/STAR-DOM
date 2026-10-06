@@ -71,10 +71,9 @@ Namespace STAR_DOM.Web
                     Return _svc.RequestRevision(cm.Id)
                 Case "finalize"
                     Return _svc.FinalizeWork(cm.Id)
-                Case "confirmpay"
-                    Return _svc.ConfirmPayment(cm.Id)
-                Case "declinepay"
-                    Return _svc.DenyPayment(cm.Id)
+                ' "confirmpay" / "declinepay" are deliberately absent: both need the
+                ' studio's password, so they only exist as POST forms. A GET link
+                ' could confirm real money from a stray click or a link preview.
                 Case "cancel"
                     Return _svc.Cancel(cm.Id)
                 Case Else
@@ -106,6 +105,12 @@ Namespace STAR_DOM.Web
                     ' verified by the studio before production opens.
                     Dim ref As String = Convert.ToString(Request.Form("ref"))
                     Return _svc.SubmitPayment(cm.Id, ref)
+                Case "confirmpay"
+                    If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
+                    Return _svc.ConfirmPayment(cm.Id, Convert.ToString(Request.Form("pw")))
+                Case "declinepay"
+                    If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
+                    Return _svc.DenyPayment(cm.Id, Convert.ToString(Request.Form("pw")))
                 Case "deliver"
                     If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
                     Return _svc.MarkDelivered(cm.Id, Convert.ToString(Request.Form("tracking")))
@@ -180,6 +185,14 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""card mb"">" & actions & "</div>")
             End If
 
+            ' A declined payment is a dead end for the customer — hand them the
+            ' support contact right where they see the DECLINED state, the same
+            ' way a declined order payment does on OrderDetail.
+            If cm.CustomerId = STAR_DOM.Helpers.Session.CurrentUser.Id AndAlso
+               String.Equals(cm.Status, CommissionStatuses.PaymentDeclined, StringComparison.OrdinalIgnoreCase) Then
+                sb.Append(WebUi.PaymentFailureNote("Commission / payment failed"))
+            End If
+
             ' ---- commission policy notice ----
             ' The message thread and "Request Clarification" are gone. The studio
             ' takes a request or declines it, so a vague brief has nowhere to go
@@ -241,6 +254,13 @@ Namespace STAR_DOM.Web
                        WebUi.Esc(cm.PaymentConfirmedAt.Value.ToString("MMM d, yyyy")) &
                        If(cm.PaymentReference <> "", " · ref " & WebUi.Esc(cm.PaymentReference), "") & "</span>"
             End If
+            ' A declined reference is still on file — without this branch it read as
+            ' "awaiting confirmation", which is exactly what it is not.
+            If String.Equals(cm.Status, CommissionStatuses.PaymentDeclined, StringComparison.OrdinalIgnoreCase) Then
+                Return WebUi.Badge("DECLINED") & " <span class=""sub"" style=""font-size:11.5px"">" &
+                       If(cm.PaymentReference <> "", "ref " & WebUi.Esc(cm.PaymentReference) & " was declined — ", "") &
+                       "waiting for the customer to resubmit</span>"
+            End If
             If cm.PaymentReference <> "" Then
                 Return WebUi.Badge("AWAITING CONFIRMATION") & " <span class=""sub"" style=""font-size:11.5px"">ref " &
                        WebUi.Esc(cm.PaymentReference) & " — the studio is verifying it</span>"
@@ -296,11 +316,21 @@ Namespace STAR_DOM.Web
                     sb.Append(PanelLink(cm, "decline", "Decline", "ghost", showPanel, "thumb_down"))
                 ElseIf st = "PAYMENT PENDING" Then
                     ' The customer says they paid; the studio verifies before anything
-                    ' gets made. Same gate as an order, same failure message.
-                    sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=confirmpay"" " +
-                              "data-confirm=""Confirm this payment so production can start?""><span class=""ic ms"">verified</span><span>Confirm payment</span></a>")
-                    sb.Append("<a class=""btn danger"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=declinepay"" " +
-                              "data-confirm=""Decline this payment? The customer will be notified."" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Decline payment</span></a>")
+                    ' gets made. Password-gated POST, same as an order's payment: the
+                    ' reference is shown read-only because verifying means checking
+                    ' THEIR number, never typing one in on their behalf.
+                    sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ " &
+                              "style=""display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"">")
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                    sb.Append("<div class=""field"" style=""margin:0""><label>Reference submitted</label>" &
+                              "<input value=""" & WebUi.Attr(cm.PaymentReference) & """ readonly></div>")
+                    sb.Append("<div class=""field"" style=""margin:0""><label>Your password *</label>" &
+                              "<input name=""pw"" type=""password"" placeholder=""Re-enter to verify"" autocomplete=""current-password""></div>")
+                    sb.Append("<button class=""btn primary"" type=""submit"" name=""kind"" value=""confirmpay"" " +
+                              "data-confirm=""Confirm this payment so production can start?""><span class=""ic ms"">verified</span><span>Confirm payment</span></button>")
+                    sb.Append("<button class=""btn danger"" type=""submit"" name=""kind"" value=""declinepay"" " +
+                              "data-confirm=""Decline this payment? The customer will be notified."" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Decline payment</span></button>")
+                    sb.Append("</form>")
                     sb.Append("<span class=""act-hint"" style=""display:block;margin-top:6px"">Check the customer's reference (" &
                               WebUi.Esc(cm.PaymentReference) & ") against their wallet receipt first.</span>")
                 ElseIf st = "PAID" Then

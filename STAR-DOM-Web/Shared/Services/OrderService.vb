@@ -193,12 +193,6 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
-        ''' Payment confirmation is password-gated for whoever records it — the buyer
-        ''' confirming their own e-wallet payment, or a merchant/admin recording one.
-        ''' GCash/GOtyme (the only accepted e-payments) must carry the reference number
-        ''' from the e-wallet receipt; COD needs only the password.
-        ''' </summary>
-        ''' <summary>
         ''' Records the channel the customer picked at payment time. Checkout parks the
         ''' method as "PENDING" because the studio quotes the order first, so this is
         ''' where the real channel is chosen.
@@ -225,7 +219,26 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Payment method saved.")
         End Function
 
-        Public Function ConfirmPayment(orderNumber As String, reference As String, password As String) As ServiceResult
+        ''' <summary>
+        ''' Verifies a re-entered password against a fresh hash read, not the copy in
+        ''' session, so a password changed mid-session is honoured immediately. Used by
+        ''' every step that touches money: submitting, confirming and declining.
+        ''' </summary>
+        Private Function PasswordOk(password As String) As Boolean
+            If String.IsNullOrEmpty(password) Then Return False
+            Dim freshUser As User = New UserRepository().GetById(Session.CurrentUser.Id)
+            Return freshUser IsNot Nothing AndAlso PasswordHasher.Verify(password, freshUser.PasswordHash)
+        End Function
+
+        ''' <summary>
+        ''' Step 3 of the payment flow - the customer's side. The buyer pays GCash or
+        ''' GOtyme outside the app and hands over the reference number from the receipt
+        ''' plus their password. This does NOT make the order paid: it parks
+        ''' PaymentStatus at SUBMITTED so the studio can check the transfer against its
+        ''' own records first. No receipt is issued, PROCESSING cannot start, and J&amp;T
+        ''' stays shut until the studio confirms below.
+        ''' </summary>
+        Public Function SubmitPayment(orderNumber As String, reference As String, password As String) As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
             Dim order As Order = _orders.GetByNumber(orderNumber)
             If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
@@ -236,6 +249,9 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail("This order was cancelled and cannot be paid.")
             End If
             If order.PaymentStatus = "PAID" Then Return ServiceResult.Ok("Payment already recorded.")
+            If order.PaymentStatus = "SUBMITTED" Then
+                Return ServiceResult.Ok("Payment already submitted - waiting for the studio to confirm it.")
+            End If
 
             ' Payment is only possible after the studio has returned the order with
             ' the final price and the shipping fee. Until ConfirmWithShippingFee
@@ -245,28 +261,25 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail("Your order is still being priced. You can pay once the studio " &
                                           "returns it with the final total and shipping fee.")
             End If
-            If order.PaymentStatus = "FAILED" Then
-                Return ServiceResult.Fail(PaymentFailedMessage(
-                    "This payment is flagged as failed. Please pay again with a valid reference number."))
-            End If
 
-            ' Password re-entry gate. Verified against a fresh DB read (not the session
-            ' copy) so a password changed mid-session is honoured immediately.
-            ' Every rejection past this point is a failed payment, so it carries the
-            ' contact line: the customer needs a human, not a silent red flash.
+            ' A declined payment (FAILED) falls through on purpose: the customer is
+            ' handed the support line first, then gets to resubmit a corrected reference.
+
+            ' Password re-entry gate. Every rejection past this point is a failed
+            ' payment, so it carries the contact line: the customer needs a human,
+            ' not a silent red flash that disappears on the next page load.
             If String.IsNullOrEmpty(password) Then
                 Return ServiceResult.Fail(PaymentFailedMessage("Enter your password to confirm the payment."))
             End If
-            Dim freshUser As User = New UserRepository().GetById(Session.CurrentUser.Id)
-            If freshUser Is Nothing OrElse Not PasswordHasher.Verify(password, freshUser.PasswordHash) Then
-                Return ServiceResult.Fail(PaymentFailedMessage("Password incorrect — payment was not confirmed."))
+            If Not PasswordOk(password) Then
+                Return ServiceResult.Fail(PaymentFailedMessage("Password incorrect - payment was not confirmed."))
             End If
 
             Dim method As String = order.PaymentMethod.Trim().ToUpperInvariant()
             Dim ref As String = If(reference, "").Trim()
             ' GCash and GOtyme are the only channels, and both hand out a transaction
             ' number, so the reference is required rather than auto-generated: a payment
-            ' we cannot trace back to a receipt is not one we should call confirmed.
+            ' we cannot trace back to a receipt is not one we should ever confirm.
             If ref = "" Then
                 Return ServiceResult.Fail(PaymentFailedMessage(
                     "Enter the " & PaymentSetting.DisplayName(method) & " reference number from your payment receipt."))
@@ -274,26 +287,134 @@ Namespace STAR_DOM.Services
             Try
                 Db.InTransaction(Of Boolean)(Function() As Boolean
                     Db.Exec(
-                        "UPDATE Payments SET Status = 'PAID', ReferenceNumber = @r, PaidAt = NOW(), GatewayResponse = @g WHERE OrderId = @o",
-                        Db.P("@r", ref), Db.P("@g", "SIMULATED_OK::" & Date.Now.ToString("yyyyMMddHHmmss")), Db.P("@o", order.Id))
+                        "UPDATE Payments SET Status = 'SUBMITTED', ReferenceNumber = @r, PaymentMethod = @m, " &
+                        "GatewayResponse = @g WHERE OrderId = @o",
+                        Db.P("@r", ref), Db.P("@m", method), Db.P("@g", "CUSTOMER_SUBMITTED::" & Date.Now.ToString("yyyyMMddHHmmss")),
+                        Db.P("@o", order.Id))
                     Db.Exec(
-                        "UPDATE Orders SET PaymentStatus = 'PAID', Status = CASE WHEN Status = 'PENDING' THEN 'CONFIRMED' ELSE Status END, UpdatedAt = NOW() WHERE Id = @o",
+                        "UPDATE Orders SET PaymentStatus = 'SUBMITTED', UpdatedAt = NOW() WHERE Id = @o",
                         Db.P("@o", order.Id))
                     Return True
                 End Function)
             Catch ex As Exception
-                Db.LogError("ConfirmPayment", ex)
+                Db.LogError("SubmitPayment", ex)
                 Return ServiceResult.Fail(PaymentFailedMessage("Payment update failed: " & ex.Message))
+            End Try
+
+            Dim notif As New NotificationService()
+            notif.NotifyRole("ADMIN", "Payment submitted - " & orderNumber,
+                             "Reference " & ref & " (" & PaymentSetting.DisplayName(method) & ") of " &
+                             Fmt.PHP(order.TotalAmount) & " is waiting for verification. Confirm or decline it " &
+                             "on Orders & Payments before the order moves on.",
+                             "ORDER", "merchant-orders")
+            notif.Notify(order.UserId, "Payment submitted - " & orderNumber,
+                         "We've got your " & PaymentSetting.DisplayName(method) & " reference " & ref &
+                         ". The studio will confirm it before the order ships.",
+                         "ORDER", "my-orders")
+            Return ServiceResult.Ok("Payment submitted (ref " & ref & "). The studio will confirm it before the order ships.")
+        End Function
+
+        ''' <summary>
+        ''' Step 4 (confirm side) - the studio checks the submitted reference against its
+        ''' own records, then and only then marks the money as received. This is the ONLY
+        ''' path to PAID: the customer's submission stops at SUBMITTED, so an unverified
+        ''' transfer can never book J&amp;T, start PROCESSING or produce a receipt.
+        ''' </summary>
+        Public Function ConfirmPayment(orderId As Integer, password As String) As ServiceResult
+            If Not Session.CanManageStore Then Return ServiceResult.Fail("Only the store team can confirm a payment.")
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
+            If order.PaymentStatus = "PAID" Then Return ServiceResult.Ok("Payment already confirmed.")
+            If order.PaymentStatus = "REFUNDED" Then Return ServiceResult.Fail("This payment was already refunded.")
+            If order.PaymentStatus <> "SUBMITTED" Then
+                Return ServiceResult.Fail("There is no submitted payment waiting to be confirmed.")
+            End If
+            If String.IsNullOrEmpty(password) Then
+                Return ServiceResult.Fail("Enter your password to confirm this payment.")
+            End If
+            If Not PasswordOk(password) Then
+                Return ServiceResult.Fail("Password incorrect - payment was not confirmed.")
+            End If
+
+            ' The reference comes from what the customer submitted, not from a box on
+            ' this form: confirming means checking THAT number, and there is nothing
+            ' to confirm if no reference was submitted at all.
+            Dim submitted As Payment = _orders.ListPaymentsByOrder(orderId).FirstOrDefault(
+                Function(p) p.Status = "SUBMITTED")
+            If submitted Is Nothing OrElse String.IsNullOrWhiteSpace(submitted.ReferenceNumber) Then
+                Return ServiceResult.Fail(
+                    "No reference number was submitted, so this payment cannot be verified.")
+            End If
+            Dim ref As String = submitted.ReferenceNumber.Trim()
+
+            Try
+                Db.InTransaction(Of Boolean)(Function() As Boolean
+                    _orders.UpdatePaymentStatusById(submitted.Id, "PAID", ref)
+                    Db.Exec(
+                        "UPDATE Orders SET PaymentStatus = 'PAID', " &
+                        "Status = CASE WHEN Status = 'PENDING' THEN 'CONFIRMED' ELSE Status END, UpdatedAt = NOW() WHERE Id = @o",
+                        Db.P("@o", orderId))
+                    Return True
+                End Function)
+            Catch ex As Exception
+                Db.LogError("ConfirmPayment", ex)
+                Return ServiceResult.Fail("Payment update failed: " & ex.Message)
             End Try
 
             IssueReceiptFor(order)
 
             Dim notif As New NotificationService()
-            notif.Notify(order.UserId, "Payment received – " & orderNumber,
-                         "Your " & order.PaymentMethod & " payment of " & Fmt.PHP(order.TotalAmount) &
-                         " (ref " & ref & ") was confirmed.",
+            notif.Notify(order.UserId, "Payment confirmed - " & order.OrderNumber,
+                         "Your " & PaymentSetting.DisplayName(order.PaymentMethod) & " payment of " &
+                         Fmt.PHP(order.TotalAmount) & " (ref " & ref & ") was confirmed. " &
+                         "The order can now be prepared for shipping.",
                          "ORDER", "my-orders")
             Return ServiceResult.Ok("Payment confirmed (ref " & ref & ").")
+        End Function
+
+        ''' <summary>
+        ''' The studio declines a submitted reference - the amount on the e-wallet
+        ''' receipt does not match, or the transfer cannot be traced. The order falls
+        ''' back to FAILED (never PAID), the customer is handed the support contact
+        ''' immediately, and may resubmit a corrected reference afterwards.
+        ''' </summary>
+        Public Function DenyPayment(orderId As Integer, password As String) As ServiceResult
+            If Not Session.CanManageStore Then Return ServiceResult.Fail("Only the store team can decline a payment.")
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
+            If order.PaymentStatus = "PAID" Then Return ServiceResult.Ok("Payment already confirmed.")
+            If order.PaymentStatus = "REFUNDED" Then Return ServiceResult.Fail("This payment was already refunded.")
+            If order.PaymentStatus <> "SUBMITTED" Then
+                Return ServiceResult.Fail("There is no submitted payment waiting to be declined.")
+            End If
+            If String.IsNullOrEmpty(password) Then
+                Return ServiceResult.Fail("Enter your password to decline this payment.")
+            End If
+            If Not PasswordOk(password) Then
+                Return ServiceResult.Fail("Password incorrect - nothing was declined.")
+            End If
+            Try
+                Db.InTransaction(Of Boolean)(Function() As Boolean
+                    Db.Exec(
+                        "UPDATE Payments SET Status = 'FAILED', GatewayResponse = @g " &
+                        "WHERE OrderId = @o AND Status <> 'PAID'",
+                        Db.P("@g", "DECLINED_BY_SELLER::" & Date.Now.ToString("yyyyMMddHHmmss")), Db.P("@o", orderId))
+                    Db.Exec("UPDATE Orders SET PaymentStatus = 'FAILED', UpdatedAt = NOW() WHERE Id = @o",
+                            Db.P("@o", orderId))
+                    Return True
+                End Function)
+            Catch ex As Exception
+                Db.LogError("DenyPayment", ex)
+                Return ServiceResult.Fail("Payment update failed: " & ex.Message)
+            End Try
+            Dim notif As New NotificationService()
+            notif.Notify(order.UserId, "Payment declined - " & order.OrderNumber,
+                         PaymentFailedMessage("The seller could not confirm your payment for this order. " &
+                                              "Please check your reference number and try again."),
+                         "ORDER", "my-orders")
+            Return ServiceResult.Ok("Payment declined. The customer has been notified.")
         End Function
 
         ''' <summary>
@@ -436,6 +557,14 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail("Enter the J&T shipping fee to confirm this order — the customer is quoted the final total at that point.")
             End If
 
+            ' Fulfilment only starts once the money is in: PROCESSING is the studio
+            ' committing to build the order, so it waits on a confirmed payment just
+            ' like the J&T hand-off below. Nothing unpaid can move forward at all.
+            If newStatus = "PROCESSING" AndAlso order.PaymentStatus <> "PAID" Then
+                Return ServiceResult.Fail(
+                    "Payment is not confirmed for this order yet, so it cannot move into processing.")
+            End If
+
             ' No parcel leaves the studio on an unpaid order. SHIPPED and DELIVERED are
             ' both physical hand-offs to J&T, so both wait on a confirmed payment. This
             ' used to be enforced nowhere, and marking an order DELIVERED also stamped
@@ -446,11 +575,15 @@ Namespace STAR_DOM.Services
                     "Payment is not confirmed for this order, so it cannot be booked with J&T yet."))
             End If
 
-            ' Tracking must be entered manually — never auto-generated. A shipped or
-            ' delivered order always carries a real J&T waybill the customer can trace,
-            ' so a blank one is refused rather than invented.
-            If (newStatus = "SHIPPED" OrElse newStatus = "DELIVERED") AndAlso String.IsNullOrWhiteSpace(tracking) Then
-                Return ServiceResult.Fail("Enter the J&T tracking number before marking this order as " & newStatus & ".")
+            ' Tracking must be entered manually — never auto-generated. Booking (SHIPPED)
+            ' is where the waybill number is typed in; DELIVERED is a later status change
+            ' on a parcel that was already booked, so it checks the STORED waybill rather
+            ' than the blank parameter the advance link passes in.
+            If newStatus = "SHIPPED" AndAlso String.IsNullOrWhiteSpace(tracking) Then
+                Return ServiceResult.Fail("Enter the J&T tracking number before marking this order as SHIPPED.")
+            End If
+            If newStatus = "DELIVERED" AndAlso String.IsNullOrWhiteSpace(order.TrackingNumber) Then
+                Return ServiceResult.Fail("Book this order with J&T (enter its tracking number) before marking it as DELIVERED.")
             End If
 
             Dim wasCancelled As Boolean = order.Status = "CANCELLED"
@@ -466,33 +599,12 @@ Namespace STAR_DOM.Services
                 If Not wasCancelled Then _orders.RestoreOrderStock(orderId)
             End If
 
+            Dim shownTracking As String = If(String.IsNullOrWhiteSpace(tracking), order.TrackingNumber, tracking)
             Dim notif As New NotificationService()
             notif.Notify(order.UserId, "Order " & newStatus.Replace("_", " ") & " – " & order.OrderNumber,
                          "Your order is now: " & newStatus.Replace("_", " ") & ". " &
-                         If(tracking.Length > 0, "Tracking: " & tracking, ""), "ORDER", "my-orders")
+                         If(shownTracking.Length > 0, "Tracking: " & shownTracking, ""), "ORDER", "my-orders")
             Return ServiceResult.Ok("Order updated to " & newStatus & ".")
-        End Function
-
-        ''' <summary>
-        ''' The seller declines a customer's submitted payment reference — the amount
-        ''' on the e-wallet receipt does not match, or the transfer cannot be traced.
-        ''' The order's PaymentStatus is flagged FAILED so the customer can resubmit,
-        ''' and the customer is handed the support contact immediately.
-        ''' </summary>
-        Public Function DenyPayment(orderId As Integer) As ServiceResult
-            If Not Session.CanManageStore Then Return ServiceResult.Fail("Only the store team can do this.")
-            Dim order As Order = _orders.GetById(orderId)
-            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
-            If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
-            If order.PaymentStatus = "PAID" Then Return ServiceResult.Ok("Payment already confirmed.")
-            If order.PaymentStatus = "REFUNDED" Then Return ServiceResult.Fail("This payment was already refunded.")
-            _orders.UpdatePaymentStatus(orderId, "FAILED")
-            Dim notif As New NotificationService()
-            notif.Notify(order.UserId, "Payment declined – " & order.OrderNumber,
-                         PaymentFailedMessage("The seller could not confirm your payment. " &
-                                          "Please check your reference number and try again."),
-                         "ORDER", "my-orders")
-            Return ServiceResult.Ok("Payment declined. The customer has been notified.")
         End Function
 
         ' ----- Reviews ----------------------------------------------------------

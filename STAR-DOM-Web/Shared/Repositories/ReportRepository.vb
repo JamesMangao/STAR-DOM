@@ -13,6 +13,18 @@ Namespace STAR_DOM.Repositories
             Return Db.ScalarDec("SELECT COALESCE(SUM(TotalAmount),0) FROM Orders WHERE PaymentStatus = 'PAID'")
         End Function
 
+        ''' <summary>
+        ''' Online marketplace revenue: paid web orders that are not tied to a pop-up
+        ''' event. Event takings live in EventSales (in-person sales recorded at the
+        ''' booth), so subtracting them from RevenueTotal double-counted channels —
+        ''' the two tables hold different sales, and the difference could even go
+        ''' negative on a fresh database. Same definition as OmnichannelMix.onlineTotal.
+        ''' </summary>
+        Public Function MarketplaceRevenue() As Decimal
+            Return Db.ScalarDec(
+                "SELECT COALESCE(SUM(TotalAmount),0) FROM Orders WHERE PaymentStatus = 'PAID' AND EventId IS NULL")
+        End Function
+
         Public Function RevenueForEvent(eventId As Integer) As Decimal
             Return Db.ScalarDec(
                 "SELECT COALESCE(SUM(TotalAmount),0) FROM EventSales WHERE EventId = @e", Db.P("@e", eventId))

@@ -29,11 +29,12 @@ Namespace STAR_DOM.Web
                     Return
                 End If
 
-                ' Payment confirmation is a POST with password re-entry (plus the
-                ' e-wallet reference for GCash/GOtyme) — never a plain GET link.
+                ' Payment is a POST with password re-entry (plus the e-wallet reference
+                ' for GCash/GOtyme) — never a plain GET link. This only SUBMITS the
+                ' payment: the studio verifies the reference before the order is PAID.
                 If Guard.IsPost() AndAlso Request.Form("payOrder") = o.Id.ToString() Then
                     ' The channel is chosen here, not at checkout, so record it before
-                    ' confirming: ConfirmPayment reads the order row for the brand and
+                    ' submitting: SubmitPayment reads the order row for the brand and
                     ' whether a reference number is required.
                     Dim picked As String = Convert.ToString(Request.Form("payMethod")).Trim().ToUpperInvariant()
                     If picked = "GCASH" OrElse picked = "GOTYME" Then
@@ -44,7 +45,7 @@ Namespace STAR_DOM.Web
                             Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
                         End If
                     End If
-                    Dim r As ServiceResult = _orders.ConfirmPayment(o.OrderNumber, Request.Form("payRef"), Request.Form("payPassword"))
+                    Dim r As ServiceResult = _orders.SubmitPayment(o.OrderNumber, Request.Form("payRef"), Request.Form("payPassword"))
                     Session("flash_msg") = r.Message
                     Session("flash_ok") = r.Success
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
@@ -133,8 +134,10 @@ Namespace STAR_DOM.Web
             ' Payment is closed until the studio returns the order with the final
             ' price and shipping fee. Before that the total on this page is not the
             ' amount due, so offering a channel would collect the wrong figure.
-            Dim canPay As Boolean = (quoted AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso
-                                     o.Status <> "CANCELLED")
+            ' SUBMITTED is also closed: the reference is already in the studio's
+            ' hands and re-submitting would only create duplicates to verify.
+            Dim canPay As Boolean = (quoted AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
+                                     o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED")
             Dim canMarkReceived As Boolean = (isOwner AndAlso o.Status = "DELIVERED")
             ' Reviews open the moment the customer confirms the parcel arrived — that is
             ' the only point at which they have actually held the item, so this is
@@ -143,7 +146,9 @@ Namespace STAR_DOM.Web
             ' A placed order cannot be pulled back by the customer; the studio
             ' handles cancellations once it is processing.
             Dim canCancel As Boolean = False
-            If canPay OrElse canMarkReceived OrElse canCancel OrElse canReviewItems OrElse (isOwner AndAlso Not quoted AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING") Then
+            If canPay OrElse canMarkReceived OrElse canCancel OrElse canReviewItems OrElse
+                (isOwner AndAlso Not quoted AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING") OrElse
+                (isOwner AndAlso o.PaymentStatus = "SUBMITTED") Then
                 sb.Append("<div style=""margin-top:16px;display:flex;flex-direction:column;gap:12px"">")
                 If Not quoted AndAlso isOwner AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING" Then
                     sb.Append("<div class=""card"" style=""border-color:#eec200;background:var(--yellow-soft)"">")
@@ -152,6 +157,29 @@ Namespace STAR_DOM.Web
                               "The studio will return it with the <b>final price and shipping fee</b>. " &
                               "Payment methods open here once that is done.</p>")
                     sb.Append(WebUi.NoCancelNote("an order"))
+                    sb.Append("</div>")
+                End If
+                ' Submitted, not yet verified: the money left the customer's wallet but
+                ' the studio has not checked the transfer. The pay form stays shut so
+                ' the reference cannot be submitted twice, and the card says exactly
+                ' where the order is sitting and what happens next.
+                If o.PaymentStatus = "SUBMITTED" AndAlso isOwner Then
+                    Dim subRef As String = ""
+                    For Each pay As Payment In _orders.PaymentsForOrder(o.Id)
+                        If pay.Status = "SUBMITTED" Then
+                            subRef = pay.ReferenceNumber
+                            Exit For
+                        End If
+                    Next
+                    sb.Append("<div class=""card"" style=""border-color:#eec200;background:var(--yellow-soft)"">")
+                    sb.Append("<b style=""display:block;margin-bottom:4px"">" & WebUi.Ic("schedule", "sm") &
+                              " Payment submitted — waiting for verification</b>")
+                    sb.Append("<p class=""sub"" style=""margin:0 0 8px;color:var(--ink)"">We've got your " &
+                              WebUi.Esc(WebUi.ChannelBrand(method)) &
+                              If(subRef <> "", " reference <b>" & WebUi.Esc(subRef) & "</b>", "") &
+                              ". The studio will verify it against our records — you don't need to do anything else. " &
+                              "The order moves on (preparation and shipping) as soon as it is confirmed.</p>")
+                    sb.Append(WebUi.NoCancelNote("this order"))
                     sb.Append("</div>")
                 End If
                 If canPay Then
@@ -310,7 +338,9 @@ Namespace STAR_DOM.Web
             ' WebUi so both look identical; the order already exists here, so the
             ' primary button only closes the popup and focuses the reference field.
             ' The customer reopens it with the "Scan to Pay" button in the card above.
-            If isEWallet AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
+            ' Hidden once the payment is SUBMITTED: there is nothing left to pay.
+            If isEWallet AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
+                o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
                 Dim ps As PaymentSetting = New PaymentSettingRepository().GetByChannel(method)
                 sb.Append(WebUi.QrPaymentModal(ps, method, o.TotalAmount, False, False))
             End If

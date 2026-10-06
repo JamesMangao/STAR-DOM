@@ -240,20 +240,38 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
+        ''' Verifies a re-entered password against a fresh hash read, not the copy in
+        ''' session, so a password changed mid-session is honoured immediately. Used by
+        ''' every step that touches money: confirming and declining a payment.
+        ''' </summary>
+        Private Function PasswordOk(password As String) As Boolean
+            If String.IsNullOrEmpty(password) Then Return False
+            Dim freshUser As User = New UserRepository().GetById(Session.CurrentUser.Id)
+            Return freshUser IsNot Nothing AndAlso PasswordHasher.Verify(password, freshUser.PasswordHash)
+        End Function
+
+        ''' <summary>
         ''' Studio-side verification of a submitted commission payment. Production is
         ''' gated on this, exactly as J&amp;T booking is gated on an order's confirmed
-        ''' payment, so an unverified transfer can never be worked on.
+        ''' payment, so an unverified transfer can never be worked on. Password-gated:
+        ''' marking money received is the same commitment it is on an order.
         ''' </summary>
-        Public Function ConfirmPayment(commissionId As Integer) As ServiceResult
+        Public Function ConfirmPayment(commissionId As Integer, password As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
             If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
             If Not String.Equals(cm.Status, CommissionStatuses.PaymentPending, StringComparison.OrdinalIgnoreCase) Then
                 Return ServiceResult.Fail("There is no submitted payment waiting to be confirmed.")
             End If
+            If String.IsNullOrEmpty(password) Then
+                Return ServiceResult.Fail("Enter your password to confirm this payment.")
+            End If
+            If Not PasswordOk(password) Then
+                Return ServiceResult.Fail("Password incorrect - payment was not confirmed.")
+            End If
             If String.IsNullOrWhiteSpace(cm.PaymentReference) Then
-                Return ServiceResult.Fail(PaymentSetting.PaymentFailedMessage(
-                    "No reference number was submitted, so this payment cannot be verified."))
+                Return ServiceResult.Fail(
+                    "No reference number was submitted, so this payment cannot be verified.")
             End If
             _repo.MarkPaymentConfirmed(commissionId)
             Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.PaymentPending,
@@ -270,14 +288,20 @@ Namespace STAR_DOM.Services
         ''' The seller declines a customer's submitted payment reference — the amount
         ''' on the e-wallet receipt does not match, or the transfer cannot be traced.
         ''' The commission moves to PAYMENT DECLINED and the customer is handed the
-        ''' support contact immediately.
+        ''' support contact immediately. Password-gated, same as confirming.
         ''' </summary>
-        Public Function DenyPayment(commissionId As Integer) As ServiceResult
+        Public Function DenyPayment(commissionId As Integer, password As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
             If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
             If Not String.Equals(cm.Status, CommissionStatuses.PaymentPending, StringComparison.OrdinalIgnoreCase) Then
                 Return ServiceResult.Fail("There is no submitted payment waiting to be declined.")
+            End If
+            If String.IsNullOrEmpty(password) Then
+                Return ServiceResult.Fail("Enter your password to decline this payment.")
+            End If
+            If Not PasswordOk(password) Then
+                Return ServiceResult.Fail("Password incorrect - nothing was declined.")
             End If
             Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.PaymentPending,
                                                     CommissionStatuses.PaymentDeclined, Session.DisplayName,

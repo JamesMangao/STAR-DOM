@@ -484,3 +484,67 @@ made the Program Files fallback unreliable). 52.8 MB exceeds GitHub's 50 MB
 advisory but is well under the 100 MB hard limit (expect a push warning).
 Tunnel verified live: quick tunnel issued a trycloudflare.com URL against the
 local 8095 site.
+
+## Verified payment gating + delivery-only overhaul (2026-10-06)
+The payment story is now a verified two-step flow with fulfilment gated on it.
+Build passes clean (`build.bat`, 0 errors); docs (README, ARCHITECTURE-DIAGRAM,
+PRESENTATION-CHEATSHEET) updated to match.
+
+- **Quote-first checkout**: there is no payment method at checkout, and no popup.
+  Checkout writes the order immediately (Status PENDING, `PaymentMethod` parked
+  as `PENDING` so the NOT NULL column has a value, ShippingFee 0,
+  `ShippingFeeConfirmed FALSE`, total = goods − bundle savings). The studio then
+  quotes the J&T fee; **entering the fee IS the confirmation**
+  (`ConfirmWithShippingFee(orderId, fee, password)`) — Status = CONFIRMED and
+  TotalAmount final in one statement, payment-row amount and receipt totals
+  refreshed after the commit.
+- **Customer side (`SubmitPayment`)**: only allowed once `ShippingFeeConfirmed`;
+  requires the e-wallet **reference number + the customer's own password**
+  (fresh DB hash read, not session). Parks Payments `SUBMITTED` + Orders
+  `PaymentStatus SUBMITTED` — NOT paid. Failures carry
+  `PaymentSetting.PaymentFailedMessage` → "Order / payment failed. For concerns
+  please message @star.d0mm on instagram or contact 09701375033". OrderDetail
+  shows a yellow "Payment submitted — waiting for verification" card and hides
+  the pay/QR controls while a submission is pending.
+- **Studio verification (`ConfirmPayment`/`DenyPayment`, both password-gated)**:
+  the reference is read back from the *stored* SUBMITTED payment row (never
+  retyped), shown readonly beside Confirm/Decline in one form (`kind` button
+  values). Confirm → PAID + Orders PAID + PENDING→CONFIRMED + `IssueReceiptFor`;
+  Decline → Payments FAILED + Orders FAILED + support line to the customer, who
+  may resubmit. There is no unverified path to PAID and no manual "record
+  payment" form left.
+- **Fulfilment gates (`UpdateOrderState`)**: PROCESSING **requires PAID**
+  (studio committing to build an unpaid order is now impossible); SHIPPED and
+  DELIVERED also require PAID. Tracking must be **typed** to reach SHIPPED
+  (never auto-generated); DELIVERED checks the **stored** `TrackingNumber`,
+  since the form field is empty on that transition. Notification shows the
+  stored waybill. CANCELLED still refunds + restores stock.
+- **Commission payment parity**: `CommissionService.SubmitPayment(commissionId, ref)`
+  (customer, ref only, same two-step) and password-gated
+  `ConfirmPayment`/`DenyPayment` (studio). CommissionDetail: PAYMENT PENDING
+  branch renders the password form (Confirm/Decline via `kind`); GET no longer
+  confirms or declines. Declined commissions show "Payment declined" line and
+  the failed-payment contact line. No clarify round-trip exists any more —
+  AcceptAndOffer prices in one step.
+- **Revenue fix**: `ReportRepository.MarketplaceRevenue()` sums PAID orders where
+  `EventId IS NULL` — the old `max(0, rev − evRev)` subtracted booth takings from
+  web orders and read 0.00 even while web orders landed. Dashboard's
+  "Digital Marketplace Revenue" KPI now uses it.
+- **Schema/UI nits**: `PaymentMethod DEFAULT 'PENDING'` + in-place `SET DEFAULT`
+  ALTER in `supabase_schema.sql` (applied + verified on Supabase:
+  `column_default = 'PENDING'::character varying`); `Site.master` subtitle → "Check
+  out in seconds with GCash or GOtyme"; `css/site.css` `.art` now uses
+  `background-repeat: no-repeat` on a `--surface-low` background.
+- **Live DB after end-to-end verification** (shared Supabase): 30 physical
+  tables, orders = 3, payments = 3, receipts = 2, commissions = 7, users = 10,
+  products = 100. The committed `supabase_schema.sql` creates **29** tables —
+  the 30th, `commissionmessages`, is a dropped legacy table that survives only
+  in the live DB (no code references it); a reseed removes it. The leftover row
+  with the order `SHIPPED/PAID` whose Payments row still says `PENDING` is a
+  verification artifact, not a flow the app can produce any more.
+- **psql on Windows quirk (proven again)**: options placed *after* the
+  connection string are silently ignored (exit 0, no work). `tools\reseed-supabase.bat`
+  still has every psql line connection-string-first, so it is a silent no-op — NOT
+  yet fixed (flagged to the user). To query manually put `-c` before the URL,
+  and use delayed expansion if calling via a batch:
+  `cmd /v:on /c "call tools\supabase-env.bat && psql -X -t -A -c \"…\" \"!SUPABASE_DB_URL!\""`.

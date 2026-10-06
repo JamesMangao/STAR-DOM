@@ -246,8 +246,8 @@ CREATE TABLE IF NOT EXISTS Orders (
     DiscountAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
     ShippingFee DECIMAL(12,2) NOT NULL DEFAULT 0,
     TotalAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
-    PaymentMethod VARCHAR(20) NOT NULL DEFAULT 'COD', -- GCASH/GOTYME/CARD/COD
-    PaymentStatus VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/PAID/REFUNDED/FAILED
+    PaymentMethod VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- GCASH/GOTYME/PENDING (channel picked after the quote)
+    PaymentStatus VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/SUBMITTED/PAID/REFUNDED/FAILED
     ShippingAddress VARCHAR(255) NOT NULL DEFAULT '',
     ContactPhone VARCHAR(30) NOT NULL DEFAULT '',
     Notes VARCHAR(500) NOT NULL DEFAULT '',
@@ -304,7 +304,7 @@ CREATE TABLE IF NOT EXISTS Payments (
     PaymentMethod VARCHAR(20) NOT NULL,
     Amount DECIMAL(12,2) NOT NULL,
     ReferenceNumber VARCHAR(80) NOT NULL DEFAULT '',
-    Status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/PAID/FAILED/REFUNDED
+    Status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/SUBMITTED/PAID/FAILED/REFUNDED
     PaidAt TIMESTAMPTZ NULL,
     GatewayResponse VARCHAR(255) NOT NULL DEFAULT '',
     CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -625,6 +625,12 @@ DROP TABLE IF EXISTS CommissionMessages;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedBy INT NULL;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedAt TIMESTAMPTZ NULL;
+
+-- Cash on Delivery is gone: every parcel is paid for up front (GCash/GOtyme),
+-- so a default of 'COD' on a column nobody writes would label orders as cash
+-- on delivery. Checkout parks the method at 'PENDING' until the customer picks
+-- a channel on the quoted total, so that is what an implicit insert should say.
+ALTER TABLE Orders ALTER COLUMN PaymentMethod SET DEFAULT 'PENDING';
 -- The CREATE TABLE block above already declares FK_Orders_ShippingFeeBy, and
 -- because identifiers fold to lowercase, pg_constraint stores it as
 -- fk_orders_shippingfeeby. Comparing conname to the mixed-case literal

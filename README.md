@@ -1,10 +1,13 @@
 # STAR:DOM — Artisan & Pop-up Hub (Website)
 
 An online marketplace for a pop-up artisan brand. Customers browse a
-catalog of handmade goods, pay by e-wallet or cash on delivery, and
-collect from a pop-up stall or have it shipped. Artists take custom work
-through a commission pipeline, and the store owner runs everything from a
-merchant studio.
+catalog of handmade goods and pay online by **GCash or GOtyme e-wallet** —
+shipped nationwide via **J&T Express** (delivery only; no cash on delivery
+and no pick-up). The studio quotes the real J&T shipping fee once an order
+is placed, the customer pays the final total against that quote, and the
+studio verifies the e-wallet reference before anything ships. Artists take
+custom work through a commission pipeline, and the store owner runs
+everything from a merchant studio.
 
 **Repository:** github.com/JamesMangao/STAR-DOM
 
@@ -22,8 +25,8 @@ design system and a little vanilla JavaScript.
 | **Database** | PostgreSQL via Npgsql 4.1.10 — 29 tables, no ORM, parameterised SQL throughout |
 | **Hosting** | IIS Express 10 locally, or Mono/XSP4 in a Docker image on Render |
 | **Roles** | Only two: **ADMIN** (the store owner, who is also the artist) and **CUSTOMER** |
-| **Payments** | GCash / GOtyme by QR, plus cash on delivery |
-| **Fulfilment** | J&T Express, or pick-up at a pop-up stall |
+| **Payments** | GCash / GOtyme by QR, paid against a studio-quoted J&T fee — no COD |
+| **Fulfilment** | J&T Express nationwide (delivery only) |
 | **Receipts** | BIR-style receipts with a VAT breakdown |
 | **External services** | None required — no payment gateway API, no shipping API, no third-party auth |
 
@@ -43,22 +46,24 @@ That one rule is what stops a change rippling across the whole site.
 
 - **Customer:** browse/search the catalog (bundle deals shown and **applied
   automatically** — Stickers 4 for ₱100, Button pins 3 for ₱100), product
-  detail, cart & checkout, choose **Delivery (J&T Express)** or **Pick-up at an
-  active/upcoming pop-up stall** (stall hours shown, no shipping fee), pay via
-  **GCash / GOtyme** (reference number) or **Cash on Delivery/Claim**, order
-  tracking with the J&T status line + tracker link, two-sided pick-up claim
-  ("Confirm order received" + the stall's "Confirm hand-over" closes the order),
-  pop-up locations & schedules, commission requests (5-step wizard; commissioned
-  products are delivery-only), reviews, notifications, profile.
+  detail, cart & checkout (delivery address + phone — the J&T fee is quoted
+  after you order), place the order unpaid, then pay the **final** total once
+  the studio has returned it, via **GCash / GOtyme Scan-to-Pay** (e-wallet
+  reference number) behind a **password re-entry** — then track the parcel
+  through the J&T status line + tracker link and confirm it arrived ("Confirm
+  order received") to unlock reviews, pop-up locations & schedules,
+  commission requests (5-step wizard; commissioned products are
+  delivery-only), reviews, notifications, profile.
 - **Store owner (`admin`, or the legacy `mika`/`renzo`/`puffu` owner
   accounts):** dashboard KPIs, products & stock (online stock is
   adjusted manually after physical booth sales — the site sells online only),
   event & booth manager with per-event inventory, commission pipeline
-  (accept / decline / clarify / offer / production), orders & payments:
-  confirm orders, book J&T with the tracking number, confirm pick-up hand-over,
-  and record payments behind a **password re-entry** (e-wallet reference number
-  required for GCash/GOtyme), sales reports, review moderation, Admin Console
-  (users & roles), and **Payment Settings**.
+  (accept + quote / decline / production), orders & payments:
+  **confirm & quote** an order (entering the J&T fee IS the confirmation),
+  book J&T with the tracking number, and **verify submitted payments** behind
+  a **password re-entry** (confirm → PAID + official receipt, or decline →
+  customer is handed the support line), sales reports, review moderation,
+  Admin Console (users & roles), and **Payment Settings**.
 - **Admin:** the owner account IS the admin — STAR:DOM has exactly two roles:
   ADMIN (store owner, who is also the merchant/artist) and CUSTOMER. New
   registrations always become CUSTOMER; only the owner can manage accounts.
@@ -84,8 +89,8 @@ clear about what is live and what is demonstration data:
 | Cart, checkout, orders, payments, commissions, stock, reviews | **real** — real tables, real SQL, real writes |
 | Products, users, events, booth inventory | seeded from `supabase_seed.sql` (100 products, 9 users, 7 events) |
 | Wallet QR images | **real uploads**, stored in the database |
-| Some dashboard KPI captions | **hardcoded sample text** — e.g. `+34% vs SM Santa Rosa`, `Day 3 of 4`, `Hourly Peak Flow: 2PM–6PM`, `All venues pre-cleared for mall merchant badges` |
-| Supabase order history | currently **0 orders, 0 payments** |
+| Some dashboard KPI captions | **hardcoded sample text** — e.g. `All venues pre-cleared for mall merchant badges` |
+| Orders & payments | **never seeded** — every order/payment row is written live. The shared Supabase currently holds a handful of demo rows from end-to-end verification (3 orders, 3 payments, 2 receipts at the time of writing) |
 
 The revenue figures themselves *are* computed from `EventSales` and `Orders` —
 it is the surrounding flavour text that is illustrative.
@@ -139,7 +144,7 @@ talk to, which is why switching between Supabase and the local fallback is
 an environment variable rather than a code change.
 
 [ARCHITECTURE-DIAGRAM.md](ARCHITECTURE-DIAGRAM.md) draws the full request
-path, the layer rules and the checkout state machine.
+path, the layer rules and the order & payment state machine.
 
 ## Payment Settings (GCash / GOtyme QR management)
 
@@ -153,12 +158,12 @@ no code changes needed:
 | **Account number** (QR number) | The GCash / GOtyme mobile number displayed beside the QR. |
 | **Account name** (QR name) | The registered wallet name shown on the popup. |
 | **Display mode** | What customers see: **Everything** (QR + number + name, default), **QR code only**, **Number + name only**, or **Account name only**. |
-| **Show at checkout** | Toggle per channel — when off, that e-wallet disappears from the checkout payment options (COD is always offered). |
+| **Show at checkout** | Toggle per channel — when off, the customer cannot pick that wallet from the order payment options (there is no cash-on-delivery alternative). |
 | **Caption** | Optional note under the QR (e.g. "Scan using the GCash app"). |
 
 Each channel (GCash blue, GOtyme green) has its own card with a live
 **customer-view preview**, and changes take effect immediately on the order
-detail payment popup and at checkout.
+detail payment popup.
 
 **The image is stored in the database**, in `PaymentSettings.QrImageData` as
 `BYTEA` — not as a file under `Uploads\`. `App\PaymentQr.aspx` streams it back
@@ -173,21 +178,38 @@ The pre-rename channel key `MAYA` is still read and displayed as GOtyme, and
 it.
 
 
-## Checkout and the Scan to Pay popup
+## Checkout and the payment flow
 
-For an e-wallet, **pressing "Place Order" does not create the order yet.** It
-re-renders the checkout form with the Scan to Pay popup on top, keeping every
-field the customer typed. The order is written only when they press
-**I Have Scanned & Sent Payment** inside the popup.
+Checkout no longer asks how the customer will pay. It collects the delivery
+address and contact phone, and **"Place Order" writes the order immediately**
+in a single transaction — status `PENDING`, payment method parked as
+`PENDING`, shipping fee *not* yet included. There is no popup at checkout:
+the studio cannot know the J&T fee until the parcel is weighed, so there is
+nothing final to pay yet, and no COD exists for a checkout to record.
 
-This makes the popup's **Back** button meaningful: it simply closes the popup,
-leaving the customer on the same form with their address and notes intact, so
-picking the wrong wallet costs them nothing and cannot leave an abandoned
-order behind. COD has nothing to confirm and is recorded immediately.
+The flow continues on the order pages:
 
-The popup is shared by Checkout and Order Detail
-(`WebUi.QrPaymentModal`), and Order Detail also has a **Scan to Pay / show QR
-again** button for a customer who closed it.
+1. **Studio quotes** — the merchant enters the J&T shipping fee behind a
+   password on the order. That **is** the confirmation: the order becomes
+   `CONFIRMED` and the total is final (goods + bundle savings + shipping) in
+   the same statement.
+2. **Customer pays** — on Order Detail the customer picks **GCash** or
+   **GOtyme** (the channel list appears only once the fee is quoted) and the
+   **Scan to Pay popup** opens with the admin-managed QR. After paying in
+   their wallet app they enter the **reference number + their password**,
+   which only parks the payment as **SUBMITTED** — *not* paid.
+3. **Studio verifies** — the merchant sees the submitted reference beside a
+   password box with **Confirm / Decline** buttons. Confirm moves the payment
+   to **PAID**, finalises the order as `CONFIRMED` and issues the official
+   receipt; decline marks it **FAILED** and hands the customer the support
+   line, who may resubmit. Verification is password-gated, so a left-open
+   merchant session cannot silently commit a customer's money.
+
+The popup is rendered by `WebUi.QrPaymentModal`, shown from Order Detail on a
+**Scan to Pay / show QR again** button for a customer who closed or reloaded
+it. Nothing advances on an unpaid order: `PROCESSING`, `SHIPPED` and
+`DELIVERED` all refuse until the payment is `PAID`, and booking J&T requires
+the waybill number (a `DELIVERED` mark checks the *stored* waybill).
 
 
 ## The sign-in gate
