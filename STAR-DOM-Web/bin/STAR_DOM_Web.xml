@@ -343,9 +343,21 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.CheckoutPage.CheckDraft(STAR_DOM.Web.CheckoutPage.CheckoutDraft)">
  <summary>Returns the first problem, or Nothing when the draft can be ordered.</summary>
 </member>
+<member name="M:STAR_DOM.Web.CheckoutPage.SplitAddressLine(System.String)">
+ <summary>The saved-address line split on commas, trimmed, empties dropped.</summary>
+</member>
 <member name="M:STAR_DOM.Web.CheckoutPage.ComposeAddress(STAR_DOM.Web.CheckoutPage.CheckoutDraft)">
  <summary>
  Joins the split address inputs into the single line the orders table stores.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.OrderDetailPage.StudioVerifyCard(STAR_DOM.Models.Order,System.String)">
+ <summary>
+ Merge-verification card for staff viewing a customer's order: the
+ reference the customer submitted, read-only, plus the password needed to
+ confirm or decline. It posts back to this page (the shell form drops
+ nested action attributes), where Page_Load runs the same
+ ConfirmPayment/DenyPayment calls the merchant console uses.
  </summary>
 </member>
 <member name="M:STAR_DOM.Web.OrderDetailPage.ReviewQueue(STAR_DOM.Models.Order)">
@@ -452,6 +464,33 @@ STAR_DOM_Web
  the studio still has to verify it, and production stays shut until then.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.CommissionDetailPage.HandleRevisionUpload(STAR_DOM.Models.Commission)">
+ <summary>
+ The studio's "Request Revision": upload a photo of the current work and send
+ it to the customer for review. The image is stored in AssetImages (BYTEA),
+ so it travels with a database backup, and is also recorded as a reference
+ image so it shows in the gallery on both sides.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionDetailPage.AppendReviewCard(STAR_DOM.Models.Commission,System.Text.StringBuilder)">
+ <summary>
+ The review card shown while a commission sits in REVISION: the photo the
+ studio sent, their note, and the customer's two choices — ask for changes
+ or approve and request finalization. This is the action the customer was
+ missing when REVISION showed only a status and no controls.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.ProfilePage.HandleSaveAddress(System.Int32,System.String)">
+ <summary>
+ Add or edit in one handler. The id rides on the Save button's own value:
+ blank means "new", a number means "edit that row". Reading a shared
+ hidden addressId would have collected every row's id at once (the shell
+ form flattens the page), so the button is the only place it can live.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.ProfilePage.Js(System.String)">
+ <summary>Single-quoted JavaScript string literal, safe to drop in an onclick attribute.</summary>
+</member>
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
 </member>
@@ -463,7 +502,7 @@ STAR_DOM_Web
  </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderActions(System.Text.StringBuilder,STAR_DOM.Models.Order)">
- <summary>Per-row actions: quote shipping, verify payment, advance status, book J&amp;T, confirm hand-over.</summary>
+ <summary>Per-row actions: one panel for the row's step, then the View link.</summary>
  <remarks>
  The row is a strict sequence, one form at a time, and that is the point:
  every step below asks the merchant to re-enter their password, so rendering
@@ -473,9 +512,37 @@ STAR_DOM_Web
    2. the payment verification form, once the customer has submitted a
       reference (confirm or decline it with your password);
    3. a waiting hint, while quoted but the customer has not paid yet;
-   4. plain advance links, once paid;
-   5. the J&amp;T booking form, when it is ready to go.
+   4. an advance button, once paid;
+   5. the J&amp;T booking form, when it is ready to go;
+   6. a state note, when the order has nowhere left to go.
+
+ Whatever the step, the cell now gets exactly one .act-fields panel followed
+ by the same one-line View / Payment Details link. It used to be a ~176px
+ quote form on one row, a ~119px tracking box on the next and a bare link on
+ the third, so the ACTIONS column was a staircase and no two rows lined up.
  </remarks>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.ActHint(System.String)">
+ <summary>The small grey caption line inside a panel.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.ActNotePanel">
+ <summary>Opens a hint-only panel: the row has no form of its own.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.ActButton(System.String,System.String,System.String,System.String,System.Boolean,System.Boolean)">
+ <summary>
+ A panel-sized POST button. Inside a row form it is emitted bare - that form
+ already carries the CSRF token; outside one (a hint-only or state panel) it
+ brings its own wrapper, exactly as it did inside .act-links. The pressed
+ button is still the only one submitted, so names, handlers and the
+ data-confirm flow are unchanged.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderStatePanel(STAR_DOM.Models.Order)">
+ <summary>
+ Panel for a row with nothing left to do, so terminal orders get the same
+ box as every other row instead of an empty cell. The copy only states what
+ the status itself already says.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.ActionKey(System.String@,System.Int32@)">
  <summary>
@@ -496,14 +563,14 @@ STAR_DOM_Web
  has one on record never needs quoting again.
  </summary>
 </member>
-<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderShippingQuoteForm(STAR_DOM.Models.Order)">
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderShippingQuoteForm(STAR_DOM.Models.Order,System.String)">
  <summary>
  Inline form that quotes the J&amp;T fee and confirms the order. Password-gated
  in the service layer, same as recording a payment, because it commits the
  customer's final total.
  </summary>
 </member>
-<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderVerifyPayForm(STAR_DOM.Models.Order)">
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderVerifyPayForm(STAR_DOM.Models.Order,System.String)">
  <summary>
  Payment verification: the reference the customer submitted, shown read-only
  so it can be checked against the studio's records, plus the password needed
@@ -511,7 +578,7 @@ STAR_DOM_Web
  verifying means checking THEIR number, never typing one in on their behalf.
  </summary>
 </member>
-<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderBookJntForm(STAR_DOM.Models.Order)">
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderBookJntForm(STAR_DOM.Models.Order,System.String)">
  <summary>The J&amp;T hand-off form: tracking number in, SHIPPED out.</summary>
 </member>
 <member name="T:STAR_DOM.Web.ReviewsPage">
@@ -804,6 +871,27 @@ STAR_DOM_Web
 <member name="T:STAR_DOM.Models.CommissionStatuses">
  <summary>All known commission statuses, in workflow order.</summary>
 </member>
+<member name="F:STAR_DOM.Models.CommissionStatuses.Revision">
+ <summary>
+ The studio sent the current work to the customer for review. The customer
+ can ask for another revision (back to IN PRODUCTION) or approve it and
+ request finalization (FINALIZE REQUESTED).
+ </summary>
+</member>
+<member name="F:STAR_DOM.Models.CommissionStatuses.FinalizeRequested">
+ <summary>
+ The customer reviewed the work, is satisfied, and asked the studio to
+ finalize it. Only from here may the studio press Finalize Work.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Models.User.DisplayRoleName">
+ <summary>
+ STAR:DOM is a single-owner brand, so ADMIN *is* the merchant. The
+ MERCHANT role only survives as a legacy alias that the guards honour for
+ older databases; showing it in the UI would imply store staff are a
+ separate role, so it is presented as ADMIN everywhere.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Models.ServiceResult">
  <summary>Service result: success flag + user-facing message + optional payload.</summary>
 </member>
@@ -930,8 +1018,16 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.CommissionRepository.OpenSlotCounts">
  <summary>Open-slot counts for all merchants at once (single query instead of 1-per-merchant).</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.CommissionRepository.UpdateStatus(System.Int32,System.String,System.String,System.String,System.String)">
+<member name="M:STAR_DOM.Repositories.CommissionRepository.UpdateCommissionNotes(System.Int32,System.String)">
  <summary>Transition status and record full history. Returns error string or Nothing.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionRepository.AppendCustomerNote(System.Int32,System.String)">
+ <summary>
+ Appends a line to the commission's notes without clobbering what is
+ already there. The customer's revision requests travel this way, so the
+ studio sees every round of feedback in one place instead of only the
+ latest note replacing the rest.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.CommissionRepository.SetOffer(System.Int32,System.Decimal,System.Nullable{System.DateTime},System.String)">
  <summary>
@@ -1122,6 +1218,16 @@ STAR_DOM_Web
 <member name="T:STAR_DOM.Repositories.ReportRepository">
  <summary>All aggregation queries for dashboards and the sales report screens.</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.RevenueTotal">
+ <summary>
+ TOTAL REVENUE: every peso the studio actually took — paid web orders plus
+ in-person event takings. EventSales rows carrying an OrderId belong to an
+ online order that is already counted on the Orders side, so they are left
+ out rather than counted twice. Orders alone read ₱0 on a demo whose sales
+ all live in EventSales, which is why the KPI contradicted EVENT GROSS
+ directly underneath it.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.MarketplaceRevenue">
  <summary>
  Online marketplace revenue: paid web orders that are not tied to a pop-up
@@ -1147,6 +1253,18 @@ STAR_DOM_Web
  (6 accounts, 1 reviewer). TotalCustomers above stays the raw account
  count for anywhere that really means "registered accounts".
  </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.RevenueLastNDays(System.Int32)">
+ <summary>Daily revenue for the last N days, paid orders and event takings together.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.MonthlySales(System.Int32)">
+ <summary>Monthly revenue for the last N months, paid orders and event takings together.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.ProductSales(System.Int32)">
+ <summary>Best-selling products across both channels: order lines and booth sales.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.CategorySales">
+ <summary>Sales by category across both channels: order lines and booth sales.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.UserRepository.ListMerchants">
  <summary>Commission creators/artists (Admin or Merchant).</summary>
@@ -1260,6 +1378,40 @@ STAR_DOM_Web
  support contact immediately. Password-gated, same as confirming.
  </summary>
 </member>
+<member name="M:STAR_DOM.Services.CommissionService.SendWorkForReview(System.Int32)">
+ <summary>
+ The studio hands the current work over for review: a photo of the piece
+ (uploaded by the page) plus notes, and the commission moves to REVISION
+ where the customer can see it. Work only leaves IN PRODUCTION this way —
+ there is deliberately no direct Finalize at this point, because the
+ customer has not approved anything yet.
+
+ Allowed from IN PRODUCTION and from REVISION itself, so the studio can
+ re-send the photo when a legacy row sits in REVISION without one.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.RequestRevisionChanges(System.Int32,System.String)">
+ <summary>
+ The customer reviewed the photo and wants changes. The notes come back to
+ the studio and the commission returns to IN PRODUCTION: the studio reworks
+ it, then sends it for review again. This is the loop the customer drives
+ until they are satisfied.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.RequestFinalize(System.Int32)">
+ <summary>
+ The customer is satisfied and asks the studio to finish. This is the ONLY
+ path to FINALIZE REQUESTED, and the studio can only finalize from there —
+ so the work is never closed without the customer saying so.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.FinalizeWork(System.Int32)">
+ <summary>
+ The studio closes the work the customer already approved. Gated on
+ FINALIZE REQUESTED so a commission can never be finalized while the
+ customer is still reviewing it.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Services.CommissionService.MarkDelivered(System.Int32,System.String)">
  <summary>
  Hand the finished piece over. A commission is delivered the same way an
@@ -1273,6 +1425,22 @@ STAR_DOM_Web
  Customer confirms the finished piece reached them. Only ever written from
  DELIVERED, so a non-null ReceivedAt is the buyer's word rather than the
  studio's — which is what closes the loop the same way an order does.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.UpdateCommissionNotes(System.Int32,System.String)">
+ <summary>
+ Update the commission's additional notes. Useful for appending revision notes.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.AddReferenceImages(System.Int32,System.Collections.Generic.List{System.ValueTuple{System.String,System.String,System.Int32}})">
+ <summary>
+ Add reference images to a commission. Used for revision uploads.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.UpdateStatus(System.Int32,System.String,System.String,System.String)">
+ <summary>
+ Update commission status directly. Used when transitioning within same status
+ but with a new note (e.g., revision).
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CommissionService.ReferenceImages(System.Int32)">
@@ -1309,6 +1477,13 @@ STAR_DOM_Web
  Records the channel the customer picked at payment time. Checkout parks the
  method as "PENDING" because the studio quotes the order first, so this is
  where the real channel is chosen.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.ResetPaymentMethod(System.Int32)">
+ <summary>
+ Clears the chosen channel back to PENDING so the customer can pick the
+ other wallet. Only legal while nothing has been submitted against it —
+ once a reference is in the studio's hands there is nothing to re-choose.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.PasswordOk(System.String)">

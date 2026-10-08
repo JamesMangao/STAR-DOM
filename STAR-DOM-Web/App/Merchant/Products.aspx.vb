@@ -29,9 +29,15 @@ Namespace STAR_DOM.Web
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireMerchant()
             Try
-                If Request.QueryString("del") <> "" Then
+                ' Every row renders its own stock fields and action buttons, and
+                ' Site.master's single shell form flattens all of them into one post.
+                ' Each row's id therefore rides on the pressed button, and the value
+                ' being edited is named after that id: the old hidden "stockId" per
+                ' row arrived as "1,2,3", failed Integer.TryParse, and the page still
+                ' flashed "Stock updated" without saving anything.
+                If Guard.IsPost() AndAlso Request.Form("del") IsNot Nothing Then
                     Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("del"), id)
+                    Integer.TryParse(Request.Form("del"), id)
                     If id > 0 Then
                         Dim err As String = _products.Delete(id)
                         Session("flash_msg") = If(err Is Nothing, "Product deleted.", err)
@@ -39,9 +45,9 @@ Namespace STAR_DOM.Web
                     End If
                     Response.Redirect("/App/Merchant/Products.aspx", True)
                 End If
-                If Request.QueryString("toggle") <> "" Then
+                If Guard.IsPost() AndAlso Request.Form("toggle") IsNot Nothing Then
                     Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("toggle"), id)
+                    Integer.TryParse(Request.Form("toggle"), id)
                     Dim p As Product = _products.GetById(id)
                     If p IsNot Nothing Then
                         p.IsActive = Not p.IsActive
@@ -49,34 +55,34 @@ Namespace STAR_DOM.Web
                     End If
                     Response.Redirect("/App/Merchant/Products.aspx", True)
                 End If
-                If Request.QueryString("delcat") <> "" Then
+                If Guard.IsPost() AndAlso Request.Form("delcat") IsNot Nothing Then
                     Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("delcat"), id)
+                    Integer.TryParse(Request.Form("delcat"), id)
                     Dim err As String = _cats.Delete(id)
                     Session("flash_msg") = If(err Is Nothing, "Category deleted.", err)
                     Session("flash_ok") = err Is Nothing
                     Response.Redirect("/App/Merchant/Products.aspx", True)
                 End If
-                If Guard.IsPost() AndAlso Request.Form("catName") IsNot Nothing Then
+                If Guard.IsPost() AndAlso Request.Form("addcat") IsNot Nothing Then
                     Dim name As String = Convert.ToString(Request.Form("catName"))
                     If name.Trim() <> "" Then _cats.Create(name.Trim(), Convert.ToString(Request.Form("catDesc")), 0, True)
                     Session("flash_msg") = "Category added."
                     Session("flash_ok") = True
                     Response.Redirect("/App/Merchant/Products.aspx", True)
                 End If
-                If Guard.IsPost() AndAlso Request.Form("stockId") IsNot Nothing Then
+                If Guard.IsPost() AndAlso Request.Form("savestock") IsNot Nothing Then
                     Dim id As Integer = 0
-                    Integer.TryParse(Request.Form("stockId"), id)
+                    Integer.TryParse(Request.Form("savestock"), id)
                     Dim q As Integer = 0
-                    Integer.TryParse(Request.Form("stockQty"), q)
+                    Integer.TryParse(Convert.ToString(Request.Form("stock_" & id.ToString())), q)
                     If id > 0 Then _products.SetStock(id, q)
                     Session("flash_msg") = "Stock updated."
                     Session("flash_ok") = True
                     ' Carry the active search across the save, or saving one stock
                     ' level silently throws the staff back out to the full catalog.
+                    ' The post lands on this URL, so ?q= is still on the query string.
                     Dim back As String = "/App/Merchant/Products.aspx"
-                    Dim keep As String = If(Convert.ToString(Request.Form("stockQ")), "").Trim()
-                    If keep <> "" Then back &= "?q=" & HttpUtility.UrlEncode(keep)
+                    If Search <> "" Then back &= "?q=" & HttpUtility.UrlEncode(Search)
                     Response.Redirect(back, True)
                 End If
                 Render()
@@ -164,14 +170,13 @@ Namespace STAR_DOM.Web
                               WebUi.Esc(p.BrandName) & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(p.CategoryName) & "</td>")
                     sb.Append("<td>" & WebUi.Money(p.BasePrice) & "</td>")
-                    ' The stock form is nested inside the shell form, which the browser closes at this
-                    ' tag — so the shell's token is not submitted with it. It carries its own.
+                    ' The row id rides on the button and the qty input is named
+                    ' stock_<id>, because the shell form flattens every row's fields
+                    ' into one post and a shared name would arrive joined ("5,7").
                     sb.Append("<td><form method=""post"" style=""display:flex;gap:6px;align-items:center"">" &
                               STAR_DOM.Web.Csrf.HiddenField() &
-                              "<input type=""hidden"" name=""stockId"" value=""" & p.Id.ToString() & """>" &
-                              If(q <> "", "<input type=""hidden"" name=""stockQ"" value=""" & WebUi.Attr(q) & """>", "") &
-                              "<input name=""stockQty"" type=""number"" value=""" & p.StockQuantity.ToString() & """ style=""width:64px;padding:5px;border:1px solid var(--line);border-radius:7px"">" &
-                              "<button class=""btn ghost sm"" type=""submit""><span class=""ic ms"">save</span><span>Save</span></button></form>" &
+                              "<input name=""stock_" & p.Id.ToString() & """ type=""number"" value=""" & p.StockQuantity.ToString() & """ style=""width:64px;padding:5px;border:1px solid var(--line);border-radius:7px"">" &
+                              "<button class=""btn ghost sm"" type=""submit"" name=""savestock"" value=""" & p.Id.ToString() & """><span class=""ic ms"">save</span><span>Save</span></button></form>" &
                               If(lowFlag, "<span style=""color:var(--primary);font-size:11px;font-weight:700"">LOW</span>", "") & "</td>")
                     sb.Append("<td>")
                     Dim flags As New List(Of String)()
@@ -184,10 +189,15 @@ Namespace STAR_DOM.Web
                     If p.BadgeLabel <> "" Then flags.Add(p.BadgeLabel)
                     sb.Append(If(flags.Count = 0, "—", String.Join(" ", flags.Select(Function(f) WebUi.Pill(f, "yellow")))))
                     sb.Append("</td>")
+                    ' Hide/Show and Delete change state, so they are small POST forms
+                    ' with the row id on the button: the ?toggle=/?del= links were GET
+                    ' navigations the handlers (which require a POST) never saw.
                     sb.Append("<td class=""rowact""><a href=""/App/Merchant/ProductEdit.aspx?id=" & p.Id.ToString() & """>Edit</a>" &
-                              "<a href=""/App/Merchant/Products.aspx?toggle=" & p.Id.ToString() & """ data-confirm=""Toggle product availability?"">" &
-                              If(p.IsActive, "Hide", "Show") & "</a>" &
-                              "<a href=""/App/Merchant/Products.aspx?del=" & p.Id.ToString() & """ data-confirm=""Delete this product?"" data-confirm-danger"">Delete</a></td>")
+                              "<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
+                              "<button type=""submit"" name=""toggle"" value=""" & p.Id.ToString() & """ data-confirm=""Toggle product availability?"" style=""background:none;border:0;padding:0;font:inherit;color:var(--primary);cursor:pointer;text-decoration:underline"">" &
+                              If(p.IsActive, "Hide", "Show") & "</button></form>" &
+                              "<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
+                              "<button type=""submit"" name=""del"" value=""" & p.Id.ToString() & """ data-confirm=""Delete this product?"" data-confirm-danger style=""background:none;border:0;padding:0;font:inherit;color:#b91c1c;cursor:pointer;text-decoration:underline"">Delete</button></form></td>")
                     sb.Append("</tr>")
                 Next
                 sb.Append("</tbody></table></div>")
@@ -197,12 +207,12 @@ Namespace STAR_DOM.Web
             Dim cats As List(Of Category) = _cats.ListAll()
             sb.Append("<div class=""sec-head"" style=""margin-top:26px""><div><h3>Categories (" & cats.Count.ToString() & ")</h3></div></div>")
             sb.Append("<form method=""post"" class=""card"" style=""margin-bottom:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"">")
-            ' Same reason as the stock form above: nested, so the shell's token is not
-            ' submitted with it.
+            ' catName/catDesc are shared field names, so the Add Category button is the
+            ' discriminator: without it, every stock save also flashed "Category added".
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<div class=""field"" style=""flex:1;min-width:180px;margin:0""><label>New category</label><input name=""catName"" required></div>")
             sb.Append("<div class=""field"" style=""flex:2;min-width:220px;margin:0""><label>Description</label><input name=""catDesc""></div>")
-            sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">add</span><span>Add Category</span></button></form>")
+            sb.Append("<button class=""btn primary"" type=""submit"" name=""addcat"" value=""1""><span class=""ic ms"">add</span><span>Add Category</span></button></form>")
             sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
             For Each h As String In {"CATEGORY", "DESCRIPTION", "STATUS", ""}
                 sb.Append("<th>" & h & "</th>")
@@ -211,8 +221,10 @@ Namespace STAR_DOM.Web
             For Each c As Category In cats
                 sb.Append("<tr><td><b>" & WebUi.Esc(c.Name) & "</b></td><td>" & WebUi.Esc(c.Description) & "</td>")
                 sb.Append("<td>" & If(c.IsActive, WebUi.Badge("ACTIVE"), WebUi.Badge("HIDDEN")) & "</td>")
-                sb.Append("<td class=""rowact""><a href=""/App/Merchant/Products.aspx?delcat=" & c.Id.ToString() &
-                          """ data-confirm=""Delete this category? Products keep their category ref until reassigned."" data-confirm-danger"">Delete</a></td></tr>")
+                sb.Append("<td class=""rowact""><form method=""post"" style=""display:inline"">" &
+                          STAR_DOM.Web.Csrf.HiddenField() &
+                          "<button type=""submit"" name=""delcat"" value=""" & c.Id.ToString() &
+                          """ data-confirm=""Delete this category? Products keep their category ref until reassigned."" data-confirm-danger style=""background:none;border:0;padding:0;font:inherit;color:#b91c1c;cursor:pointer;text-decoration:underline"">Delete</button></form></td></tr>")
             Next
             sb.Append("</tbody></table></div>")
             Out.Text = sb.ToString()

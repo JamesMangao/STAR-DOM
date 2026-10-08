@@ -108,7 +108,9 @@ Namespace STAR_DOM.Web
         Private Function StatStrip(categoryCount As Integer) As String
             Dim rep As New ReportService()
             Dim productCount As Integer = _catalog.ListProducts().Count
-            Dim sales As Decimal = rep.EventRevenueTotal() + rep.RevenueTotal()
+            ' RevenueTotal already spans paid orders and event takings, so adding
+            ' EventRevenueTotal here would count every booth sale twice.
+            Dim sales As Decimal = rep.RevenueTotal()
             Dim vol As String = If(sales >= 1000D, "₱" & (sales / 1000D).ToString("0.#") & "K+", "₱" & sales.ToString("N0"))
 
             Dim sb As New StringBuilder()

@@ -125,6 +125,32 @@ Namespace STAR_DOM.Web
             Return STAR_DOM.Helpers.Validators.Phone(d.Phone)
         End Function
 
+        ''' <summary>The saved-address line split on commas, trimmed, empties dropped.</summary>
+        Private Shared Function SplitAddressLine(text As String) As List(Of String)
+            Dim out As New List(Of String)()
+            For Each seg As String In Convert.ToString(text).Split(","c)
+                Dim t As String = seg.Trim()
+                If t <> "" Then out.Add(t)
+            Next
+            Return out
+        End Function
+
+        Private Shared Function LooksLikeBarangay(seg As String) As Boolean
+            Dim t As String = seg.Trim()
+            Return t.StartsWith("Brgy", StringComparison.OrdinalIgnoreCase) OrElse
+                   t.StartsWith("Barangay", StringComparison.OrdinalIgnoreCase)
+        End Function
+
+        Private Shared Function StripBarangayPrefix(seg As String) As String
+            Dim s As String = seg.Trim()
+            If s.StartsWith("Barangay", StringComparison.OrdinalIgnoreCase) Then
+                s = s.Substring("Barangay".Length)
+            ElseIf s.StartsWith("Brgy", StringComparison.OrdinalIgnoreCase) Then
+                s = s.Substring("Brgy".Length)
+            End If
+            Return s.TrimStart("."c).Trim()
+        End Function
+
         ''' <summary>
         ''' Joins the split address inputs into the single line the orders table stores.
         ''' </summary>
@@ -260,6 +286,44 @@ Namespace STAR_DOM.Web
             sb.Append("</div>")
             ' delivery address. There is no pick-up alternative any more, so these
             ' inputs are always live and always required -- no radio toggling them.
+            ' Saved addresses: pick one and the six address fields fill themselves,
+            ' so a returning buyer does not retype the same delivery details for
+            ' every order. UserAddresses stores one street line (plus city/region/
+            ' phone), so barangay is only filled when the line carries an explicit
+            ' "Brgy." segment and the postal code / landmark always stay editable.
+            Dim savedAddr As List(Of UserAddress) =
+                New UserAddressRepository().ListByUserId(STAR_DOM.Helpers.Session.CurrentUser.Id)
+            If savedAddr.Count > 0 Then
+                sb.Append("<div class=""field""><label for=""savedAddr"">Use a saved address</label>")
+                sb.Append("<select id=""savedAddr"" style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink)"">")
+                sb.Append("<option value="""">Enter a new address</option>")
+                For Each a As UserAddress In savedAddr
+                    ' One stored line ("Blk 1 Lot 2, Sample St., Brgy. San Isidro") is
+                    ' split back into the street and barangay the form asks for.
+                    Dim streetSegs As New List(Of String)()
+                    Dim aBrgy As String = ""
+                    For Each seg As String In SplitAddressLine(a.Address)
+                        If aBrgy = "" AndAlso LooksLikeBarangay(seg) Then
+                            aBrgy = StripBarangayPrefix(seg)
+                        Else
+                            streetSegs.Add(seg)
+                        End If
+                    Next
+                    Dim aStreet As String = String.Join(", ", streetSegs)
+                    sb.Append("<option value=""" & a.Id.ToString() &
+                              """ data-street=""" & WebUi.Attr(aStreet) &
+                              """ data-barangay=""" & WebUi.Attr(aBrgy) &
+                              """ data-city=""" & WebUi.Attr(a.City) &
+                              """ data-province=""" & WebUi.Attr(a.Region) &
+                              """ data-phone=""" & WebUi.Attr(a.Phone) & """>" &
+                              WebUi.Attr(a.Label) & " — " & WebUi.Attr(aStreet) &
+                              If(aBrgy <> "", ", Brgy. " & WebUi.Attr(aBrgy), "") &
+                              If(a.City <> "", ", " & WebUi.Attr(a.City), "") & "</option>")
+                Next
+                sb.Append("</select>")
+                sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:4px"">Picking one fills the fields below — postal code and landmark are never saved, so complete those.</div>")
+                sb.Append("</div>")
+            End If
             sb.Append("<div class=""field""><label for=""as1"">House number and street <span class=""sub"">*</span></label>")
             sb.Append("<input id=""as1"" name=""addrStreet"" required autocomplete=""address-line1"" placeholder=""Blk 1 Lot 2, Sample St."" value=""" & WebUi.Attr(street) & """></div>")
             sb.Append("<div class=""field""><label for=""as2"">Barangay <span class=""sub"">*</span></label>")
@@ -326,6 +390,24 @@ Namespace STAR_DOM.Web
             sb.Append("if(btnStay)btnStay.addEventListener('click',closeModal);")
             sb.Append("if(modal)modal.addEventListener('click',function(e){if(e.target===modal)closeModal();});")
             sb.Append("document.addEventListener('keydown',function(e){if(modal&&modal.classList.contains('open')&&e.key==='Escape')closeModal();});")
+            sb.Append("})();")
+            sb.Append("</" & "script>")
+
+            ' Saved-address picker: only fields the chosen address actually carries are
+            ' written, so a row without a barangay never wipes one that was typed.
+            sb.Append("<script>")
+            sb.Append("(function(){")
+            sb.Append("var sel=document.getElementById('savedAddr');")
+            sb.Append("if(!sel)return;")
+            sb.Append("sel.addEventListener('change',function(){")
+            sb.Append("var o=sel.options[sel.selectedIndex];if(!o||!o.value)return;")
+            sb.Append("function fill(id,v){var el=document.getElementById(id);if(el&&v)el.value=v;}")
+            sb.Append("fill('as1',o.getAttribute('data-street'));")
+            sb.Append("fill('as2',o.getAttribute('data-barangay'));")
+            sb.Append("fill('as3',o.getAttribute('data-city'));")
+            sb.Append("fill('as4',o.getAttribute('data-province'));")
+            sb.Append("fill('ph',o.getAttribute('data-phone'));")
+            sb.Append("});")
             sb.Append("})();")
             sb.Append("</" & "script>")
 

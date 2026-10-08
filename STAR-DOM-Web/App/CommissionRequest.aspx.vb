@@ -6,6 +6,7 @@ Imports System.Web.UI.WebControls
 Imports STAR_DOM.Helpers
 Imports STAR_DOM.Models
 Imports STAR_DOM.Services
+Imports STAR_DOM.Repositories
 
 Namespace STAR_DOM.Web
 
@@ -15,6 +16,7 @@ Namespace STAR_DOM.Web
         Protected Out As Literal
         Private ReadOnly _catalog As New CatalogService()
         Private ReadOnly _svc As New CommissionService()
+        Private ReadOnly _addrRepo As New UserAddressRepository()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
@@ -49,6 +51,15 @@ Namespace STAR_DOM.Web
             ' request rather than chased once the art is done.
             Dim address As String = Convert.ToString(Request.Form("address"))
             Dim phone As String = Convert.ToString(Request.Form("phone"))
+            Dim savedAddrId As Integer = 0
+            Integer.TryParse(Request.Form("savedAddressId"), savedAddrId)
+            If savedAddrId > 0 Then
+                Dim a As UserAddress = _addrRepo.GetAddress(savedAddrId, STAR_DOM.Helpers.Session.CurrentUser.Id)
+                If a IsNot Nothing Then
+                    address = a.Address
+                    If String.IsNullOrWhiteSpace(phone) Then phone = a.Phone
+                End If
+            End If
 
             Dim deadline As Date? = Nothing
             Dim dl As String = Convert.ToString(Request.Form("deadline"))
@@ -182,7 +193,14 @@ Namespace STAR_DOM.Web
                 Dim dlDate As Date
                 If Date.TryParse(dlText, dlDate) Then keepDeadline = dlDate.ToString("yyyy-MM-dd")
             End If
-
+            Dim useSavedAddr As String = Filled("useSavedAddress")
+            Dim selectedAddrId As String = Filled("savedAddressId")
+            If useSavedAddr = "" AndAlso Session("com_savedaddr") IsNot Nothing Then useSavedAddr = Convert.ToString(Session("com_savedaddr"))
+            If selectedAddrId = "" AndAlso Session("com_savedaddrid") IsNot Nothing Then selectedAddrId = Convert.ToString(Session("com_savedaddrid"))
+            If keepAddress <> "" Then Session("com_keepaddr") = keepAddress
+            If keepPhone <> "" Then Session("com_keepphone") = keepPhone
+            If Session("com_keepaddr") IsNot Nothing AndAlso keepAddress = "" Then keepAddress = Convert.ToString(Session("com_keepaddr"))
+            If Session("com_keepphone") IsNot Nothing AndAlso keepPhone = "" Then keepPhone = Convert.ToString(Session("com_keepphone"))
             Dim sb As New StringBuilder()
             sb.Append(WebUi.Section("Custom Commercial Commission Request",
                                     "STAR:DOM ATELIER · BESPOKE COMMISSIONS",
@@ -226,7 +244,7 @@ Namespace STAR_DOM.Web
             Next
             sb.Append("</div>")
             sb.Append("<p class=""sub"" style=""font-size:12px;margin:-6px 0 14px""><b>Step " &
-                      (currentStep + 1).ToString() & " of 5</b> &middot; " &
+                      (currentStep + 1).ToString() & " of 6</b> &middot; " &
                       WebUi.Esc(StepHint(currentStep)) & "</p>")
 
             If errorMsg <> "" Then sb.Append(WebUi.AlertBox(errorMsg))
@@ -296,12 +314,36 @@ Namespace STAR_DOM.Web
             sb.Append("<h3>05 · Delivery</h3>")
             sb.Append("<p class=""sub"">Your finished piece is delivered by J&amp;T Express. Shipping is free on " &
                       "commissions — this address is just where it goes.</p>")
-            sb.Append("<div class=""field""><label for=""ad"">Delivery address *</label>")
-            sb.Append("<input id=""ad"" name=""address"" required value=""" & WebUi.Attr(keepAddress) &
-                      """ placeholder=""House number, street, barangay, city, province""></div>")
-            sb.Append("<div class=""field""><label for=""ph"">Contact phone *</label>")
-            sb.Append("<input id=""ph"" name=""phone"" required inputmode=""tel"" value=""" & WebUi.Attr(keepPhone) &
-                      """ placeholder=""09xx xxx xxxx""></div>")
+            Dim addrs As List(Of UserAddress) = Nothing
+            Dim currentUser As Models.User = Nothing
+            If STAR_DOM.Helpers.Session.CurrentUser IsNot Nothing Then
+                currentUser = STAR_DOM.Helpers.Session.CurrentUser
+                addrs = _addrRepo.ListByUserId(currentUser.Id)
+            End If
+            sb.Append("<div class='field'><label>Saved addresses</label>")
+            sb.Append("<select name='savedAddressId' style='width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px' onchange=""var v=this.value;if(v===''){document.getElementById('addrManual').style.display='block';}else{document.getElementById('addrManual').style.display='none';}"">")
+            sb.Append("<option value=''>— Add new / Enter manually —</option>")
+            If addrs IsNot Nothing Then
+                For Each a As UserAddress In addrs
+                    Dim sel As String = If(selectedAddrId = a.Id.ToString(), " selected", "")
+                    Dim txt As String = (If(a.Label <> "", a.Label & ": ", "")) & a.Address
+                    sb.Append("<option value='" & a.Id.ToString() & "'" & sel & ">" & WebUi.Esc(txt) & "</option>")
+                Next
+            End If
+            sb.Append("</select>")
+            sb.Append("<input type='hidden' name='useSavedAddress' value='" & WebUi.Attr(useSavedAddr) & "'>")
+            sb.Append("</div>")
+            Dim manualStyle2 As String = "display:block"
+            If selectedAddrId <> "" Then manualStyle2 = "display:none"
+            sb.Append("<div id='addrManual' style='" & manualStyle2 & "'>")
+            sb.Append("<div class='field'><label for='ad'>Delivery address *</label>")
+            sb.Append("<input id='ad' name='address' value='" & WebUi.Attr(keepAddress) & "' placeholder='House number, street, barangay, city, province'>")
+            sb.Append("</div>")
+            sb.Append("<div class='field'><label for='ph'>Contact phone *</label>")
+            sb.Append("<input id='ph' name='phone' inputmode='tel' value='" & WebUi.Attr(keepPhone) & "' placeholder='09xx xxx xxxx'>")
+            sb.Append("</div>")
+            sb.Append("<p class='sub' style='margin:6px 0 0;font-size:11px'>You can save addresses in <a href='/App/Profile.aspx'>your profile</a> for easier reuse.</p>")
+            sb.Append("</div>")
             sb.Append("</div>")
 
             ' 06 submit

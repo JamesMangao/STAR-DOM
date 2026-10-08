@@ -431,6 +431,24 @@ CREATE TABLE IF NOT EXISTS CommissionStatusHistory (
 );
 
 -- ------------------------------------------------------------
+-- User addresses (saved delivery addresses per customer)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS UserAddresses (
+    Id SERIAL PRIMARY KEY,
+    UserId INT NOT NULL,
+    Label VARCHAR(100) NOT NULL DEFAULT '',
+    Address VARCHAR(255) NOT NULL DEFAULT '',
+    City VARCHAR(100) NOT NULL DEFAULT '',
+    Region VARCHAR(100) NOT NULL DEFAULT '',
+    Phone VARCHAR(30) NOT NULL DEFAULT '',
+    IsDefault BOOLEAN NOT NULL DEFAULT FALSE,
+    CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT FK_UserAddresses_User FOREIGN KEY (UserId) REFERENCES Users(Id) ON DELETE CASCADE,
+    CONSTRAINT UK_UserAddresses UNIQUE (UserId, Id)
+);
+CREATE INDEX IF NOT EXISTS IDX_UserAddresses_User ON UserAddresses (UserId);
+
+-- ------------------------------------------------------------
 -- Notifications & diagnostics
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS Notifications (

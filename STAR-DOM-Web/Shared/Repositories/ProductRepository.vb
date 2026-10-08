@@ -69,11 +69,12 @@ Namespace STAR_DOM.Repositories
 
         Public Function Create(p As Product) As Integer
 Return Db.ExecIdentity(
-                "INSERT INTO Products (CategoryId, MerchantId, Name, Description, BasePrice, SalePrice, StockQuantity, " &
+                "INSERT INTO Products (CategoryId, MerchantId, Name, Slug, Description, BasePrice, SalePrice, StockQuantity, " &
                 "LowStockThreshold, Sku, BrandName, IsActive, IsFeatured, IsBoothExclusive, BadgeLabel, " &
                 "MaterialDetails, CreatedAt, UpdatedAt) " &
-                "VALUES (@cat, @m, @n, @d, @bp, @sp, @q, @lt, @sku, @b, @a, @f, @be, @bl, @md, NOW(), NOW())",
+                "VALUES (@cat, @m, @n, @slug, @d, @bp, @sp, @q, @lt, @sku, @b, @a, @f, @be, @bl, @md, NOW(), NOW())",
                 Db.P("@cat", p.CategoryId), Db.P("@m", p.MerchantId), Db.P("@n", p.Name),
+                Db.P("@slug", p.Slug),
                 Db.P("@d", p.Description), Db.P("@bp", p.BasePrice),
                 Db.P("@sp", If(p.SalePrice.HasValue, CObj(p.SalePrice.Value), DBNull.Value)),
                 Db.P("@q", p.StockQuantity), Db.P("@lt", p.LowStockThreshold), Db.P("@sku", p.Sku),
@@ -84,11 +85,11 @@ Return Db.ExecIdentity(
 
         Public Sub Update(p As Product)
             Db.Exec(
-                "UPDATE Products SET CategoryId = @c, Name = @n, Description = @d, BasePrice = @bp, SalePrice = @sp, " &
+                "UPDATE Products SET CategoryId = @c, Name = @n, Slug = @slug, Description = @d, BasePrice = @bp, SalePrice = @sp, " &
                 "StockQuantity = @q, LowStockThreshold = @lt, Sku = @sku, BrandName = @b, IsActive = @a, " &
                 "IsFeatured = @f, IsBoothExclusive = @be, BadgeLabel = @bl, MaterialDetails = @md, " &
                 "UpdatedAt = NOW() WHERE Id = @id",
-                Db.P("@c", p.CategoryId), Db.P("@n", p.Name), Db.P("@d", p.Description), Db.P("@bp", p.BasePrice),
+                Db.P("@c", p.CategoryId), Db.P("@n", p.Name), Db.P("@slug", p.Slug), Db.P("@d", p.Description), Db.P("@bp", p.BasePrice),
                 Db.P("@sp", If(p.SalePrice.HasValue, CObj(p.SalePrice.Value), DBNull.Value)),
                 Db.P("@q", p.StockQuantity), Db.P("@lt", p.LowStockThreshold), Db.P("@sku", p.Sku),
                 Db.P("@b", p.BrandName), Db.P("@a", p.IsActive), Db.P("@f", p.IsFeatured),

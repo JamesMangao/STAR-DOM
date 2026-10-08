@@ -15,6 +15,15 @@ Namespace STAR_DOM.Web
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
             Try
+                ' Deleting a notification changes state, so it is a POST: the link below
+                ' used to point at ?del= with no handler at all, and the delete button
+                ' did nothing.
+                If Guard.IsPost() AndAlso Request.Form("delNotif") IsNot Nothing Then
+                    Dim id As Integer = 0
+                    Integer.TryParse(Request.Form("delNotif"), id)
+                    If id > 0 Then _notif.Delete(id)
+                    Response.Redirect("/App/Notifications.aspx", True)
+                End If
                 If Request.QueryString("read") <> "" Then
                     Dim id As Integer = 0
                     Integer.TryParse(Request.QueryString("read"), id)
@@ -23,12 +32,6 @@ Namespace STAR_DOM.Web
                 End If
                 If Request.QueryString("all") = "1" Then
                     _notif.MarkAllRead()
-                    Response.Redirect("/App/Notifications.aspx", True)
-                End If
-                If Request.QueryString("del") <> "" Then
-                    Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("del"), id)
-                    If id > 0 Then _notif.Delete(id)
                     Response.Redirect("/App/Notifications.aspx", True)
                 End If
                 Render()
@@ -72,10 +75,11 @@ Namespace STAR_DOM.Web
                                   "<span class=""ms sm"" style=""font-size:16px"">open_in_new</span> Open</a>")
                     End If
                 End If
-                sb.Append("<a class=""btn ghost sm"" href=""/App/Notifications.aspx?del=" & n.Id.ToString() & """ " &
+                sb.Append("<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
+                          "<button type=""submit"" name=""delNotif"" value=""" & n.Id.ToString() & """ " &
                           "data-confirm=""Delete this notification?"" data-confirm-ok=""Delete"" data-confirm-danger=""true"" " &
-                          "style=""padding:4px 10px;font-size:11.5px;color:var(--ink-soft)"">" &
-                          "<span class=""ms sm"" style=""font-size:16px"">delete</span> Delete</a>")
+                          "class=""btn ghost sm"" style=""padding:4px 10px;font-size:11.5px;color:var(--ink-soft)"">" &
+                          "<span class=""ms sm"" style=""font-size:16px"">delete</span> Delete</button></form>")
                 sb.Append("</div></div>")
             Next
             sb.Append("</div>")

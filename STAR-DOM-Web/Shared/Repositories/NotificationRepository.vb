@@ -33,16 +33,28 @@ Namespace STAR_DOM.Repositories
             Return Db.ScalarInt("SELECT COUNT(*) FROM Notifications WHERE UserId = @u AND IsRead = FALSE", Db.P("@u", userId))
         End Function
 
-        Public Sub MarkRead(notificationId As Integer)
-            Db.Exec("UPDATE Notifications SET IsRead = TRUE WHERE Id = @id", Db.P("@id", notificationId))
+        Public Sub MarkRead(notificationId As Integer, Optional userId As Integer = 0)
+            Dim sql As String = "UPDATE Notifications SET IsRead = TRUE WHERE Id = @id"
+            If userId > 0 Then sql &= " AND UserId = @u"
+            If userId > 0 Then
+                Db.Exec(sql, Db.P("@id", notificationId), Db.P("@u", userId))
+            Else
+                Db.Exec(sql, Db.P("@id", notificationId))
+            End If
         End Sub
 
         Public Sub MarkAllRead(userId As Integer)
             Db.Exec("UPDATE Notifications SET IsRead = TRUE WHERE UserId = @u AND IsRead = FALSE", Db.P("@u", userId))
         End Sub
 
-        Public Sub Delete(notificationId As Integer)
-            Db.Exec("DELETE FROM Notifications WHERE Id = @id", Db.P("@id", notificationId))
+        Public Sub Delete(notificationId As Integer, Optional userId As Integer = 0)
+            Dim sql As String = "DELETE FROM Notifications WHERE Id = @id"
+            If userId > 0 Then sql &= " AND UserId = @u"
+            If userId > 0 Then
+                Db.Exec(sql, Db.P("@id", notificationId), Db.P("@u", userId))
+            Else
+                Db.Exec(sql, Db.P("@id", notificationId))
+            End If
         End Sub
 
         Private Function Map(r As DataRow) As AppNotification

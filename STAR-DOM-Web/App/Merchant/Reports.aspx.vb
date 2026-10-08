@@ -30,7 +30,7 @@ Namespace STAR_DOM.Web
             ' KPIs
             Dim mix = _reports.OmnichannelMix()
             sb.Append("<div class=""grid kpis"">")
-            sb.Append(Kpi("TOTAL REVENUE", "₱" & _reports.RevenueTotal().ToString("N2"), "all channels"))
+            sb.Append(Kpi("TOTAL REVENUE", "₱" & _reports.RevenueTotal().ToString("N2"), "paid orders + event takings"))
             sb.Append(Kpi("ORDERS", _reports.OrdersCount().ToString(), _reports.OrdersCount("PENDING").ToString() & " pending"))
             sb.Append(Kpi("COMMISSION REVENUE", "₱" & _reports.CommissionRevenue().ToString("N2"), _reports.TotalCommissions().ToString() & " commissions"))
             sb.Append(Kpi("EVENT GROSS", "₱" & mix.eventTotal.ToString("N2"), "in-person + QR + preorders"))

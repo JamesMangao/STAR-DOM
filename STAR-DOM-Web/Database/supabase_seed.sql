@@ -50,26 +50,23 @@ RESTART IDENTITY CASCADE;
 
 -- ---------- Roles ----------
 -- STAR:DOM is a single-owner brand: two roles only. ADMIN is the store owner
--- (and the commission artist); MERCHANT stays as a legacy alias honoured by
--- the guards for older databases.
+-- (and the commission artist); CUSTOMER is the marketplace shopper.
 INSERT INTO Roles (Id, Name, Description) VALUES
   (1, 'CUSTOMER', 'Marketplace shopper & commission requester'),
-  (2, 'MERCHANT', '(legacy) store staff — treated as an owner by the app'),
   (3, 'ADMIN',    'Store owner: merchant, studio artist & system admin')
 ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name;
 
 -- ---------- Users & Creator Studios ----------
--- Commission slots: STAR:DOM is the only artist taking commissions, and the
--- Admin Console can raise or lower how many slots are open. The legacy
--- MERCHANT accounts below keep their catalog and their commission history
--- but sit at capacity 0, which UserRepository.ListMerchants filters out, so
--- they never render as slot cards on the Commission Hub or the Marketplace.
+-- STAR:DOM is a single-owner brand: only the admin account holds the ADMIN role.
+-- Every other account is a CUSTOMER. The demo catalog still shows the studio
+-- accounts (Mika, Renzo, Puffu) as product merchants, but their role stays
+-- CUSTOMER so the Admin Console reads as a single-admin brand.
 INSERT INTO Users (Id, Email, Username, FullName, Phone, PasswordHash, RoleId, Status, EmailVerified,
                    CommissionSlotCapacity, CommissionStartingPrice, CommissionTurnaround, CommissionFormats, CommissionTagline) VALUES
 (1,  'bella@example.com',     'bella',     'Bella Santos',       '09171234567', 'PBKDF2$10000$nI47tNzSKLVtM/0Jjm73aQ==$zzKog12teiWt0BYKvI6RvQqE1bvTqA4cgEpeIkIxlWY=', 1, 'ACTIVE', TRUE, 0, 0, '', '', ''),
-(2,  'mika@stardom.ph',       'mika',      'Mika Visuals',       '09174441122', 'PBKDF2$10000$cQ5mUf/OUgrOCnt95eXS1g==$VY6w93rX9Epr3u38wvOpi7zJriNboqD5oU6TnwyXJPI=', 2, 'ACTIVE', TRUE, 0, 1200.00, '2-4 business days', 'Archival Print + Vector', 'Ethereal Flora & Fauna'),
-(3,  'renzo@stardom.ph',      'renzo',     'Renzo Cruz Atelier', '09175553344', 'PBKDF2$10000$cQ5mUf/OUgrOCnt95eXS1g==$VY6w93rX9Epr3u38wvOpi7zJriNboqD5oU6TnwyXJPI=', 2, 'ACTIVE', TRUE, 0, 2000.00, '5-7 business days', 'Handmade Acrylic & Ink', 'Contemporary Urban Lore'),
-(4,  'puffu@stardom.ph',      'puffu',     'Puffu Studio',       '09176665566', 'PBKDF2$10000$cQ5mUf/OUgrOCnt95eXS1g==$VY6w93rX9Epr3u38wvOpi7zJriNboqD5oU6TnwyXJPI=', 2, 'ACTIVE', TRUE, 0, 800.00,  '1-3 business days', 'Die-cut Vinyl & Hologram', 'Cute & Chaotic Sticker Guild'),
+(2,  'mika@stardom.ph',       'mika',      'Mika Visuals',       '09174441122', 'PBKDF2$10000$cQ5mUf/OUgrOCnt95eXS1g==$VY6w93rX9Epr3u38wvOpi7zJriNboqD5oU6TnwyXJPI=', 1, 'ACTIVE', TRUE, 0, 1200.00, '2-4 business days', 'Archival Print + Vector', 'Ethereal Flora & Fauna'),
+(3,  'renzo@stardom.ph',      'renzo',     'Renzo Cruz Atelier', '09175553344', 'PBKDF2$10000$cQ5mUf/OUgrOCnt95eXS1g==$VY6w93rX9Epr3u38wvOpi7zJriNboqD5oU6TnwyXJPI=', 1, 'ACTIVE', TRUE, 0, 2000.00, '5-7 business days', 'Handmade Acrylic & Ink', 'Contemporary Urban Lore'),
+(4,  'puffu@stardom.ph',      'puffu',     'Puffu Studio',       '09176665566', 'PBKDF2$10000$cQ5mUf/OUgrOCnt95eXS1g==$VY6w93rX9Epr3u38wvOpi7zJriNboqD5oU6TnwyXJPI=', 1, 'ACTIVE', TRUE, 0, 800.00,  '1-3 business days', 'Die-cut Vinyl & Hologram', 'Cute & Chaotic Sticker Guild'),
 (5,  'admin@stardom.ph',      'admin',     'STAR:DOM Admin',     '09281234567', 'PBKDF2$10000$cQ5mUf/OUgrOCnt95eXS1g==$VY6w93rX9Epr3u38wvOpi7zJriNboqD5oU6TnwyXJPI=', 3, 'ACTIVE', TRUE, 20, 1500.00, '3-5 business days', 'High-Res PNG + A4 Print', 'Anime & Cyberpunk Stylist'),
 -- Five more shoppers. Reviews used to be signed by Bella on all 100 rows,
 -- which made the product pages read like one person wrote every review in the

@@ -220,6 +220,25 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
+        ''' Clears the chosen channel back to PENDING so the customer can pick the
+        ''' other wallet. Only legal while nothing has been submitted against it —
+        ''' once a reference is in the studio's hands there is nothing to re-choose.
+        ''' </summary>
+        Public Function ResetPaymentMethod(orderId As Integer) As ServiceResult
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.UserId <> Session.CurrentUser.Id AndAlso Not Session.CanManageStore Then
+                Return ServiceResult.Fail("You don't have access to this order.")
+            End If
+            If order.Status = "CANCELLED" Then Return ServiceResult.Fail("This order was cancelled.")
+            If order.PaymentStatus = "PAID" OrElse order.PaymentStatus = "SUBMITTED" Then
+                Return ServiceResult.Fail("This payment can no longer be changed here.")
+            End If
+            _orders.SetPaymentMethod(orderId, "PENDING")
+            Return ServiceResult.Ok("Choose a payment method to continue.")
+        End Function
+
+        ''' <summary>
         ''' Verifies a re-entered password against a fresh hash read, not the copy in
         ''' session, so a password changed mid-session is honoured immediately. Used by
         ''' every step that touches money: submitting, confirming and declining.
@@ -275,7 +294,7 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail(PaymentFailedMessage("Password incorrect - payment was not confirmed."))
             End If
 
-            Dim method As String = order.PaymentMethod.Trim().ToUpperInvariant()
+            Dim method As String = If(order.PaymentMethod, "").Trim().ToUpperInvariant()
             Dim ref As String = If(reference, "").Trim()
             ' GCash and GOtyme are the only channels, and both hand out a transaction
             ' number, so the reference is required rather than auto-generated: a payment
@@ -351,9 +370,12 @@ Namespace STAR_DOM.Services
             Try
                 Db.InTransaction(Of Boolean)(Function() As Boolean
                     _orders.UpdatePaymentStatusById(submitted.Id, "PAID", ref)
+                    ' Money confirmed means fulfilment starts: a PENDING/CONFIRMED order
+                    ' moves straight to PROCESSING, so the studio never has to press
+                    ' Advance after verifying a payment. Anything further along stays put.
                     Db.Exec(
                         "UPDATE Orders SET PaymentStatus = 'PAID', " &
-                        "Status = CASE WHEN Status = 'PENDING' THEN 'CONFIRMED' ELSE Status END, UpdatedAt = NOW() WHERE Id = @o",
+                        "Status = CASE WHEN Status IN ('PENDING','CONFIRMED') THEN 'PROCESSING' ELSE Status END, UpdatedAt = NOW() WHERE Id = @o",
                         Db.P("@o", orderId))
                     Return True
                 End Function)

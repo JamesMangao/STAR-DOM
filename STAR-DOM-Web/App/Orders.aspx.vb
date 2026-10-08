@@ -16,13 +16,24 @@ Namespace STAR_DOM.Web
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
             Try
-                If Request.QueryString("cancel") <> "" Then
+                ' Cancel is a state change, so it is a POST: the handler requires one,
+                ' and the old ?cancel= link was a GET navigation it never saw.
+                If Guard.IsPost() AndAlso Request.Form("cancelOrder") IsNot Nothing Then
                     Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("cancel"), id)
+                    Integer.TryParse(Request.Form("cancelOrder"), id)
                     If id > 0 Then
-                        Dim r As ServiceResult = _orders.UpdateOrderState(id, "CANCELLED")
-                        Session("flash_msg") = r.Message
-                        Session("flash_ok") = r.Success
+                        Dim order As Order = _orders.GetOrder(id)
+                        If order Is Nothing Then
+                            Session("flash_msg") = "Order not found."
+                            Session("flash_ok") = False
+                        ElseIf order.UserId <> STAR_DOM.Helpers.Session.CurrentUser.Id Then
+                            Session("flash_msg") = "You can only cancel your own orders."
+                            Session("flash_ok") = False
+                        Else
+                            Dim r As ServiceResult = _orders.UpdateOrderState(id, "CANCELLED")
+                            Session("flash_msg") = r.Message
+                            Session("flash_ok") = r.Success
+                        End If
                     End If
                     Response.Redirect("/App/Orders.aspx", True)
                 End If
@@ -74,7 +85,9 @@ Namespace STAR_DOM.Web
                     sb.Append("<td>" & WebUi.Badge(o.Status) & "</td>")
                     sb.Append("<td class=""rowact""><a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View / Track</a>")
                     If o.Status = "PENDING" Then
-                        sb.Append("<a href=""/App/Orders.aspx?cancel=" & o.Id.ToString() & """ data-confirm=""Cancel this order?"" data-confirm-danger"">Cancel</a>")
+                        sb.Append("<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
+                                  "<button type=""submit"" name=""cancelOrder"" value=""" & o.Id.ToString() &
+                                  """ data-confirm=""Cancel this order?"" data-confirm-danger style=""background:none;border:0;padding:0;font:inherit;color:var(--primary);cursor:pointer;text-decoration:underline"">Cancel</button></form>")
                     End If
                     ' Reviews open once the customer confirms the parcel landed, so a
                     ' RECEIVED row is where the store offers to write one.

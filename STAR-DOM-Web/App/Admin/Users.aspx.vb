@@ -3,6 +3,7 @@ Imports System.Web.UI
 Imports System.Web.UI.WebControls
 Imports STAR_DOM.Helpers
 Imports STAR_DOM.Models
+Imports STAR_DOM.Database
 Imports STAR_DOM.Repositories
 
 Namespace STAR_DOM.Web
@@ -29,21 +30,48 @@ Namespace STAR_DOM.Web
                     If id > 0 Then _users.SetStatus(id, "ACTIVE")
                     Response.Redirect("/App/Admin/Users.aspx", True)
                 End If
-                If Guard.IsPost() AndAlso Request.Form("roleUserId") IsNot Nothing Then
+                ' Every row renders these fields, and Site.master's single shell form
+                ' flattens all of them into one post — a hidden "roleUserId" per row
+                ' used to arrive as "1,2,3", fail Integer.TryParse and silently skip.
+                ' The pressed button carries the row id; the select/input is named
+                ' after that id so only the right value is read.
+                ' One-time migration: fold every non-STAR:DOM admin into CUSTOMER so the
+                ' brand keeps a single owner. This is safe to run on every load because
+                ' SetRole only writes when the role actually changes, and it leaves
+                ' STAR:DOM Admin untouched.
+                Dim cur As User = STAR_DOM.Helpers.Session.CurrentUser
+                Dim adminIds As List(Of Integer) = Db.Rows(
+                    "SELECT u.Id FROM Users u JOIN Roles r ON r.Id = u.RoleId " &
+                    "WHERE r.Name = 'ADMIN' AND u.Id <> @id",
+                    Db.P("@id", cur.Id)).Select(Function(row) RowReader.AsInt(row, "Id")).ToList()
+                Dim customerRoleId As Integer = _users.GetRoleId("CUSTOMER")
+                For Each adminId As Integer In adminIds
+                    If customerRoleId > 0 Then _users.SetRole(adminId, customerRoleId)
+                Next
+                If Guard.IsPost() AndAlso Request.Form("setrole") IsNot Nothing Then
                     Dim uid As Integer = 0
-                    Integer.TryParse(Request.Form("roleUserId"), uid)
-                    Dim roleName As String = Convert.ToString(Request.Form("newRole"))
+                    Integer.TryParse(Request.Form("setrole"), uid)
+                    Dim roleName As String = Convert.ToString(Request.Form("role_" & uid.ToString()))
+                    ' STAR:DOM is a single-owner brand; only the store owner may hold
+                    ' the ADMIN role. Protect against setting any other account to ADMIN.
                     If uid > 0 AndAlso roleName <> "" AndAlso uid <> STAR_DOM.Helpers.Session.CurrentUser.Id Then
-                        Dim role As Role = _users.GetRoles().FirstOrDefault(Function(r) String.Equals(r.Name, roleName, StringComparison.OrdinalIgnoreCase))
-                        If role IsNot Nothing Then _users.SetRole(uid, role.Id)
+                        If String.Equals(roleName, "ADMIN", StringComparison.OrdinalIgnoreCase) Then
+                            Session("flash_msg") = "Only the store owner can hold the ADMIN role."
+                            Session("flash_ok") = False
+                        Else
+                            Dim role As Role = _users.GetRoles().FirstOrDefault(Function(r) String.Equals(r.Name, roleName, StringComparison.OrdinalIgnoreCase))
+                            If role IsNot Nothing Then _users.SetRole(uid, role.Id)
+                            Session("flash_msg") = "Role updated."
+                            Session("flash_ok") = True
+                        End If
                     End If
                     Response.Redirect("/App/Admin/Users.aspx", True)
                 End If
-                If Guard.IsPost() AndAlso Request.Form("slotUserId") IsNot Nothing Then
+                If Guard.IsPost() AndAlso Request.Form("setslot") IsNot Nothing Then
                     Dim uid As Integer = 0
-                    Integer.TryParse(Request.Form("slotUserId"), uid)
-                    Dim cap As Integer = 0
-                    Integer.TryParse(Request.Form("slotCapacity"), cap)
+                    Integer.TryParse(Request.Form("setslot"), uid)
+                    Dim cap As Integer = -1
+                    Integer.TryParse(Convert.ToString(Request.Form("cap_" & uid.ToString())), cap)
                     ' 0 is a real value: it takes an artist out of the commission hub
                     ' entirely, which is how you pause intake without touching them.
                     ' Negative is not a value, it is a typo - refuse it.
@@ -89,7 +117,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""grid kpis"">")
             sb.Append(Kpi("TOTAL USERS", all.Count.ToString()))
             sb.Append(Kpi("CUSTOMERS", nCust.ToString()))
-            sb.Append(Kpi("STORE OWNERS / STAFF", nStaff.ToString()))
+            sb.Append(Kpi("STORE OWNER & STAFF", nStaff.ToString()))
             sb.Append("</div>")
 
             sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
@@ -103,7 +131,7 @@ Namespace STAR_DOM.Web
                 sb.Append("<td><b>" & WebUi.Esc(u.FullName) & "</b></td>")
                 sb.Append("<td>" & WebUi.Esc(u.Email) & "</td>")
                 sb.Append("<td>" & WebUi.Esc(u.Username) & "</td>")
-                sb.Append("<td><span class=""pill yellow"">" & WebUi.Esc(u.RoleName) & "</span></td>")
+                sb.Append("<td><span class=""pill yellow"">" & WebUi.Esc(u.DisplayRoleName) & "</span></td>")
                 sb.Append("<td>" & If(u.Status = "ACTIVE", WebUi.Badge("ACTIVE"), WebUi.Badge("SUSPENDED")) & "</td>")
                 ' How many commission slots this artist takes, and how many are left.
                 ' Only staff accounts appear in the commission hub at all
@@ -115,26 +143,30 @@ Namespace STAR_DOM.Web
                 Dim over As Boolean = taken > u.CommissionSlotCapacity
                 sb.Append("<td><form method=""post"" style=""display:flex;gap:6px;align-items:center"">" &
                           STAR_DOM.Web.Csrf.HiddenField() &
-                          "<input type=""hidden"" name=""slotUserId"" value=""" & u.Id.ToString() & """>" &
-                          "<input name=""slotCapacity"" type=""number"" min=""0"" max=""999"" value=""" & u.CommissionSlotCapacity.ToString() & """ " &
+                          "<input name=""cap_" & u.Id.ToString() & """ type=""number"" min=""0"" max=""999"" value=""" & u.CommissionSlotCapacity.ToString() & """ " &
                           "aria-label=""Commission slot capacity for " & WebUi.Attr(u.FullName) & """ " &
                           "style=""width:72px;padding:5px;border:1px solid var(--line);border-radius:7px"">" &
-                          "<button class=""btn ghost sm"" type=""submit""><span class=""ms sm"">save</span>Set</button></form>")
+                          "<button class=""btn ghost sm"" type=""submit"" name=""setslot"" value=""" & u.Id.ToString() & """><span class=""ms sm"">save</span>Set</button></form>")
                 sb.Append("<span class=""sub"" style=""font-size:11px"">" & left.ToString() & " open · " & taken.ToString() & " taken" &
                           If(over, " <span style=""color:#b91c1c;font-weight:700"">over capacity</span>", "") & "</span></td>")
-                ' The role form is nested inside the shell form, which the browser closes at this tag
-                ' — so the shell's token is not submitted with it. It carries its own.
-                sb.Append("<td><form method=""post"" style=""display:flex;gap:6px"">" &
-                          STAR_DOM.Web.Csrf.HiddenField() &
-                          "<input type=""hidden"" name=""roleUserId"" value=""" & u.Id.ToString() & """>" &
-                          "<select name=""newRole"" style=""padding:5px;border:1px solid var(--line);border-radius:7px"">")
-                ' Two-role model: offer only CUSTOMER and ADMIN. (The MERCHANT role
-                ' still exists for legacy accounts and is honoured by the guards.)
-                For Each r As Role In _users.GetRoles().Where(Function(x) x.Name = "CUSTOMER" OrElse x.Name = "ADMIN")
-                    Dim sel As String = If(String.Equals(r.Name, u.RoleName, StringComparison.OrdinalIgnoreCase), " selected", "")
-                    sb.Append("<option value=""" & WebUi.Esc(r.Name) & """" & sel & ">" & WebUi.Esc(r.Name) & "</option>")
-                Next
-                sb.Append("</select><button class=""btn ghost sm"" type=""submit""><span class=""ms sm"">manage_accounts</span> Set</button></form></td>")
+                ' The shell form flattens every row's fields into one post, so the
+                ' select and the button both carry this row's id: the button is the
+                ' discriminator, the select is named role_<id> so the handler reads
+                ' the row that was actually edited. Each form keeps its own token.
+                ' STAR:DOM is a single-owner brand. Only the store owner may hold
+                ' ADMIN; the rest of the table is customers, so the role cell is read-only.
+                If u.Id = STAR_DOM.Helpers.Session.CurrentUser.Id Then
+                    sb.Append("<td><form method=""post"" style=""display:flex;gap:6px"">" &
+                              STAR_DOM.Web.Csrf.HiddenField() &
+                              "<select name=""role_" & u.Id.ToString() & """ style=""padding:5px;border:1px solid var(--line);border-radius:7px"">")
+                    For Each r As Role In _users.GetRoles().Where(Function(x) x.Name = "CUSTOMER" OrElse x.Name = "ADMIN")
+                        Dim sel As String = If(String.Equals(r.Name, u.DisplayRoleName, StringComparison.OrdinalIgnoreCase), " selected", "")
+                        sb.Append("<option value=""" & WebUi.Esc(r.Name) & """" & sel & ">" & WebUi.Esc(r.Name) & "</option>")
+                    Next
+                    sb.Append("</select><button class=""btn ghost sm"" type=""submit"" name=""setrole"" value=""" & u.Id.ToString() & """><span class=""ms sm"">manage_accounts</span> Set</button></form></td>")
+                Else
+                    sb.Append("<td><span class=""pill yellow"">" & WebUi.Esc(u.DisplayRoleName) & "</span></td>")
+                End If
                 sb.Append("<td class=""rowact"">")
                 If u.Id <> STAR_DOM.Helpers.Session.CurrentUser.Id Then
                     If u.Status = "ACTIVE" Then

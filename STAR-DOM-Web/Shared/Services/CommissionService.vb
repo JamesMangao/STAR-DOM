@@ -278,10 +278,21 @@ Namespace STAR_DOM.Services
                                                     CommissionStatuses.Paid, Session.DisplayName,
                                                     "Payment confirmed (ref " & cm.PaymentReference & ")")
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            ' Auto-start production once payment is confirmed.
+            Dim prodErr As String = _repo.UpdateStatus(commissionId, CommissionStatuses.Paid,
+                                                       CommissionStatuses.InProduction, Session.DisplayName,
+                                                       "Production started automatically after payment confirmation")
+            If prodErr IsNot Nothing Then
+                ' Payment was confirmed but production couldn't start — rollback the status
+                ' so the commission doesn't get stuck in PAID with no way forward.
+                _repo.UpdateStatus(commissionId, CommissionStatuses.InProduction, CommissionStatuses.Paid, Session.DisplayName, "Production start failed, payment status reverted")
+                Db.LogError("CommissionService.ConfirmPayment", New Exception("Production start failed after payment confirm: " & prodErr))
+                Return ServiceResult.Fail("Payment confirmed but production could not start. Please try again or contact support.")
+            End If
             _notif.Notify(cm.CustomerId, "Payment confirmed – " & cm.CommissionNumber,
                           "Your payment (ref " & cm.PaymentReference & ") is confirmed. Production is starting.",
                           "COMMISSION", "commission-hub")
-            Return ServiceResult.Ok("Payment confirmed. Production can begin.")
+            Return ServiceResult.Ok("Payment confirmed. Production is now in progress.")
         End Function
 
         ''' <summary>
@@ -329,12 +340,86 @@ Namespace STAR_DOM.Services
             Return MerchantTransition(commissionId, CommissionStatuses.Paid, CommissionStatuses.InProduction, "Production started")
         End Function
 
-        Public Function RequestRevision(commissionId As Integer) As ServiceResult
-            Return MerchantTransition(commissionId, CommissionStatuses.InProduction, CommissionStatuses.Revision, "Revision requested")
+        ''' <summary>
+        ''' The studio hands the current work over for review: a photo of the piece
+        ''' (uploaded by the page) plus notes, and the commission moves to REVISION
+        ''' where the customer can see it. Work only leaves IN PRODUCTION this way —
+        ''' there is deliberately no direct Finalize at this point, because the
+        ''' customer has not approved anything yet.
+        '''
+        ''' Allowed from IN PRODUCTION and from REVISION itself, so the studio can
+        ''' re-send the photo when a legacy row sits in REVISION without one.
+        ''' </summary>
+        Public Function SendWorkForReview(commissionId As Integer) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
+            If Not (String.Equals(cm.Status, CommissionStatuses.InProduction, StringComparison.OrdinalIgnoreCase) OrElse
+                    String.Equals(cm.Status, CommissionStatuses.Revision, StringComparison.OrdinalIgnoreCase)) Then
+                Return ServiceResult.Fail("Only a commission in production can be sent for review.")
+            End If
+            Return MerchantTransition(commissionId, cm.Status, CommissionStatuses.Revision,
+                                      "Sent to the customer for review")
         End Function
 
+        ''' <summary>
+        ''' The customer reviewed the photo and wants changes. The notes come back to
+        ''' the studio and the commission returns to IN PRODUCTION: the studio reworks
+        ''' it, then sends it for review again. This is the loop the customer drives
+        ''' until they are satisfied.
+        ''' </summary>
+        Public Function RequestRevisionChanges(commissionId As Integer, notes As String) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            If cm.CustomerId <> Session.CurrentUser.Id Then Return ServiceResult.Fail("Not your commission.")
+            If Not String.Equals(cm.Status, CommissionStatuses.Revision, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Fail("There is no work waiting for your review.")
+            End If
+            Dim note As String = If(notes, "").Trim()
+            If note = "" Then Return ServiceResult.Fail("Please describe the changes you want.")
+
+            _repo.AppendCustomerNote(commissionId, note)
+            Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.Revision,
+                                                   CommissionStatuses.InProduction, Session.DisplayName,
+                                                   "Customer requested a revision: " & note)
+            If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            _notif.Notify(cm.MerchantId, "Revision requested – " & cm.CommissionNumber,
+                          Session.DisplayName & " wants changes: " & note &
+                          " — rework the piece and send it for review again.",
+                          "COMMISSION", "commission-pipeline")
+            Return ServiceResult.Ok("Revision sent. The studio will rework it and send it back for review.")
+        End Function
+
+        ''' <summary>
+        ''' The customer is satisfied and asks the studio to finish. This is the ONLY
+        ''' path to FINALIZE REQUESTED, and the studio can only finalize from there —
+        ''' so the work is never closed without the customer saying so.
+        ''' </summary>
+        Public Function RequestFinalize(commissionId As Integer) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            If cm.CustomerId <> Session.CurrentUser.Id Then Return ServiceResult.Fail("Not your commission.")
+            If Not String.Equals(cm.Status, CommissionStatuses.Revision, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Fail("Review the work first — this is only available while a review is open.")
+            End If
+            Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.Revision,
+                                                   CommissionStatuses.FinalizeRequested, Session.DisplayName,
+                                                   "Customer approved the work and requested finalization")
+            If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            _notif.Notify(cm.MerchantId, "Finalization requested – " & cm.CommissionNumber,
+                          Session.DisplayName & " approved the work. Finalize it and send it to delivery.",
+                          "COMMISSION", "commission-pipeline")
+            Return ServiceResult.Ok("Finalization requested. The studio will finalize and deliver your commission.")
+        End Function
+
+        ''' <summary>
+        ''' The studio closes the work the customer already approved. Gated on
+        ''' FINALIZE REQUESTED so a commission can never be finalized while the
+        ''' customer is still reviewing it.
+        ''' </summary>
         Public Function FinalizeWork(commissionId As Integer) As ServiceResult
-            Return MerchantTransition(commissionId, CommissionStatuses.InProduction, CommissionStatuses.Finalized, "Work finalized")
+            Return MerchantTransition(commissionId, CommissionStatuses.FinalizeRequested,
+                                      CommissionStatuses.Finalized, "Work finalized")
         End Function
 
         ''' <summary>
@@ -388,6 +473,46 @@ Namespace STAR_DOM.Services
                           Session.DisplayName & " confirmed your commission arrived. Enjoy!",
                           "COMMISSION", "commission-pipeline")
             Return ServiceResult.Ok("Thanks for confirming! Enjoy your art.")
+        End Function
+
+        ''' <summary>
+        ''' Update the commission's additional notes. Useful for appending revision notes.
+        ''' </summary>
+        Public Function UpdateCommissionNotes(commissionId As Integer, notes As String) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            If Not CanManageCommission(cm) AndAlso cm.CustomerId <> Session.CurrentUser.Id Then
+                Return ServiceResult.Fail("Not authorized.")
+            End If
+            _repo.UpdateCommissionNotes(commissionId, notes)
+            Return ServiceResult.Ok("Notes updated.")
+        End Function
+
+        ''' <summary>
+        ''' Add reference images to a commission. Used for revision uploads.
+        ''' </summary>
+        Public Function AddReferenceImages(commissionId As Integer, images As List(Of (file As String, name As String, kb As Integer))) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            If Not CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
+            Dim sort As Integer = cm.ReferenceCount
+            For Each img In images
+                _repo.AddReferenceImage(commissionId, img.file, img.name, img.kb, sort)
+                sort += 1
+            Next
+            Return ServiceResult.Ok("Reference images added.")
+        End Function
+
+        ''' <summary>
+        ''' Update commission status directly. Used when transitioning within same status
+        ''' but with a new note (e.g., revision).
+        ''' </summary>
+        Public Function UpdateStatus(commissionId As Integer, toStatus As String, changedBy As String, note As String) As ServiceResult
+            Dim cm As Commission = _repo.GetById(commissionId)
+            If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
+            Dim err As String = _repo.UpdateStatus(commissionId, "", toStatus, changedBy, note)
+            If err IsNot Nothing Then Return ServiceResult.Fail(err)
+            Return ServiceResult.Ok("Commission updated.")
         End Function
 
         Private Function MerchantTransition(commissionId As Integer, fromStatus As String, toStatus As String, note As String) As ServiceResult

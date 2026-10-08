@@ -32,11 +32,23 @@ Namespace STAR_DOM.Web
                 ' Payment is a POST with password re-entry (plus the e-wallet reference
                 ' for GCash/GOtyme) — never a plain GET link. This only SUBMITS the
                 ' payment: the studio verifies the reference before the order is PAID.
+                ' Pick the channel first, on its own POST. This is what makes the QR
+                ' appear: the pay form below is only rendered once a channel is set,
+                ' so the customer always sees a GCash/GOtyme QR before paying.
+                '
+                ' The pay step is checked FIRST. Site.master wraps the page in one
+                ' shell <form>, so the chooser/change forms render their fields
+                ' alongside the pay form and a single click publishes all of them.
+                ' Discriminators therefore ride on the pressed submit button, which
+                ' is the only control the browser sends — a hidden "chooseMethod"
+                ' next to the pay form used to reset the wallet on every payment
+                ' attempt instead of submitting it.
                 If Guard.IsPost() AndAlso Request.Form("payOrder") = o.Id.ToString() Then
-                    ' The channel is chosen here, not at checkout, so record it before
-                    ' submitting: SubmitPayment reads the order row for the brand and
-                    ' whether a reference number is required.
-                    Dim picked As String = Convert.ToString(Request.Form("payMethod")).Trim().ToUpperInvariant()
+                    ' The channel is chosen in its own step above, so the order already
+                    ' carries GCash or GOtyme by the time we get here. Null-safe Trim: on
+                    ' Mono Convert.ToString(Nothing) can hand back Nothing, and .Trim()
+                    ' on that threw "Object reference not set" out of this page.
+                    Dim picked As String = Trim(Convert.ToString(Request.Form("payMethod"))).ToUpperInvariant()
                     If picked = "GCASH" OrElse picked = "GOTYME" Then
                         Dim pickResult As ServiceResult = _orders.ChoosePaymentMethod(o.Id, picked)
                         If Not pickResult.Success Then
@@ -45,10 +57,24 @@ Namespace STAR_DOM.Web
                             Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
                         End If
                     End If
-                    Dim r As ServiceResult = _orders.SubmitPayment(o.OrderNumber, Request.Form("payRef"), Request.Form("payPassword"))
+                    Dim r As ServiceResult = _orders.SubmitPayment(o.OrderNumber, Convert.ToString(Request.Form("payRef")), Convert.ToString(Request.Form("payPassword")))
                     Session("flash_msg") = r.Message
                     Session("flash_ok") = r.Success
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
+                End If
+                If Guard.IsPost() AndAlso Request.Form("chooseMethod") = "1" AndAlso isOwner Then
+                    If Trim(Convert.ToString(Request.Form("payMethod"))).ToUpperInvariant() = "CHANGE" Then
+                        _orders.ResetPaymentMethod(o.Id)
+                        Session("flash_msg") = "Choose a payment method to continue."
+                        Session("flash_ok") = True
+                        Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
+                    End If
+                    Dim pickResult As ServiceResult = _orders.ChoosePaymentMethod(o.Id, Trim(Convert.ToString(Request.Form("payMethod"))))
+                    Session("flash_msg") = pickResult.Message
+                    Session("flash_ok") = pickResult.Success
+                    ' Open the QR popup on the way back so the customer scans right away.
+                    Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString() &
+                                      If(pickResult.Success, "&qr=1", ""), True)
                 End If
                 ' Customer confirms the parcel landed.
                 If Guard.IsPost() AndAlso Request.Form("receivedOrder") = o.Id.ToString() Then
@@ -57,11 +83,28 @@ Namespace STAR_DOM.Web
                     Session("flash_ok") = r2.Success
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
                 End If
-                If Request.QueryString("cancel") = "1" Then
+                If Guard.IsPost() AndAlso Request.Form("cancelOrder") = o.Id.ToString() Then
                     Dim r3 As ServiceResult = _orders.UpdateOrderState(o.Id, "CANCELLED")
                     Session("flash_msg") = r3.Message
                     Session("flash_ok") = r3.Success
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
+                End If
+                ' Studio verifies or declines the reference the customer submitted.
+                ' The card lives on THIS page and the shell form drops nested action
+                ' attributes, so the old post to the merchant console came straight
+                ' back here and did nothing — handle it here instead.
+                If Guard.IsPost() AndAlso STAR_DOM.Helpers.Session.CanManageStore Then
+                    Dim sfx As String = "_" & o.Id.ToString()
+                    If Request.Form("act_pay" & sfx) = "1" OrElse Request.Form("act_decline" & sfx) = "1" Then
+                        Dim pw5 As String = Convert.ToString(Request.Form("pw" & sfx))
+                        Dim r5 As ServiceResult =
+                            If(Request.Form("act_pay" & sfx) = "1",
+                               _orders.ConfirmPayment(o.Id, pw5),
+                               _orders.DenyPayment(o.Id, pw5))
+                        Session("flash_msg") = r5.Message
+                        Session("flash_ok") = r5.Success
+                        Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
+                    End If
                 End If
 
                 Render(o, isOwner)
@@ -69,13 +112,21 @@ Namespace STAR_DOM.Web
                 ' Response.Redirect(url, True) raises this by design once the redirect
                 ' is already committed. Let it re-raise — the redirect must stand.
             Catch ex As Exception
-                Out.Text = WebUi.AlertBox("Could not load the order: " & ex.Message)
+                STAR_DOM.Database.Db.LogError("OrderDetail", ex)
+                Out.Text = WebUi.AlertBox("Could not load the order: " & ex.Message) &
+                           "<p class=""sub"" style=""margin-top:10px""><a href=""/App/Orders.aspx"">Back to My Orders</a></p>"
             End Try
         End Sub
 
         Private Function ResolveOrder() As Order
             Dim idParam As String = Trim(Convert.ToString(Request.QueryString("id")))
-            If idParam = "" Then idParam = Trim(Convert.ToString(Request.Form("id")))
+            If idParam = "" Then
+                ' Several forms post from this page, so "id" can arrive once per
+                ' form (Request.Form joins duplicates into "5,5", which no parser
+                ' accepts). Take the first value; the forms all carry the same one.
+                Dim ids As String() = Request.Form.GetValues("id")
+                If ids IsNot Nothing AndAlso ids.Length > 0 Then idParam = Trim(Convert.ToString(ids(0)))
+            End If
             If idParam.StartsWith("SD-", StringComparison.OrdinalIgnoreCase) Then
                 Return _orders.GetOrderByNumber(idParam)
             End If
@@ -136,7 +187,11 @@ Namespace STAR_DOM.Web
             ' amount due, so offering a channel would collect the wrong figure.
             ' SUBMITTED is also closed: the reference is already in the studio's
             ' hands and re-submitting would only create duplicates to verify.
-            Dim canPay As Boolean = (quoted AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
+            ' Paying is a CUSTOMER action only. Without isOwner here the merchant
+            ' viewing this page was shown the customer's "Confirm & I've Paid" form,
+            ' which is exactly the wrong page for the studio (and there is nothing
+            ' for staff to do with it).
+            Dim canPay As Boolean = (isOwner AndAlso quoted AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
                                      o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED")
             Dim canMarkReceived As Boolean = (isOwner AndAlso o.Status = "DELIVERED")
             ' Reviews open the moment the customer confirms the parcel arrived — that is
@@ -182,7 +237,30 @@ Namespace STAR_DOM.Web
                     sb.Append(WebUi.NoCancelNote("this order"))
                     sb.Append("</div>")
                 End If
-                If canPay Then
+                Dim chosen As String = If(o.PaymentMethod, "").Trim().ToUpperInvariant()
+                Dim channelChosen As Boolean = (chosen = "GCASH" OrElse chosen = "GOTYME")
+                If canPay AndAlso Not channelChosen Then
+                    ' Phase 1 — choose the wallet first. The order is parked as PENDING
+                    ' until this point, so the customer picks GCash or GOtyme here and
+                    ' the page returns with that wallet's QR already open.
+                    Dim ps1 As New PaymentSettingRepository()
+                    sb.Append("<div class=""card"" style=""border:1.5px solid var(--line);border-radius:14px;padding:16px"">")
+                    sb.Append("<h3 style=""margin:0 0 6px;font-size:15px"">" & WebUi.Ic("payments", "sm") & " Choose how to pay</h3>")
+                    sb.Append("<p class=""sub"" style=""margin:0 0 12px;font-size:12px"">Pick GCash or GOtyme — we'll show the official QR so you can scan and pay.</p>")
+                    sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:flex;flex-direction:column;gap:12px"">")
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                    sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
+                    sb.Append("<label style=""display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"">Payment method *</label>")
+                    sb.Append("<select name=""payMethod"" required style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink);outline:none"">")
+                    sb.Append("<option value="""">Choose a payment method…</option>")
+                    If ps1.IsChannelEnabled(PaymentSettingRepository.Gcash) Then sb.Append("<option value=""GCASH"">GCash</option>")
+                    If ps1.IsChannelEnabled(PaymentSettingRepository.Gotyme) Then sb.Append("<option value=""GOTYME"">GOtyme</option>")
+                    sb.Append("</select>")
+                    sb.Append("<button class=""btn primary"" type=""submit"" name=""chooseMethod"" value=""1"" style=""padding:10px 20px;border-radius:10px;font-weight:700;display:inline-flex;align-items:center;gap:8px""><span class=""ic ms"">qr_code_2</span><span>Show QR &amp; pay</span></button>")
+                    sb.Append("</form>")
+                    sb.Append(WebUi.NoCancelNote("this order"))
+                    sb.Append("</div>")
+                ElseIf canPay Then
                     Dim brandName As String = WebUi.ChannelBrand(method)
                     Dim brandTitle As String = brandName & " Payment Verification"
                     Dim brandColor As String = WebUi.ChannelColor(method)
@@ -194,28 +272,15 @@ Namespace STAR_DOM.Web
                     sb.Append("<span class=""badge warn"" style=""font-size:10px"">Payment Pending</span>")
                     sb.Append("</div>")
                     sb.Append("<p class=""sub"" style=""margin:0 0 14px;font-size:12px;line-height:1.4"">Enter the official reference number from your " & WebUi.Esc(brandName) & " receipt and your account password to confirm payment.</p>")
-                    ' Reopen the Scan to Pay popup — the order is already placed here, so
-                    ' the customer may still need the QR or the account number.
-                    sb.Append("<button type=""button"" class=""btn ghost sm"" onclick=""window.openQrPayModal && window.openQrPayModal()"" style=""margin-bottom:14px""><span class=""ms sm"">qr_code_2</span><span>Scan to Pay / show QR again</span></button>")
+                    ' Scan to Pay button: only show for e-wallet orders where the QR modal is available.
+                    ' For non-e-wallet orders, the reference field is right in the form below — no QR needed.
+                    If isEWallet Then
+                        sb.Append("<button type=""button"" class=""btn ghost sm"" onclick=""window.openQrPayModal()"" style=""margin-bottom:14px""><span class=""ms sm"">qr_code_2</span><span>Scan to Pay / show QR again</span></button>")
+                    End If
 
                     sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:flex;flex-direction:column;gap:12px"">")
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
-                    sb.Append("<input type=""hidden"" name=""payOrder"" value=""" & o.Id.ToString() & """>")
-
-                    ' Channel chooser. The order was placed with PaymentMethod
-                    ' "PENDING" because the studio quotes first, so if no real
-                    ' channel is stored yet the customer picks it here.
-                    Dim chosen As String = If(o.PaymentMethod, "").Trim().ToUpperInvariant()
-                    If chosen <> "GCASH" AndAlso chosen <> "GOTYME" Then
-                        Dim ps As New PaymentSettingRepository()
-                        sb.Append("<div style=""margin-bottom:12px""><label style=""display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"">Payment method *</label>")
-                        sb.Append("<select name=""payMethod"" required style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink);outline:none"">")
-                        sb.Append("<option value="""">Choose a payment method…</option>")
-                        If ps.IsChannelEnabled(PaymentSettingRepository.Gcash) Then sb.Append("<option value=""GCASH"">GCash</option>")
-                        If ps.IsChannelEnabled(PaymentSettingRepository.Gotyme) Then sb.Append("<option value=""GOTYME"">GOtyme</option>")
-                        sb.Append("</select></div>")
-                    End If
 
                     sb.Append("<div style=""display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px"">")
                     ' Reference Input
@@ -229,9 +294,17 @@ Namespace STAR_DOM.Web
 
                     sb.Append("<div style=""display:flex;align-items:center;justify-content:space-between;margin-top:4px;gap:8px;flex-wrap:wrap"">")
                     sb.Append("<span style=""font-size:11.5px;color:var(--ink-soft)"">Security verification for fast merchant approval</span>")
-                    sb.Append("<button class=""btn primary"" type=""submit"" style=""padding:10px 20px;border-radius:10px;font-weight:700;display:inline-flex;align-items:center;gap:8px;box-shadow:var(--sh-1)""><span class=""ic ms"">check_circle</span><span>Confirm &amp; I've Paid</span></button>")
+                    sb.Append("<button class=""btn primary"" type=""submit"" name=""payOrder"" value=""" & o.Id.ToString() & """ style=""padding:10px 20px;border-radius:10px;font-weight:700;display:inline-flex;align-items:center;gap:8px;box-shadow:var(--sh-1)""><span class=""ic ms"">check_circle</span><span>Confirm &amp; I've Paid</span></button>")
                     sb.Append("</div>")
-                    sb.Append("</form></div>")
+                    sb.Append("</form>")
+                    ' Let the customer switch wallets before submitting a reference.
+                    sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""margin-top:10px"">")
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                    sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
+                    sb.Append("<input type=""hidden"" name=""payMethod"" value=""CHANGE"">")
+                    sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""chooseMethod"" value=""1""><span class=""ms sm"">swap_horiz</span> Change payment method</button>")
+                    sb.Append("</form>")
+                    sb.Append("</div>")
                     sb.Append(WebUi.NoCancelNote("this order"))
                     ' If the reference number was rejected the customer needs a human,
                     ' not just a red flash that disappears on the next page load.
@@ -244,8 +317,7 @@ Namespace STAR_DOM.Web
                     sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:inline-flex"">")
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
-                    sb.Append("<input type=""hidden"" name=""receivedOrder"" value=""" & o.Id.ToString() & """>")
-                    sb.Append("<button class=""btn primary"" type=""submit"" data-confirm=""Confirm this order has arrived?""><span class=""ic ms"">task_alt</span><span>Mark as received</span></button>")
+                    sb.Append("<button class=""btn primary"" type=""submit"" name=""receivedOrder"" value=""" & o.Id.ToString() & """ data-confirm=""Confirm this order has arrived?""><span class=""ic ms"">task_alt</span><span>Mark as received</span></button>")
                     sb.Append("</form>")
                 End If
 
@@ -254,8 +326,12 @@ Namespace STAR_DOM.Web
                 End If
 
                 If canCancel Then
-                    sb.Append("<div><a class=""btn danger"" href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() &
-                              "&cancel=1"" data-confirm=""Cancel this order?"" data-confirm-danger"" style=""border-radius:10px;padding:8px 16px""><span class=""ic ms"">cancel</span><span>Cancel Order</span></a></div>")
+                    sb.Append("<div><form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:inline-flex"">")
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                    sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
+                    sb.Append("<button class=""btn danger"" type=""submit"" name=""cancelOrder"" value=""" & o.Id.ToString() &
+                              """ data-confirm=""Cancel this order?"" data-confirm-danger"" style=""border-radius:10px;padding:8px 16px""><span class=""ic ms"">cancel</span><span>Cancel Order</span></button>")
+                    sb.Append("</form></div>")
                 End If
                 sb.Append("</div>")
             End If
@@ -339,10 +415,25 @@ Namespace STAR_DOM.Web
             ' primary button only closes the popup and focuses the reference field.
             ' The customer reopens it with the "Scan to Pay" button in the card above.
             ' Hidden once the payment is SUBMITTED: there is nothing left to pay.
-            If isEWallet AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
+            ' Only the buyer gets it -- staff do not pay for a customer's order.
+            If isOwner AndAlso isEWallet AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
                 o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
                 Dim ps As PaymentSetting = New PaymentSettingRepository().GetByChannel(method)
-                sb.Append(WebUi.QrPaymentModal(ps, method, o.TotalAmount, False, False))
+                ' The page must never render a popup with no settings row behind it.
+                If ps Is Nothing Then ps = New PaymentSettingRepository().GetByChannel(PaymentSettingRepository.Gcash)
+                If ps IsNot Nothing Then
+                    ' Open straight away when we just came back from choosing the
+                    ' channel (?qr=1) so the customer scans without a second click.
+                    Dim openNow As Boolean = (Trim(Convert.ToString(Request.QueryString("qr"))) = "1")
+                    sb.Append(WebUi.QrPaymentModal(ps, method, o.TotalAmount, openNow, False))
+                End If
+            End If
+
+            ' Studio-side payment verification, shown when staff open an order that has a
+            ' submitted reference waiting. This is what the merchant console's View link lands on.
+            If STAR_DOM.Helpers.Session.CanManageStore AndAlso
+               o.PaymentStatus = "SUBMITTED" AndAlso o.Status <> "CANCELLED" Then
+                sb.Append(StudioVerifyCard(o, method))
             End If
 
             Out.Text = sb.ToString()
@@ -351,6 +442,43 @@ Namespace STAR_DOM.Web
 
         Private Function DisplayPay(pm As String) As String
             Return WebUi.ChannelBrand(pm)
+        End Function
+
+        ''' <summary>
+        ''' Merge-verification card for staff viewing a customer's order: the
+        ''' reference the customer submitted, read-only, plus the password needed to
+        ''' confirm or decline. It posts back to this page (the shell form drops
+        ''' nested action attributes), where Page_Load runs the same
+        ''' ConfirmPayment/DenyPayment calls the merchant console uses.
+        ''' </summary>
+        Private Function StudioVerifyCard(o As Order, method As String) As String
+            Dim brand As String = PaymentSetting.DisplayName(method)
+            If brand = "" OrElse brand = "PENDING" OrElse brand = "UNPAID" Then brand = "Payment"
+            Dim subRef As String = ""
+            For Each pay As Payment In _orders.PaymentsForOrder(o.Id)
+                If pay.Status = "SUBMITTED" Then
+                    subRef = pay.ReferenceNumber
+                    Exit For
+                End If
+            Next
+            Dim sb As New StringBuilder()
+            sb.Append("<div class=""card"" style=""border-color:#eec200;background:var(--yellow-soft);margin-top:16px"">")
+            sb.Append("<b style=""display:block;margin-bottom:6px"">" & WebUi.Ic("verified_user", "sm") & " Payment verification (studio)</b>")
+            sb.Append("<p class=""sub"" style=""margin:0 0 10px;color:var(--ink)"">Check the " & WebUi.Esc(brand) &
+                      " reference against your records, then confirm or decline it with your password.</p>")
+            sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"">")
+            sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+            sb.Append("<div class=""field"" style=""margin:0""><label>Reference submitted (" & WebUi.Esc(brand) & ")</label>")
+            sb.Append("<input value=""" & WebUi.Attr(subRef) & """ readonly></div>")
+            sb.Append("<div class=""field"" style=""margin:0""><label>Your password *</label>")
+            sb.Append("<input name=""pw_" & o.Id.ToString() & """ type=""password"" placeholder=""Re-enter to verify"" autocomplete=""current-password""></div>")
+            sb.Append("<button class=""btn primary"" type=""submit"" name=""act_pay_" & o.Id.ToString() & """ value=""1"" data-confirm=""Confirm this payment as received? An official receipt will be issued."">" &
+                      "<span class=""ic ms"">payments</span><span>Confirm payment</span></button>")
+            sb.Append("<button class=""btn danger"" type=""submit"" name=""act_decline_" & o.Id.ToString() & """ value=""1"" data-confirm=""Decline this payment? The customer will be notified."" data-confirm-danger"">" &
+                      "<span class=""ic ms"">cancel</span><span>Decline</span></button>")
+            sb.Append("</form>")
+            sb.Append("</div>")
+            Return sb.ToString()
         End Function
 
         ''' <summary>

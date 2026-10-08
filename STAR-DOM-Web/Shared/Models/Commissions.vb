@@ -91,6 +91,8 @@ Namespace STAR_DOM.Models
         Public ReadOnly Property DeliveryStatusLine As String
             Get
                 Select Case If(Status, "").ToUpperInvariant()
+                    Case "FINALIZE REQUESTED"
+                        Return "You approved the work — waiting for the studio to finalize it."
                     Case "FINALIZED"
                         Return "Your commission is finished and waiting to be delivered."
                     Case "DELIVERED"
@@ -144,7 +146,17 @@ Namespace STAR_DOM.Models
         Public Const Paid As String = "PAID"
         Public Const PaymentDeclined As String = "PAYMENT DECLINED"
         Public Const InProduction As String = "IN PRODUCTION"
+        ''' <summary>
+        ''' The studio sent the current work to the customer for review. The customer
+        ''' can ask for another revision (back to IN PRODUCTION) or approve it and
+        ''' request finalization (FINALIZE REQUESTED).
+        ''' </summary>
         Public Const Revision As String = "REVISION"
+        ''' <summary>
+        ''' The customer reviewed the work, is satisfied, and asked the studio to
+        ''' finalize it. Only from here may the studio press Finalize Work.
+        ''' </summary>
+        Public Const FinalizeRequested As String = "FINALIZE REQUESTED"
         Public Const Finalized As String = "FINALIZED"
         Public Const Delivered As String = "DELIVERED"
         Public Const Received As String = "RECEIVED"
@@ -155,7 +167,7 @@ Namespace STAR_DOM.Models
         Public ReadOnly Property All As String() = {
             Submitted, PendingReview, Accepted, OfferSent,
             CustomerConfirmed, PaymentPending, Paid, PaymentDeclined, InProduction, Revision,
-            Finalized, Delivered, Received, Completed, Declined, Cancelled
+            FinalizeRequested, Finalized, Delivered, Received, Completed, Declined, Cancelled
         }
     End Module
 

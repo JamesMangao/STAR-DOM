@@ -30,7 +30,8 @@ Namespace STAR_DOM.Services
         End Function
 
         Public Sub MarkRead(nid As Integer)
-            _repo.MarkRead(nid)
+            If Not Session.IsAuthenticated Then Return
+            _repo.MarkRead(nid, Session.CurrentUser.Id)
         End Sub
 
         Public Sub MarkAllRead()
@@ -38,7 +39,8 @@ Namespace STAR_DOM.Services
         End Sub
 
         Public Sub Delete(nid As Integer)
-            _repo.Delete(nid)
+            If Not Session.IsAuthenticated Then Return
+            _repo.Delete(nid, Session.CurrentUser.Id)
         End Sub
 
     End Class

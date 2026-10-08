@@ -45,7 +45,9 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request Custom Commission", "ghost", "draw"))
             sb.Append("</div>")
             Dim rep As New ReportService()
-            Dim totalSalesVol As Decimal = rep.EventRevenueTotal() + rep.RevenueTotal()
+            ' RevenueTotal already spans paid orders and event takings, so adding
+            ' EventRevenueTotal here would count every booth sale twice.
+            Dim totalSalesVol As Decimal = rep.RevenueTotal()
             Dim formattedVol As String = If(totalSalesVol >= 1000D, "₱" & (totalSalesVol / 1000D).ToString("0.#") & "K+", "₱" & totalSalesVol.ToString("N0"))
 
             sb.Append("<div class=""grid kpis"" style=""grid-template-columns:repeat(3,minmax(130px,1fr));max-width:600px;margin:20px 0 0"">")

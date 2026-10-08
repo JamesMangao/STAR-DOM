@@ -462,13 +462,20 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl tr:hover td { background: #fffaf3; }
 .tbl .rowact { white-space: nowrap; }
 .tbl .rowact a { margin-right: 10px; font-weight: 700; color: var(--primary); font-size: 12.5px; }
+/* Row actions that change state are small POST forms, not links: the button has to
+   look exactly like the link it replaced (spacing, weight, size). */
+.tbl .rowact button { margin-right: 10px; font-weight: 700; font-size: 12.5px; }
 
 /* ---------- orders & payments table (merchant console) ----------
    The rows carry several small forms (quote shipping, book J&T, confirm a
    payment), so the actions column needs its own width and each form needs to
    wrap tidily. Without this the inputs stacked on top of each other and the
-   helper text under the fee form spilled outside the table. */
-.tbl-orders { min-width: 1060px; }
+   helper text under the fee form spilled outside the table.
+   --act-panel-h is the measured height of the tallest ACTIONS panel (the payment
+   verification form: two fields, the confirm/decline pair, two hint lines =
+   270.5px, +2px slack): every panel in the column is stretched to it, so the
+   rows line up instead of stepping down the right-hand edge of the table. */
+.tbl-orders { min-width: 1060px; --act-panel-h: 274px; }
 .tbl-orders td, .tbl-orders th { padding: 10px 12px; }
 .tbl-orders .ord-no {
   font-family: var(--font-mono); font-size: 12.5px; font-weight: 700;
@@ -547,6 +554,29 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
    lines the digits up against each other. */
 .act-fields .i-track, .act-fields .i-ref { font-family: var(--font-mono); font-size: 12px; letter-spacing: .01em; }
 
+/* Single-field panels (for example the J&T tracking box) read as a heavy blank
+   block under the 274px stretch, so compress their padding and field/button
+   spacing a touch. The panel still reaches the same min-height as the rest of
+   the column, but the empty space is taken out of the inside, not the gap
+   between rows. */
+.act-fields.act-jnt {
+  padding: 9px 11px 10px;
+  gap: 6px;
+}
+.act-fields.act-jnt .act-label {
+  font-size: 9px;
+  letter-spacing: .07em;
+}
+.act-fields.act-jnt .i-track {
+  padding: 7px 9px;
+  font-size: 11.5px;
+}
+.act-fields.act-jnt .btn.sm {
+  padding: 7px 10px;
+  font-size: 11px;
+  margin-top: 0;
+}
+
 .act-fields .btn.sm {
   margin-top: 2px; width: 100%; justify-content: center;
   border-radius: 9px; padding: 9px 12px;
@@ -555,6 +585,29 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 }
 .act-fields .btn.sm:hover { transform: translateY(-1px); }
 .act-fields .btn.sm:active { transform: translateY(0); }
+/* Confirm and Decline share one row: stacked, that pair was the tallest panel
+   in the column and every other row had to grow to match it. The label is set
+   a touch smaller so each button still fits on one line at this cell width. */
+.act-fields .act-btnrow { display: flex; gap: 8px; align-items: stretch; }
+.act-fields .act-btnrow .btn.sm {
+  flex: 1 1 0; width: auto; min-width: 0;
+  padding: 9px 6px; font-size: 10.5px;
+}
+/* The column is only straight if every cell holds one panel: stretch the short
+   ones (hints, state notes, the tracking box) to the tallest and centre what is
+   left, so a half-empty panel reads as a deliberate pause rather than a gap.
+   The stack itself stretches too: with align-items:flex-start it hugged its
+   content, so a one-field tracking box came out 211px wide in a 278px cell and
+   the panel width tracked whatever the row happened to contain. */
+.tbl-orders .act-stack { align-items: stretch; }
+.tbl-orders .act-fields {
+  /* Allow each panel to be its natural height; the tallest panel (payment
+     verification form) is stretched below via .act-fields.act-vfy. */
+}
+.tbl-orders .act-fields.act-vfy {
+  min-height: var(--act-panel-h);
+  justify-content: center;
+}
 
 .act-hint {
   font-size: 11px; color: var(--ink-soft); line-height: 1.45;
@@ -564,6 +617,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .act-links a { font-weight: 700; color: var(--primary); font-size: 12.5px; }
 .act-links a.danger-link { color: var(--ink-soft); }
 .act-links a.danger-link:hover { color: var(--primary); }
+/* Advance/Cancel are POST buttons (the handlers require a post), so they have to
+   render exactly like the links they replaced. */
+.act-links button { font-weight: 700; color: var(--primary); font-size: 12.5px; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+.act-links button.danger-link { color: var(--ink-soft); }
+.act-links button.danger-link:hover { color: var(--primary); }
 .act-waiting { font-size: 11px; color: var(--ink-soft); font-style: italic; }
 
 /* payments ledger: keep the reference and date on one line each */

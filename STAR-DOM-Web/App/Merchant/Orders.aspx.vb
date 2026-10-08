@@ -73,10 +73,13 @@ Namespace STAR_DOM.Web
                     Response.Redirect("/App/Merchant/Orders.aspx", True)
                 End If
 
-                ' ----- GET actions ----------------------------------------------
-                If Request.QueryString("advance") <> "" Then
+                ' ----- row actions (all POST: these change state) -------------------
+                ' The handlers require Guard.IsPost, so the old ?advance/?cancel/
+                ' ?receipt links were GET navigations that never reached them. The
+                ' row id now rides on the pressed button.
+                If Guard.IsPost() AndAlso Request.Form("advance") IsNot Nothing Then
                     Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("advance"), id)
+                    Integer.TryParse(Request.Form("advance"), id)
                     Dim o As Order = _orders.GetOrder(id)
                     If o IsNot Nothing Then
                         Dim nextState As String = MapNextState(o.Status)
@@ -88,9 +91,9 @@ Namespace STAR_DOM.Web
                     End If
                     Response.Redirect("/App/Merchant/Orders.aspx", True)
                 End If
-                If Request.QueryString("cancel") <> "" Then
+                If Guard.IsPost() AndAlso Request.Form("cancel") IsNot Nothing Then
                     Dim id As Integer = 0
-                    Integer.TryParse(Request.QueryString("cancel"), id)
+                    Integer.TryParse(Request.Form("cancel"), id)
                     If id > 0 Then
                         Dim r As ServiceResult = _orders.UpdateOrderState(id, "CANCELLED")
                         Session("flash_msg") = r.Message
@@ -98,9 +101,9 @@ Namespace STAR_DOM.Web
                     End If
                     Response.Redirect("/App/Merchant/Orders.aspx", True)
                 End If
-                If Request.QueryString("receipt") <> "" Then
+                If Guard.IsPost() AndAlso Request.Form("issueReceipt") IsNot Nothing Then
                     Dim pid As Integer = 0
-                    Integer.TryParse(Request.QueryString("receipt"), pid)
+                    Integer.TryParse(Request.Form("issueReceipt"), pid)
                     If pid > 0 Then
                         _orders.IssueReceiptByPaymentId(pid)
                     End If
@@ -216,7 +219,10 @@ Namespace STAR_DOM.Web
                         orLink = "<a href=""/App/Receipt.aspx?p=" & p.Id.ToString() & """><span class=""ms sm"">receipt_long</span> " &
                                  WebUi.Esc(ptr.ReceiptNumber) & "</a>"
                     ElseIf p.Status = "PAID" Then
-                        orLink = "<a href=""/App/Merchant/Orders.aspx?receipt=" & p.Id.ToString() & """><span class=""ms sm"">receipt_long</span> Issue OR</a>"
+                        orLink = "<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
+                                 "<button type=""submit"" name=""issueReceipt"" value=""" & p.Id.ToString() &
+                                 """ style=""background:none;border:0;padding:0;font:inherit;color:var(--primary);cursor:pointer"">" &
+                                 "<span class=""ms sm"">receipt_long</span> Issue OR</button></form>"
                     Else
                         orLink = "<span class=""sub"" style=""font-size:11px"">—</span>"
                     End If
@@ -233,7 +239,7 @@ Namespace STAR_DOM.Web
             Out.Text = sb.ToString()
         End Sub
 
-        ''' <summary>Per-row actions: quote shipping, verify payment, advance status, book J&amp;T, confirm hand-over.</summary>
+        ''' <summary>Per-row actions: one panel for the row's step, then the View link.</summary>
         ''' <remarks>
         ''' The row is a strict sequence, one form at a time, and that is the point:
         ''' every step below asks the merchant to re-enter their password, so rendering
@@ -243,66 +249,149 @@ Namespace STAR_DOM.Web
         '''   2. the payment verification form, once the customer has submitted a
         '''      reference (confirm or decline it with your password);
         '''   3. a waiting hint, while quoted but the customer has not paid yet;
-        '''   4. plain advance links, once paid;
-        '''   5. the J&amp;T booking form, when it is ready to go.
+        '''   4. an advance button, once paid;
+        '''   5. the J&amp;T booking form, when it is ready to go;
+        '''   6. a state note, when the order has nowhere left to go.
+        '''
+        ''' Whatever the step, the cell now gets exactly one .act-fields panel followed
+        ''' by the same one-line View / Payment Details link. It used to be a ~176px
+        ''' quote form on one row, a ~119px tracking box on the next and a bare link on
+        ''' the third, so the ACTIONS column was a staircase and no two rows lined up.
         ''' </remarks>
         Private Sub RenderActions(sb As StringBuilder, o As Order)
             Dim nextState As String = MapNextState(o.Status)
             Dim paid As Boolean = o.PaymentStatus = "PAID"
-
-            sb.Append("<div class=""act-stack"">")
-
-            ' Plain links (advance / cancel / view) collect here and land as one tidy
-            ' row under the forms instead of floating between the inputs.
-            Dim links As New StringBuilder()
-
-            ' A delivery order awaiting a quote: the fee input replaces the CONFIRMED
-            ' link entirely, because there is no honest way to confirm without a number.
             Dim needsQuote As Boolean = NeedsShippingQuote(o)
-            If needsQuote Then
-                sb.Append(RenderShippingQuoteForm(o))
-            ElseIf o.PaymentStatus = "SUBMITTED" Then
-                ' The customer has paid outside the app and handed over the reference;
-                ' this is where the studio checks it and confirms or declines.
-                sb.Append(RenderVerifyPayForm(o))
-            ElseIf CanRecordPayment(o) Then
-                sb.Append("<span class=""act-hint"">Waiting for the customer to submit their payment reference</span>")
-            End If
+            ' True when the panel is built around a real <form>. Advance and cancel
+            ' then ride inside it - one form, one token - instead of bringing their own
+            ' wrapper the way they used to inside .act-links.
+            Dim inForm As Boolean = needsQuote OrElse o.PaymentStatus = "SUBMITTED"
 
-            ' Delivery orders: confirm → prepare → book J&T (with tracking) → delivered.
-            ' The CONFIRMED link is skipped when a quote is still outstanding.
+            ' The rest of the row's story (advance, the J&T box, the "not yet" hints,
+            ' cancel) is collected first so the panel can be closed exactly once,
+            ' whichever shape its front half takes. Two panels in one cell - or none -
+            ' is what made this column ragged.
+            Dim tail As New StringBuilder()
+            Dim jntForm As String = ""
+
+            ' Delivery orders: confirm -> prepare -> book J&T (with tracking) -> delivered.
+            ' The CONFIRMED step is skipped when a quote is still outstanding.
             If nextState <> "" AndAlso nextState <> "SHIPPED" Then
                 If nextState = "CONFIRMED" AndAlso needsQuote Then
-                    ' handled above by RenderShippingQuoteForm
+                    ' handled below by RenderShippingQuoteForm
                 ElseIf nextState = "PROCESSING" AndAlso Not paid Then
                     ' Fulfilment only starts on a confirmed payment. The service layer
                     ' refuses the transition too; this is here so the console says why
                     ' instead of showing a link that silently fails.
-                    sb.Append("<span class=""act-hint"">Confirm the payment before moving this order to processing</span>")
+                    tail.Append(ActHint("Confirm the payment before moving this order to processing"))
                 Else
-                    Dim confirmMsg As String = "Advance this order to " & nextState & "?"
-                    links.Append("<a href=""/App/Merchant/Orders.aspx?advance=" & o.Id.ToString() & """" &
-                                 " data-confirm=""" & WebUi.Attr(confirmMsg) & """>" &
-                                 "<span class=""ms sm"">arrow_forward</span> " & nextState & "</a>")
+                    tail.Append(ActButton("advance", o.Id.ToString(),
+                                          "<span class=""ms sm"">arrow_forward</span> " & nextState,
+                                          "Advance this order to " & nextState & "?", False, inForm))
                 End If
             ElseIf nextState = "SHIPPED" Then
                 ' Nothing leaves the studio until the money is in. The service layer
                 ' refuses the booking too; this is here so the console says why
                 ' instead of showing a button that silently fails.
                 If paid Then
-                    sb.Append(RenderBookJntForm(o))
+                    jntForm = RenderBookJntForm(o, tail.ToString())
                 Else
-                    sb.Append("<span class=""act-hint"">Confirm the payment above before booking J&amp;T</span>")
+                    tail.Append(ActHint("Confirm the payment above before booking J&amp;T"))
                 End If
             End If
 
+            ' A PENDING order can still be stopped; the button is full width and sits
+            ' in the panel with the rest of the row's actions, so the View line under
+            ' it stays a single line on every row.
             If o.Status = "PENDING" Then
-                links.Append("<a class=""danger-link"" href=""/App/Merchant/Orders.aspx?cancel=" & o.Id.ToString() & """ data-confirm=""Cancel this order?"" data-confirm-danger"">Cancel</a>")
+                tail.Append(ActButton("cancel", o.Id.ToString(), "Cancel",
+                                      "Cancel this order?", True, inForm))
             End If
-            links.Append("<a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View</a>")
+
+            Dim panel As String
+            If needsQuote Then
+                panel = RenderShippingQuoteForm(o, tail.ToString())
+            ElseIf o.PaymentStatus = "SUBMITTED" Then
+                ' The customer has paid outside the app and handed over the reference;
+                ' this is where the studio checks it and confirms or declines.
+                panel = RenderVerifyPayForm(o, tail.ToString())
+            ElseIf jntForm <> "" Then
+                panel = jntForm
+            ElseIf CanRecordPayment(o) OrElse tail.Length > 0 Then
+                panel = ActNotePanel() &
+                        If(CanRecordPayment(o), ActHint("Waiting for the customer to submit their payment reference"), "") &
+                        tail.ToString() & "</div>"
+            Else
+                panel = RenderStatePanel(o)
+            End If
+            sb.Append("<div class=""act-stack"">")
+            sb.Append(panel)
+
+            ' The View link rides on every row, on its own, so the line under the panel
+            ' is the same height everywhere. For orders with SUBMITTED payment status it
+            ' says what it is for: this is the payment verification area, not the
+            ' customer page.
+            Dim viewUrl As String = "/App/OrderDetail.aspx?id=" & o.Id.ToString()
+            Dim links As New StringBuilder()
+            If o.PaymentStatus = "SUBMITTED" Then
+                links.Append("<a href=""" & WebUi.Attr(viewUrl) & """ " &
+                             "data-confirm=""" & WebUi.Attr("View this order's payment details?") & """>" &
+                             WebUi.Ic("visibility", "sm") & " Payment Details</a>")
+            Else
+                links.Append("<a href=""" & WebUi.Attr(viewUrl) & """>" & WebUi.Ic("visibility", "sm") & " View</a>")
+            End If
             sb.Append("<div class=""act-links"">" & links.ToString() & "</div>")
             sb.Append("</div>")
         End Sub
+
+        ''' <summary>The small grey caption line inside a panel.</summary>
+        Private Function ActHint(text As String) As String
+            Return "<span class=""act-hint"">" & text & "</span>"
+        End Function
+
+        ''' <summary>Opens a hint-only panel: the row has no form of its own.</summary>
+        Private Function ActNotePanel() As String
+            Return "<div class=""act-fields act-note"">"
+        End Function
+
+        ''' <summary>
+        ''' A panel-sized POST button. Inside a row form it is emitted bare - that form
+        ''' already carries the CSRF token; outside one (a hint-only or state panel) it
+        ''' brings its own wrapper, exactly as it did inside .act-links. The pressed
+        ''' button is still the only one submitted, so names, handlers and the
+        ''' data-confirm flow are unchanged.
+        ''' </summary>
+        Private Function ActButton(name As String, value As String, labelHtml As String,
+                                   confirm As String, danger As Boolean, inForm As Boolean) As String
+            Dim b As New StringBuilder()
+            b.Append("<button class=""" & If(danger, "btn danger sm", "btn ghost sm") &
+                     """ type=""submit"" name=""" & name & """ value=""" & WebUi.Attr(value) &
+                     """ data-confirm=""" & WebUi.Attr(confirm) & """")
+            If danger Then b.Append(" data-confirm-danger")
+            b.Append(">").Append(labelHtml).Append("</button>")
+            If inForm Then Return b.ToString()
+            Return "<form method=""post"">" & STAR_DOM.Web.Csrf.HiddenField() & b.ToString() & "</form>"
+        End Function
+
+        ''' <summary>
+        ''' Panel for a row with nothing left to do, so terminal orders get the same
+        ''' box as every other row instead of an empty cell. The copy only states what
+        ''' the status itself already says.
+        ''' </summary>
+        Private Function RenderStatePanel(o As Order) As String
+            Dim note As String
+            Select Case o.Status
+                Case "DELIVERED"
+                    note = "Parcel delivered &mdash; waiting for the customer to confirm receipt."
+                Case "CANCELLED"
+                    note = "Order cancelled &mdash; nothing left to do here."
+                Case "RECEIVED"
+                    note = "Customer has received this order &mdash; nothing left to do here."
+                Case Else
+                    note = "Order is " & WebUi.Esc(o.Status) & " &mdash; nothing left to do here."
+            End Select
+            Return ActNotePanel() & ActHint(note) & "</div>"
+        End Function
 
         ''' <summary>
         ''' Picks one row action out of a POST: the pressed submit button is named
@@ -355,7 +444,7 @@ Namespace STAR_DOM.Web
         ''' in the service layer, same as recording a payment, because it commits the
         ''' customer's final total.
         ''' </summary>
-        Private Function RenderShippingQuoteForm(o As Order) As String
+        Private Function RenderShippingQuoteForm(o As Order, tail As String) As String
             Dim sb As New StringBuilder()
             sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
             sb.Append("<div class=""act-fields"">")
@@ -379,9 +468,13 @@ Namespace STAR_DOM.Web
             sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""act_quote_" & o.Id.ToString() & """ value=""1"" " &
                       "data-confirm=""Confirm this order and send the customer the final total, including shipping?"">" &
                       "<span class=""ms sm"">sell</span>Confirm &amp; quote shipping</button>")
+            ' Everything else this row has to say (the cancel button, the rare advance
+            ' hint) goes inside the same panel - a second box below it is exactly what
+            ' made the column's rows come out at different heights.
+            sb.Append(tail)
+            sb.Append("<span class=""act-hint"">Enter the J&amp;T fee to confirm this order</span>")
             sb.Append("</div>")
             sb.Append("</form>")
-            sb.Append("<span class=""act-hint"">Enter the J&amp;T fee to confirm this order</span>")
             Return sb.ToString()
         End Function
 
@@ -391,7 +484,7 @@ Namespace STAR_DOM.Web
         ''' to confirm or decline it. There is no reference input here on purpose —
         ''' verifying means checking THEIR number, never typing one in on their behalf.
         ''' </summary>
-        Private Function RenderVerifyPayForm(o As Order) As String
+        Private Function RenderVerifyPayForm(o As Order, tail As String) As String
             Dim sb As New StringBuilder()
             ' An order that has not picked a channel yet carries "PENDING" as its
             ' method, and DisplayName echoes that straight back — the field was
@@ -407,40 +500,48 @@ Namespace STAR_DOM.Web
                 End If
             Next
             sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
-            sb.Append("<div class=""act-fields"">")
+            sb.Append("<div class=""act-fields act-vfy"">")
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<label class=""act-fld""><span class=""act-label"">Reference submitted (" & WebUi.Esc(brand) & ")</span>")
             sb.Append("<input class=""i-ref"" value=""" & WebUi.Attr(subRef) & """ readonly></label>")
             sb.Append("<label class=""act-fld""><span class=""act-label"">Your password *</span>")
             sb.Append("<input class=""i-pw"" name=""pw_" & o.Id.ToString() & """ type=""password"" " &
                       "placeholder=""Re-enter to verify"" autocomplete=""current-password""></label>")
+            ' Confirm and Decline sit side by side: stacked, this pair made the verify
+            ' panel the tallest box in the column and every other row had to grow to
+            ' match it. They stay apart visually - ghost against danger - and each
+            ' keeps its own confirm dialog.
+            sb.Append("<div class=""act-btnrow"">")
             sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""act_pay_" & o.Id.ToString() & """ value=""1"" " +
                       "data-confirm=""Confirm this payment as received? An official receipt will be issued."">" +
                       "<span class=""ms sm"">payments</span>Confirm payment</button>")
-            sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""act_decline_" & o.Id.ToString() & """ value=""1"" " +
+            sb.Append("<button class=""btn danger sm"" type=""submit"" name=""act_decline_" & o.Id.ToString() & """ value=""1"" " +
                       "data-confirm=""Decline this payment? The customer will be notified."">" +
                       "<span class=""ms sm"">cancel</span>Decline</button>")
             sb.Append("</div>")
-            sb.Append("</form>")
+            sb.Append(tail)
             sb.Append("<span class=""act-hint"">Check the " &
                       WebUi.Esc(If(brand = "Payment", "payment", brand)) &
                       " reference against your records before confirming</span>")
+            sb.Append("</div>")
+            sb.Append("</form>")
             Return sb.ToString()
         End Function
 
         ''' <summary>The J&amp;T hand-off form: tracking number in, SHIPPED out.</summary>
-        Private Function RenderBookJntForm(o As Order) As String
+        Private Function RenderBookJntForm(o As Order, tail As String) As String
             Dim sb As New StringBuilder()
             sb.Append("<form method=""post"" action=""/App/Merchant/Orders.aspx"" class=""act-form"">")
             ' Nested inside the shell form, which the browser closes at this tag — so
             ' the shell's token is not submitted with it. This one carries its own.
-            sb.Append("<div class=""act-fields"">")
+            sb.Append("<div class=""act-fields act-jnt"">")
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<label class=""act-fld""><span class=""act-label"">J&amp;T tracking no. *</span>")
             sb.Append("<input class=""i-track"" name=""trk_" & o.Id.ToString() & """ placeholder=""Enter J&amp;T tracking number"" required""></label>")
             sb.Append("<button class=""btn ghost sm"" type=""submit"" name=""act_ship_" & o.Id.ToString() & """ value=""1"" title=""Book with J&amp;T Express"" " +
                       "data-confirm=""Hand this parcel to J&amp;T and lock the order to SHIPPED? This cannot be undone from here."">" +
                       "<span class=""ms sm"">local_shipping</span>Book J&amp;T</button>")
+            sb.Append(tail)
             sb.Append("</div>")
             sb.Append("</form>")
             Return sb.ToString()

@@ -12,6 +12,7 @@ Namespace STAR_DOM.Web
 
         Protected Out As Literal
         Private ReadOnly _svc As New CommissionService()
+        Private ReadOnly _notif As New NotificationService()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
@@ -67,9 +68,9 @@ Namespace STAR_DOM.Web
                     Return _svc.ConfirmOffer(cm.Id)
                 Case "startprod"
                     Return _svc.StartProduction(cm.Id)
-                Case "revision"
-                    Return _svc.RequestRevision(cm.Id)
                 Case "finalize"
+                    ' Only legal once the customer has approved the work, which
+                    ' FinalizeWork enforces in the service layer.
                     Return _svc.FinalizeWork(cm.Id)
                 ' "confirmpay" / "declinepay" are deliberately absent: both need the
                 ' studio's password, so they only exist as POST forms. A GET link
@@ -116,6 +117,15 @@ Namespace STAR_DOM.Web
                     Return _svc.MarkDelivered(cm.Id, Convert.ToString(Request.Form("tracking")))
                 Case "received"
                     Return _svc.MarkReceived(cm.Id)
+                Case "revisionupload", "sendreview"
+                    If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
+                    Return HandleRevisionUpload(cm)
+                Case "revisionnotes"
+                    If cm.CustomerId <> STAR_DOM.Helpers.Session.CurrentUser.Id Then Return ServiceResult.Fail("Not your commission.")
+                    Return _svc.RequestRevisionChanges(cm.Id, Convert.ToString(Request.Form("revNotes")))
+                Case "requestfinalize"
+                    If cm.CustomerId <> STAR_DOM.Helpers.Session.CurrentUser.Id Then Return ServiceResult.Fail("Not your commission.")
+                    Return _svc.RequestFinalize(cm.Id)
                 Case Else
                     Return ServiceResult.Fail("Unknown action.")
             End Select
@@ -134,7 +144,7 @@ Namespace STAR_DOM.Web
             Dim backUrl As String = If(STAR_DOM.Helpers.Session.CanManageStore, "/App/Merchant/Pipeline.aspx", "/App/CommissionHub.aspx")
             sb.Append("<a href=""" & backUrl & """ class=""sub"" style=""display:inline-flex;align-items:center;gap:6px"">" & WebUi.Ic("arrow_back", "sm") & " Back</a>")
             sb.Append(WebUi.Section(cm.CommissionNumber, "COMMISSION " & cm.StatusDisplay.ToUpperInvariant(),
-                                    cm.Title & " · for " & WebUi.Esc(cm.MerchantName)))
+                                    cm.Title & " · by " & WebUi.Esc(cm.MerchantName)))
             sb.Append(WebUi.Badge(cm.Status))
 
             sb.Append("<div class=""row"" style=""align-items:flex-start;gap:24px;margin-top:14px"">")
@@ -183,6 +193,12 @@ Namespace STAR_DOM.Web
             Dim actions As String = BuildActions(cm)
             If actions <> "" Then
                 sb.Append("<div class=""card mb"">" & actions & "</div>")
+            End If
+
+            ' While the piece is out for review, both sides see the photo and the
+            ' customer's two choices (request changes / approve for finalization).
+            If String.Equals(cm.Status, CommissionStatuses.Revision, StringComparison.OrdinalIgnoreCase) Then
+                AppendReviewCard(cm, sb)
             End If
 
             ' A declined payment is a dead end for the customer — hand them the
@@ -282,8 +298,13 @@ Namespace STAR_DOM.Web
             sb.Append("<h3 style=""margin-bottom:8px"">" & WebUi.Ic("image", "sm") & " Reference images (" & refs.Count.ToString() & ")</h3>")
             sb.Append("<div style=""display:flex;gap:10px;flex-wrap:wrap"">")
             For Each r In refs
-                Dim url As String = "/" & If(r.ImageFile, "").TrimStart("/"c)
-                Dim isPdf As Boolean = url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                Dim f As String = If(r.ImageFile, "")
+                If f = "" Then Continue For
+                Dim isPdf As Boolean = f.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                ' Customer uploads are plain files under /Uploads/comm; studio review
+                ' photos live as bytes in AssetImages, which AssetUrl routes through
+                ' App/AssetImg.aspx. Handing the raw path to an <img> 404'd those.
+                Dim url As String = WebUi.AssetUrl(f)
                 sb.Append("<a href=""" & WebUi.Attr(url) & """ target=""_blank"" rel=""noopener"" " &
                           "style=""display:block;border:1px solid var(--line);border-radius:12px;overflow:hidden;" &
                           "max-width:190px;background:var(--surface-low)"" title=""" & WebUi.Attr(r.FileName) & """>")
@@ -311,54 +332,75 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""frow"">")
 
             If isMerchant Then
-                If st = "PENDING REVIEW" OrElse st = "SUBMITTED" Then
-                    sb.Append(PanelLink(cm, "offer", "Accept & Send Offer", "primary", showPanel, "send"))
-                    sb.Append(PanelLink(cm, "decline", "Decline", "ghost", showPanel, "thumb_down"))
-                ElseIf st = "PAYMENT PENDING" Then
-                    ' The customer says they paid; the studio verifies before anything
-                    ' gets made. Password-gated POST, same as an order's payment: the
-                    ' reference is shown read-only because verifying means checking
-                    ' THEIR number, never typing one in on their behalf.
-                    sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ " &
-                              "style=""display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"">")
-                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
-                    sb.Append("<div class=""field"" style=""margin:0""><label>Reference submitted</label>" &
-                              "<input value=""" & WebUi.Attr(cm.PaymentReference) & """ readonly></div>")
-                    sb.Append("<div class=""field"" style=""margin:0""><label>Your password *</label>" &
-                              "<input name=""pw"" type=""password"" placeholder=""Re-enter to verify"" autocomplete=""current-password""></div>")
-                    sb.Append("<button class=""btn primary"" type=""submit"" name=""kind"" value=""confirmpay"" " +
-                              "data-confirm=""Confirm this payment so production can start?""><span class=""ic ms"">verified</span><span>Confirm payment</span></button>")
-                    sb.Append("<button class=""btn danger"" type=""submit"" name=""kind"" value=""declinepay"" " +
-                              "data-confirm=""Decline this payment? The customer will be notified."" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Decline payment</span></button>")
-                    sb.Append("</form>")
-                    sb.Append("<span class=""act-hint"" style=""display:block;margin-top:6px"">Check the customer's reference (" &
-                              WebUi.Esc(cm.PaymentReference) & ") against their wallet receipt first.</span>")
-                ElseIf st = "PAID" Then
-                    sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=startprod""><span class=""ic ms"">factory</span><span>Start Production</span></a>")
-                ElseIf st = "IN PRODUCTION" Then
-                    sb.Append("<a class=""btn secondary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=finalize""><span class=""ic ms"">check_circle</span><span>Finalize Work</span></a>")
-                    sb.Append("<a class=""btn ghost"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=revision""><span class=""ic ms"">refresh</span><span>Request Revision</span></a>")
-                ElseIf st = "FINALIZED" OrElse st = "REVISION" Then
-                    sb.Append(PanelLink(cm, "deliver", "Deliver to customer", "primary", showPanel, "local_shipping"))
-                End If
+                Select Case st
+                    Case "PENDING REVIEW", "SUBMITTED"
+                        sb.Append(PanelLink(cm, "offer", "Accept & Send Offer", "primary", showPanel, "send"))
+                        sb.Append(PanelLink(cm, "decline", "Decline", "ghost", showPanel, "thumb_down"))
+                    Case "PAYMENT PENDING"
+                        ' The customer says they paid; the studio verifies before anything
+                        ' gets made. Password-gated POST, same as an order's payment: the
+                        ' reference is shown read-only because verifying means checking
+                        ' THEIR number, never typing one in on their behalf.
+                        sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ " &
+                                  "style=""display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"">")
+                        sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                        sb.Append("<div class=""field"" style=""margin:0""><label>Reference submitted</label>" &
+                                  "<input value=""" & WebUi.Attr(cm.PaymentReference) & """ readonly></div>")
+                        sb.Append("<div class=""field"" style=""margin:0""><label>Your password *</label>" &
+                                  "<input name=""pw"" type=""password"" placeholder=""Re-enter to verify"" autocomplete=""current-password""></div>")
+                        sb.Append("<button class=""btn primary"" type=""submit"" name=""kind"" value=""confirmpay"" " +
+                                  "data-confirm=""Confirm this payment so production can start?""><span class=""ic ms"">verified</span><span>Confirm payment</span></button>")
+                        sb.Append("<button class=""btn danger"" type=""submit"" name=""kind"" value=""declinepay"" " +
+                                  "data-confirm=""Decline this payment? The customer will be notified."" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Decline payment</span></button>")
+                        sb.Append("</form>")
+                        sb.Append("<span class=""act-hint"" style=""display:block;margin-top:6px"">Check the customer's reference (" &
+                                  WebUi.Esc(cm.PaymentReference) & ") against their wallet receipt first.</span>")
+                    Case "PAID"
+                        ' Normally unreachable: confirming the payment starts production
+                        ' automatically. Kept as a fallback for legacy PAID rows.
+                        sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=startprod""><span class=""ic ms"">factory</span><span>Start Production</span></a>")
+                    Case "IN PRODUCTION"
+                        ' Send the current work to the customer with a photo. This is
+                        ' deliberately "Request Revision", not "Finalize": the customer
+                        ' decides whether the work is done, and only their approval
+                        ' unlocks Finalize Work.
+                        sb.Append(PanelLink(cm, "sendreview", "Request Revision", "primary", showPanel, "rate_review"))
+                    Case "REVISION"
+                        sb.Append("<span class=""act-hint"">Waiting for the customer to review the work you sent. " &
+                                  "They can request more changes or approve it for finalization.</span>")
+                    Case "FINALIZE REQUESTED"
+                        sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=finalize"" " +
+                                  "data-confirm=""" & WebUi.Attr("The customer approved this work. Finalize it so it can be delivered?") & """>" &
+                                  "<span class=""ic ms"">check_circle</span><span>Finalize Work</span></a>")
+                    Case "FINALIZED"
+                        sb.Append(PanelLink(cm, "deliver", "Deliver to customer", "primary", showPanel, "local_shipping"))
+                End Select
             End If
 
             If isOwner Then
-                If st = "OFFER SENT" Then
-                    sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=confirmoffer""><span class=""ic ms"">how_to_reg</span><span>Confirm Offer</span></a>")
-                End If
-                If st = "CUSTOMER CONFIRMED" Then
-                    sb.Append(PanelLink(cm, "pay", "Pay in Full", "primary", showPanel, "payments"))
-                End If
-                If st = "DELIVERED" Then
-                    sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ " +
-                              "style=""display:inline-flex"">")
-                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
-                    sb.Append("<input type=""hidden"" name=""kind"" value=""received"">")
-                    sb.Append("<button class=""btn primary"" type=""submit"" data-confirm=""Confirm this commission reached you?"">" +
-                              "<span class=""ic ms"">task_alt</span><span>Mark as received</span></button>")
-                    sb.Append("</form>")
-                End If
+                Select Case st
+                    Case "OFFER SENT"
+                        sb.Append("<a class=""btn primary"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & "&act=confirmoffer""><span class=""ic ms"">how_to_reg</span><span>Confirm Offer</span></a>")
+                    Case "CUSTOMER CONFIRMED", "PAYMENT DECLINED"
+                        ' PAYMENT DECLINED is included on purpose: a declined reference
+                        ' can be corrected and resubmitted, otherwise a typo would
+                        ' strand the commission forever.
+                        sb.Append(PanelLink(cm, "pay", "Pay in Full", "primary", showPanel, "payments"))
+                    Case "IN PRODUCTION"
+                        sb.Append("<span class=""act-hint"">The studio is working on your piece. " &
+                                  "You'll get a photo here when it's ready for your review.</span>")
+                    Case "PAYMENT PENDING"
+                        sb.Append("<span class=""act-hint"">Payment submitted — the studio is verifying it.</span>")
+                    Case "FINALIZE REQUESTED"
+                        sb.Append("<span class=""act-hint"">You approved the work. The studio is finalizing and delivering it.</span>")
+                    Case "DELIVERED"
+                        sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ " +
+                                  "style=""display:inline-flex"">")
+                        sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                        sb.Append("<button class=""btn primary"" type=""submit"" name=""kind"" value=""received"" data-confirm=""Confirm this commission reached you?"">" +
+                                  "<span class=""ic ms"">task_alt</span><span>Mark as received</span></button>")
+                        sb.Append("</form>")
+                End Select
                 If st = "PENDING REVIEW" OrElse st = "SUBMITTED" OrElse st = "OFFER SENT" Then
                     sb.Append("<a class=""btn danger"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() &
                               "&act=cancel"" data-confirm=""Cancel this request?"" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Cancel Request</span></a>")
@@ -392,6 +434,15 @@ Namespace STAR_DOM.Web
                                         WebUi.Esc(cm.ShippingAddress) & "</b>. Shipping is free on commissions.</p>" &
                                         "<div class=""field""><label>J&amp;T tracking no. (optional)</label>" &
                                         "<input name=""tracking"" placeholder=""Leave blank for pickup or a personal handover""></div>"))
+                Case "sendreview"
+                    sb.Append(PanelForm(cm, "revisionupload", "Send the work to the customer for review",
+                                        "<p class=""sub"" style=""margin:0 0 10px"">Upload a photo of the piece so far. The customer " &
+                                        "sees it here and either asks for changes or approves it for finalization.</p>" &
+                                        "<div class=""field""><label>Photo of the work *</label>" &
+                                        "<input name=""revisionImage"" type=""file"" accept=""image/*"" required></div>" &
+                                        "<div class=""field""><label>Note for the customer (optional)</label>" &
+                                        "<textarea name=""revisionNotes"" style=""min-height:60px"" placeholder=""e.g. Base colours done, working on the lettering next""></textarea></div>",
+                                        True))
             End Select
             Return sb.ToString()
         End Function
@@ -406,16 +457,143 @@ Namespace STAR_DOM.Web
             Return "<a class=""btn " & kind & """ href=""" & url & """>" & ic & "<span>" & WebUi.Esc(label) & "</span></a>"
         End Function
 
-        Private Function PanelForm(cm As Commission, kind As String, title As String, fieldsHtml As String) As String
+        Private Function PanelForm(cm As Commission, kind As String, title As String, fieldsHtml As String,
+                                   Optional multipart As Boolean = False) As String
             Dim sb As New StringBuilder()
-            sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ style=""margin-top:12px;border-top:1px solid var(--line);padding-top:12px"">")
-            sb.Append("<input type=""hidden"" name=""kind"" value=""" & kind & """>")
+            Dim enc As String = If(multipart, " enctype=""multipart/form-data""", "")
+            sb.Append("<form method=""post""" & enc & " action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ style=""margin-top:12px;border-top:1px solid var(--line);padding-top:12px"">")
             sb.Append("<h4 style=""margin:0 0 8px"">" & WebUi.Esc(title) & "</h4>")
             sb.Append(fieldsHtml)
-            sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">check</span><span>Confirm</span></button>")
+            sb.Append("<button class=""btn primary"" type=""submit"" name=""kind"" value=""" & WebUi.Attr(kind) & """><span class=""ic ms"">check</span><span>Confirm</span></button>")
             sb.Append("</form>")
             Return sb.ToString()
         End Function
+
+        ''' <summary>
+        ''' The studio's "Request Revision": upload a photo of the current work and send
+        ''' it to the customer for review. The image is stored in AssetImages (BYTEA),
+        ''' so it travels with a database backup, and is also recorded as a reference
+        ''' image so it shows in the gallery on both sides.
+        ''' </summary>
+        Private Function HandleRevisionUpload(cm As Commission) As ServiceResult
+            If Not String.Equals(cm.Status, CommissionStatuses.InProduction, StringComparison.OrdinalIgnoreCase) AndAlso
+               Not String.Equals(cm.Status, CommissionStatuses.Revision, StringComparison.OrdinalIgnoreCase) Then
+                Return ServiceResult.Fail("Only a commission in production can be sent for review.")
+            End If
+
+            Dim file As System.Web.HttpPostedFile = Request.Files("revisionImage")
+            If file Is Nothing OrElse file.ContentLength = 0 Then
+                Return ServiceResult.Fail("Please attach a photo of the work for the customer to review.")
+            End If
+            Dim ext As String = System.IO.Path.GetExtension(file.FileName).ToLowerInvariant()
+            If ext <> ".jpg" AndAlso ext <> ".jpeg" AndAlso ext <> ".png" AndAlso ext <> ".webp" Then
+                Return ServiceResult.Fail("Only JPG, PNG, and WebP images are allowed.")
+            End If
+            If file.ContentLength > 5120000 Then ' 5MB limit
+                Return ServiceResult.Fail("Image must be under 5MB.")
+            End If
+
+            ' Store directly in AssetImages table (database), not on disk.
+            Dim mimeType As String = "image/" & ext.TrimStart("."c)
+            If ext = ".jpeg" Then mimeType = "image/jpeg"
+            Dim photoPath As String = "/Assets/Malls/rev-" & cm.Id.ToString("D3") & "-" & Guid.NewGuid().ToString("N") & ext
+            Dim fileBytes(file.ContentLength - 1) As Byte
+            file.InputStream.Read(fileBytes, 0, file.ContentLength)
+
+            ' Delete any previous revision image for this commission.
+            STAR_DOM.Database.Db.Exec("DELETE FROM AssetImages WHERE Path LIKE '/Assets/Malls/rev-" & cm.Id.ToString("D3") & "%'")
+
+            ' Insert new revision image into database.
+            STAR_DOM.Database.Db.Exec(
+                "INSERT INTO AssetImages (Path, Data, Mime, ByteSize) VALUES (@path, @data, @mime, @size)",
+                STAR_DOM.Database.Db.P("@path", photoPath),
+                STAR_DOM.Database.Db.P("@data", fileBytes),
+                STAR_DOM.Database.Db.P("@mime", mimeType),
+                STAR_DOM.Database.Db.P("@size", file.ContentLength))
+
+            ' Store the studio's note and the image reference.
+            Dim notes As String = Trim(Convert.ToString(Request.Form("revisionNotes")))
+            Dim fullNote As String = If(cm.AdditionalNotes <> "", cm.AdditionalNotes & "
+" & notes, notes)
+            _svc.UpdateCommissionNotes(cm.Id, fullNote)
+            ' Add to reference images so it appears in the gallery and in the review card.
+            Dim refs As New List(Of (file As String, name As String, kb As Integer))()
+            refs.Add((photoPath, "Work for review " & (cm.ReferenceCount + 1).ToString(), CInt(file.ContentLength / 1024)))
+            _svc.AddReferenceImages(cm.Id, refs)
+
+            Dim res As ServiceResult = _svc.SendWorkForReview(cm.Id)
+            If Not res.Success Then Return ServiceResult.Fail(res.Message)
+            _notif.Notify(cm.CustomerId, "Work ready for review – " & cm.CommissionNumber,
+                          "The studio sent a photo of your commission. Review it and either request changes " &
+                          "or approve it for finalization.",
+                          "COMMISSION", "commission-hub")
+            Return ServiceResult.Ok("Sent to the customer for review.")
+        End Function
+
+        ''' <summary>
+        ''' The review card shown while a commission sits in REVISION: the photo the
+        ''' studio sent, their note, and the customer's two choices — ask for changes
+        ''' or approve and request finalization. This is the action the customer was
+        ''' missing when REVISION showed only a status and no controls.
+        ''' </summary>
+        Private Sub AppendReviewCard(cm As Commission, sb As StringBuilder)
+            Dim isMerchant As Boolean = _svc.CanManageCommission(cm)
+            Dim isOwner As Boolean = cm.CustomerId = STAR_DOM.Helpers.Session.CurrentUser.Id
+
+            ' Newest photo sent for review. Uploads are named "Work for review N";
+            ' legacy rows used "Revision N", so both are recognised.
+            Dim latest As CommissionReferenceImage = Nothing
+            For Each r In _svc.ReferenceImages(cm.Id)
+                Dim n As String = If(r.FileName, "").Trim()
+                If n.StartsWith("Work for review", StringComparison.OrdinalIgnoreCase) OrElse
+                   n.StartsWith("Revision", StringComparison.OrdinalIgnoreCase) Then
+                    latest = r
+                End If
+            Next
+
+            sb.Append("<div class=""card mb"" style=""border-color:#eec200"">")
+            sb.Append("<h3 style=""margin-bottom:8px"">" & WebUi.Ic("rate_review", "sm") & " Work ready for your review</h3>")
+            If latest IsNot Nothing AndAlso WebUi.AssetUrl(latest.ImageFile) <> "" Then
+                Dim url As String = WebUi.AssetUrl(latest.ImageFile)
+                sb.Append("<div style=""margin:8px 0"">")
+                sb.Append("<a href=""" & WebUi.Attr(url) & """ target=""_blank"" rel=""noopener"">")
+                sb.Append("<img src=""" & WebUi.Attr(url) & """ alt=""Work sent for review"" " &
+                          "style=""max-width:100%;max-height:320px;border:1px solid var(--line);border-radius:12px;display:block"" loading=""lazy"">")
+                sb.Append("</a>")
+                sb.Append("<span class=""sub"" style=""font-size:11px"">" & WebUi.Esc(latest.FileName) & "</span>")
+                sb.Append("</div>")
+            Else
+                sb.Append("<p class=""sub"" style=""margin:0 0 10px"">The photo for this review is not on file yet.</p>")
+            End If
+
+            If cm.AdditionalNotes <> "" Then
+                sb.Append("<p class=""sub"" style=""margin:0 0 10px;white-space:pre-wrap""><b>Notes:</b> " & WebUi.Esc(cm.AdditionalNotes) & "</p>")
+            End If
+
+            If isOwner AndAlso Not isMerchant Then
+                ' Customer: request changes, or approve and ask for finalization.
+                sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ " &
+                          "style=""display:flex;flex-direction:column;gap:10px"">")
+                sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                sb.Append("<div class=""field"" style=""margin:0""><label>Request more changes</label>")
+                sb.Append("<textarea name=""revNotes"" required style=""min-height:80px"" placeholder=""Describe what you'd like changed...""></textarea></div>")
+                sb.Append("<button class=""btn secondary"" type=""submit"" name=""kind"" value=""revisionnotes"" data-confirm=""Send these changes back to the studio?"">" +
+                          "<span class=""ic ms"">edit_note</span><span>Request Revision</span></button>")
+                sb.Append("</form>")
+                sb.Append("<div style=""margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"">")
+                sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """>")
+                sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                sb.Append("<button class=""btn primary"" type=""submit"" name=""kind"" value=""requestfinalize"" " &
+                          "data-confirm=""" & WebUi.Attr("Approve this work and ask the studio to finalize it? No more revisions will be accepted.") & """>" &
+                          "<span class=""ic ms"">check_circle</span><span>Satisfied — Request to Finalize Work</span></button>")
+                sb.Append("</form>")
+                sb.Append("<p class=""sub"" style=""margin:8px 0 0"">Happy with the piece? Approve it and the studio will finalize and deliver it.</p>")
+                sb.Append("</div>")
+            Else
+                sb.Append("<span class=""act-hint"">Waiting for the customer to review this work.</span>")
+            End If
+            sb.Append("</div>")
+        End Sub
 
     End Class
 

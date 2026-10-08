@@ -89,6 +89,16 @@ if errorlevel 1 (
 )
 
 echo.
+echo   Cleaning up legacy MERCHANT role and folding any leftover admin accounts ...
+"%PGBIN%\psql.exe" -v ON_ERROR_STOP=1 -q -c "DELETE FROM roles WHERE name = 'MERCHANT';" "%SUPABASE_DSN%"
+"%PGBIN%\psql.exe" -v ON_ERROR_STOP=1 -q -c "UPDATE users SET roleid = (SELECT id FROM roles WHERE name = 'CUSTOMER') WHERE roleid = (SELECT id FROM roles WHERE name = 'ADMIN') AND username <> 'admin';" "%SUPABASE_DSN%"
+if errorlevel 1 (
+    echo   Cleanup FAILED -- see the errors above. Database is still seeded, but the admin-fold step did not run.
+    pause
+    exit /b 1
+)
+
+echo.
 echo   What is in there now:
 "%PGBIN%\psql.exe" -tAc "SELECT '    tables: ' || count(*) FROM information_schema.tables WHERE table_schema='public';" "%SUPABASE_DSN%"
 "%PGBIN%\psql.exe" -tAc "SELECT '    users:   ' || count(*) FROM users;" "%SUPABASE_DSN%"

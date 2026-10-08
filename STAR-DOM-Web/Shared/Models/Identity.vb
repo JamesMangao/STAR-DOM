@@ -29,6 +29,20 @@ Namespace STAR_DOM.Models
         Public Property CommissionFormats As String = "High-Res PNG + Print"
         Public Property CommissionSampleImage As String = ""
         Public Property CommissionTagline As String = ""
+
+        ''' <summary>
+        ''' STAR:DOM is a single-owner brand, so ADMIN *is* the merchant. The
+        ''' MERCHANT role only survives as a legacy alias that the guards honour for
+        ''' older databases; showing it in the UI would imply store staff are a
+        ''' separate role, so it is presented as ADMIN everywhere.
+        ''' </summary>
+        Public ReadOnly Property DisplayRoleName As String
+            Get
+                If String.Equals(RoleName, "MERCHANT", StringComparison.OrdinalIgnoreCase) Then Return "ADMIN"
+                If String.IsNullOrWhiteSpace(RoleName) Then Return "CUSTOMER"
+                Return RoleName
+            End Get
+        End Property
     End Class
 
 End Namespace

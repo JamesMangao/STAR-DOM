@@ -126,7 +126,8 @@ Namespace STAR_DOM.Repositories
             Dim rows As List(Of DataRow) = Db.Rows(
                 "SELECT MerchantId, COUNT(*) AS Cnt FROM Commissions WHERE Status IN " &
                 "('SUBMITTED','PENDING REVIEW','ACCEPTED','OFFER SENT','CUSTOMER CONFIRMED'," &
-                "'PAYMENT PENDING','PAID','IN PRODUCTION','REVISION','FINALIZED') GROUP BY MerchantId")
+                "'PAYMENT PENDING','PAID','IN PRODUCTION','REVISION','FINALIZE REQUESTED','FINALIZED') " &
+                "GROUP BY MerchantId")
             For Each r As DataRow In rows
                 counts(RowReader.AsInt(r, "MerchantId")) = RowReader.AsInt(r, "Cnt")
             Next
@@ -134,6 +135,27 @@ Namespace STAR_DOM.Repositories
         End Function
 
         ''' <summary>Transition status and record full history. Returns error string or Nothing.</summary>
+        Public Function UpdateCommissionNotes(id As Integer, notes As String) As String
+            Dim sql As String = "UPDATE Commissions SET AdditionalNotes = @n WHERE Id = @id"
+            Db.Exec(sql, Db.P("@n", notes), Db.P("@id", id))
+            Return Nothing
+        End Function
+
+        ''' <summary>
+        ''' Appends a line to the commission's notes without clobbering what is
+        ''' already there. The customer's revision requests travel this way, so the
+        ''' studio sees every round of feedback in one place instead of only the
+        ''' latest note replacing the rest.
+        ''' </summary>
+        Public Sub AppendCustomerNote(id As Integer, note As String)
+            Db.Exec(
+                "UPDATE Commissions SET AdditionalNotes = " &
+                "CASE WHEN COALESCE(AdditionalNotes, '') = '' THEN @n " &
+                "ELSE AdditionalNotes || E'\n--- Revision request ---\n' || @n END, " &
+                "UpdatedAt = NOW() WHERE Id = @id",
+                Db.P("@n", note), Db.P("@id", id))
+        End Sub
+
         Public Function UpdateStatus(id As Integer, fromStatus As String, toStatus As String, changedByName As String, note As String) As String
             Dim current As String = Db.ScalarStr("SELECT Status FROM Commissions WHERE Id = @id", Db.P("@id", id))
             If fromStatus.Length > 0 AndAlso Not String.Equals(current, fromStatus, StringComparison.OrdinalIgnoreCase) Then
@@ -220,7 +242,7 @@ Namespace STAR_DOM.Repositories
             Return Db.ScalarInt(
                 "SELECT COUNT(*) FROM Commissions WHERE MerchantId = @m AND Status IN " &
                 "('SUBMITTED','PENDING REVIEW','ACCEPTED','OFFER SENT','CUSTOMER CONFIRMED'," &
-                "'PAYMENT PENDING','PAID','IN PRODUCTION','REVISION','FINALIZED')",
+                "'PAYMENT PENDING','PAID','IN PRODUCTION','REVISION','FINALIZE REQUESTED','FINALIZED')",
                 Db.P("@m", merchantId))
         End Function
 

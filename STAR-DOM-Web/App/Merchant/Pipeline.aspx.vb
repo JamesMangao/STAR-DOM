@@ -36,7 +36,7 @@ Namespace STAR_DOM.Web
                                     "Review requests, quote, confirm payment, and drive production through delivery to receipt."))
 
             sb.Append("<div class=""frow"">")
-            For Each chip As String In {"", "PENDING REVIEW", "PAYMENT PENDING", "PAID", "IN PRODUCTION", "FINALIZED", "DELIVERED", "RECEIVED", "DECLINED"}
+            For Each chip As String In {"", "PENDING REVIEW", "PAYMENT PENDING", "PAID", "IN PRODUCTION", "REVISION", "FINALIZE REQUESTED", "FINALIZED", "DELIVERED", "RECEIVED", "DECLINED"}
                 Dim label As String = If(chip = "", "ALL", chip.Replace("_", " "))
                 Dim url As String = If(chip = "", "/App/Merchant/Pipeline.aspx", "/App/Merchant/Pipeline.aspx?st=" & Server.UrlEncode(chip))
                 sb.Append(WebUi.OutLink(url, label, String.Equals(filter, chip, StringComparison.OrdinalIgnoreCase)))
