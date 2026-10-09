@@ -88,18 +88,9 @@ Namespace STAR_DOM.Web
                       "<b>" & WebUi.Esc(a.Name) & "</b> <span style=""color:var(--primary);font-weight:800"">" &
                       WebUi.Money(a.BasePrice) & "</span></div>")
             sb.Append("</div>")
-            sb.Append("<div class=""grid"" style=""grid-template-columns:1fr 1fr;gap:12px;margin-top:12px"">")
-            sb.Append("<div class=""card"" style=""padding:0;overflow:hidden"">" & WebUi.ProductImg(b.PrimaryImageFile, b.Id, b.Name, "height:120px") &
+            sb.Append("<div class=""card"" style=""padding:0;overflow:hidden;margin-top:12px"">" & WebUi.ProductImg(b.PrimaryImageFile, b.Id, b.Name, "height:150px") &
                       "<div style=""padding:8px 10px;font-size:12px""><b>" & WebUi.Esc(b.Name) & "</b><br>" &
                       WebUi.Money(b.BasePrice) & "</div></div>")
-            ' Same bundle block as the marketplace Bazaar Exclusive tile, so the
-            ' public hero advertises the deals too.
-            sb.Append("<div class=""card"" style=""background:var(--yellow);border-color:#eec200;display:flex;flex-direction:column;justify-content:center;gap:4px"">" &
-                      "<span class=""k-label"" style=""font-size:9px;letter-spacing:.12em;font-weight:800"">POP-UP EXCLUSIVE</span>" &
-                      "<span style=""font-weight:800;font-size:20px"">" & WebUi.Money(b.BasePrice) & "</span>" &
-                      "<span style=""font-size:12px"">Nationwide J&amp;T delivery</span>" &
-                      WebUi.BundleNoteBlock() & "</div>")
-            sb.Append("</div>")
             Return sb.ToString()
         End Function
 
@@ -141,7 +132,7 @@ Namespace STAR_DOM.Web
             sb.Append(StepCard("1", "search", "Browse the catalog",
                                "Stickers, prints, pins and limited merch, every piece made by the artist. Look around with no sign-up."))
             sb.Append(StepCard("2", "local_shipping", "Enter your delivery address",
-                               "Nationwide J&amp;T Express for ₱80 &mdash; free over ₱1,500. Every order ships to your door."))
+                               "Nationwide J&amp;T Express: Luzon ₱0&ndash;100, Visayas &amp; Mindanao ₱100&ndash;250. Every order ships to your door."))
             sb.Append(StepCard("3", "account_balance_wallet", "Pay your way",
                                "GCash or GOtyme. Sign in once and your cart carries straight through to checkout."))
             sb.Append("</div>")

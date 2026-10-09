@@ -5,104 +5,110 @@ Namespace STAR_DOM.Repositories
 
     Public Class UserAddressRepository
 
-        Public Function CreateAddress(userId As Integer, label As String, address As String, city As String, region As String, phone As String) As ServiceResult
-            Dim addr As New UserAddress() With {
-                .UserId = userId,
-                .Label = label,
-                .Address = address,
-                .City = city,
-                .Region = region,
-                .Phone = phone,
-                .IsDefault = True  ' First address is default; can be changed later
-            }
+        Private Const SelectCols As String =
+            "Id, UserId, Label, Address, Barangay, City, Region, PostalCode, Landmark, Phone, IsDefault, CreatedAt "
 
+        Public Function CreateAddress(userId As Integer, label As String, address As String, barangay As String,
+                                      city As String, region As String, postalCode As String, landmark As String,
+                                      phone As String) As ServiceResult
             ' Unmark any existing default addresses for this user
             Db.Exec("UPDATE UserAddresses SET IsDefault = FALSE WHERE UserId = @uid", Db.P("@uid", userId))
 
-            Dim id As Integer = Db.ExecIdentity("INSERT INTO UserAddresses (UserId, Label, Address, City, Region, Phone, IsDefault, CreatedAt) VALUES (@uid, @label, @address, @city, @region, @phone, TRUE, NOW())",
+            Dim id As Integer = Db.ExecIdentity(
+                "INSERT INTO UserAddresses (UserId, Label, Address, Barangay, City, Region, PostalCode, Landmark, Phone, IsDefault, CreatedAt) " &
+                "VALUES (@uid, @label, @address, @brgy, @city, @region, @zip, @landmark, @phone, TRUE, NOW())",
                 Db.P("@uid", userId),
                 Db.P("@label", label),
                 Db.P("@address", address),
+                Db.P("@brgy", barangay),
                 Db.P("@city", city),
                 Db.P("@region", region),
+                Db.P("@zip", postalCode),
+                Db.P("@landmark", landmark),
                 Db.P("@phone", phone))
 
-            addr.Id = id
             Return ServiceResult.Ok("Address saved successfully.", id)
         End Function
 
         Public Function ListByUserId(userId As Integer) As List(Of UserAddress)
             Dim rows As List(Of DataRow) = Db.Rows(
-                "SELECT Id, UserId, Label, Address, City, Region, Phone, IsDefault, CreatedAt " &
-                "FROM UserAddresses WHERE UserId = @uid ORDER BY IsDefault DESC, CreatedAt DESC",
+                "SELECT " & SelectCols & "FROM UserAddresses WHERE UserId = @uid ORDER BY IsDefault DESC, CreatedAt DESC",
                 Db.P("@uid", userId))
 
             Dim result As New List(Of UserAddress)()
             For Each row As DataRow In rows
-                Dim addr As New UserAddress() With {
-                    .Id = RowReader.AsInt(row, "Id"),
-                    .UserId = RowReader.AsInt(row, "UserId"),
-                    .Label = RowReader.AsStr(row, "Label"),
-                    .Address = RowReader.AsStr(row, "Address"),
-                    .City = RowReader.AsStr(row, "City"),
-                    .Region = RowReader.AsStr(row, "Region"),
-                    .Phone = RowReader.AsStr(row, "Phone"),
-                    .IsDefault = RowReader.AsBool(row, "IsDefault"),
-                    .CreatedAt = RowReader.AsDate(row, "CreatedAt")
-                }
-                result.Add(addr)
+                result.Add(Map(row))
             Next
             Return result
         End Function
 
         Public Function GetAddress(id As Integer, userId As Integer) As UserAddress
             Dim rows As List(Of DataRow) = Db.Rows(
-                "SELECT Id, UserId, Label, Address, City, Region, Phone, IsDefault, CreatedAt " &
-                "FROM UserAddresses WHERE Id = @id AND UserId = @uid",
+                "SELECT " & SelectCols & "FROM UserAddresses WHERE Id = @id AND UserId = @uid",
                 Db.P("@id", id), Db.P("@uid", userId))
 
             If rows.Count = 0 Then Return Nothing
-
-            Dim row As DataRow = rows(0)
-            Return New UserAddress() With {
-                .Id = RowReader.AsInt(row, "Id"),
-                .UserId = RowReader.AsInt(row, "UserId"),
-                .Label = RowReader.AsStr(row, "Label"),
-                .Address = RowReader.AsStr(row, "Address"),
-                .City = RowReader.AsStr(row, "City"),
-                .Region = RowReader.AsStr(row, "Region"),
-                .Phone = RowReader.AsStr(row, "Phone"),
-                .IsDefault = RowReader.AsBool(row, "IsDefault"),
-                .CreatedAt = RowReader.AsDate(row, "CreatedAt")
-            }
+            Return Map(rows(0))
         End Function
 
-        Public Function UpdateAddress(id As Integer, userId As Integer, label As String, address As String, city As String, region As String, phone As String) As ServiceResult
+        ''' <summary>Save the detailed address from a checkout/commission form, unless
+        ''' an address with the same street/barangay/city/zip already exists for this
+        ''' user. Returns the address id (0 when nothing was saved).</summary>
+        Public Function CreateIfNew(userId As Integer, label As String, address As String, barangay As String,
+                                    city As String, region As String, postalCode As String, landmark As String,
+                                    phone As String) As Integer
+            If String.IsNullOrWhiteSpace(address) Then Return 0
+            Dim existing As Integer = Db.ScalarInt(
+                "SELECT COALESCE(MIN(Id), 0) FROM UserAddresses WHERE UserId = @uid AND Address = @a " &
+                "AND Barangay = @b AND City = @c AND PostalCode = @z",
+                Db.P("@uid", userId), Db.P("@a", address.Trim()), Db.P("@b", If(barangay, "").Trim()),
+                Db.P("@c", If(city, "").Trim()), Db.P("@z", If(postalCode, "").Trim()))
+            If existing > 0 Then Return existing
+            Dim r As ServiceResult = CreateAddress(userId, If(String.IsNullOrWhiteSpace(label), "Home", label),
+                                                   address, barangay, city, region, postalCode, landmark, phone)
+            If r.Success AndAlso r.Payload IsNot Nothing Then Return Convert.ToInt32(r.Payload)
+            Return 0
+        End Function
+
+        Public Function UpdateAddress(id As Integer, userId As Integer, label As String, address As String, barangay As String,
+                                      city As String, region As String, postalCode As String, landmark As String,
+                                      phone As String) As ServiceResult
             Dim existing As UserAddress = GetAddress(id, userId)
             If existing Is Nothing Then Return ServiceResult.Fail("Address not found.")
 
-            Dim setDefault As Boolean = False
-            If existing.IsDefault Then
-                ' Check if this is the only address
-                Dim count As Integer = Db.ScalarInt("SELECT COUNT(*) FROM UserAddresses WHERE UserId = @uid", Db.P("@uid", userId))
-                If count > 1 Then
-                    setDefault = True
-                End If
-            End If
-
             Db.Exec(
-                "UPDATE UserAddresses SET Label = @label, Address = @address, City = @city, Region = @region, Phone = @phone" &
-                If(setDefault, ", IsDefault = TRUE", "") &
-                " WHERE Id = @id AND UserId = @uid",
+                "UPDATE UserAddresses SET Label = @label, Address = @address, Barangay = @brgy, City = @city, " &
+                "Region = @region, PostalCode = @zip, Landmark = @landmark, Phone = @phone " &
+                "WHERE Id = @id AND UserId = @uid",
                 Db.P("@label", label),
                 Db.P("@address", address),
+                Db.P("@brgy", barangay),
                 Db.P("@city", city),
                 Db.P("@region", region),
+                Db.P("@zip", postalCode),
+                Db.P("@landmark", landmark),
                 Db.P("@phone", phone),
                 Db.P("@id", id),
                 Db.P("@uid", userId))
 
             Return ServiceResult.Ok("Address updated successfully.")
+        End Function
+
+        Private Function Map(row As DataRow) As UserAddress
+            Return New UserAddress() With {
+                .Id = RowReader.AsInt(row, "Id"),
+                .UserId = RowReader.AsInt(row, "UserId"),
+                .Label = RowReader.AsStr(row, "Label"),
+                .Address = RowReader.AsStr(row, "Address"),
+                .Barangay = RowReader.AsStr(row, "Barangay"),
+                .City = RowReader.AsStr(row, "City"),
+                .Region = RowReader.AsStr(row, "Region"),
+                .PostalCode = RowReader.AsStr(row, "PostalCode"),
+                .Landmark = RowReader.AsStr(row, "Landmark"),
+                .Phone = RowReader.AsStr(row, "Phone"),
+                .IsDefault = RowReader.AsBool(row, "IsDefault"),
+                .CreatedAt = RowReader.AsDate(row, "CreatedAt")
+            }
         End Function
 
         Public Function DeleteAddress(id As Integer, userId As Integer) As ServiceResult

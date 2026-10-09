@@ -5,25 +5,34 @@ Imports STAR_DOM.Database
 Namespace STAR_DOM.Web
 
     ''' <summary>
-    ''' Streams one venue photo out of AssetImages (BYTEA), falling back to the
-    ''' file under Assets\Malls when no row exists.
+    ''' Streams a stored image out of AssetImages (BYTEA). Venue photos fall back to
+    ''' the file under Assets\Malls when no row exists; user uploads (product images
+    ''' and commission references) are DB-only, and a legacy on-disk upload is
+    ''' backfilled into the database the first time it is served.
     '''
     ''' Why a database copy: Assets\Malls ships in Git, but the itinerary grid is
     ''' the first thing a visitor sees, and a stray folder delete -- or a clone
     ''' that never carried the images -- leaves every venue with the gradient
     ''' placeholder. Holding the bytes here means a pg_dump carries them with
     ''' everything else and the photos restore themselves, exactly like the QR
-    ''' image in PaymentQr.aspx.
+    ''' image in PaymentQr.aspx. Customer and product uploads live here for the same
+    ''' reason: a local Uploads folder does not survive a redeploy.
     '''
-    ''' Only paths under /Assets/Malls/ are served, so this endpoint cannot be
-    ''' turned into a general file reader: the query string is checked against
-    ''' that prefix and against ".." before it is used at all.
+    ''' Only whitelisted prefixes are served, so this endpoint cannot be turned
+    ''' into a general file reader: the query string is checked against the allowed
+    ''' roots and against ".." before it is used at all.
     ''' </summary>
     Public Class AssetImgPage
         Inherits Page
 
-        ''' <summary>The only folder this endpoint will read from.</summary>
-        Private Const Root As String = "/Assets/Malls/"
+        ''' <summary>The folders this endpoint will read from.</summary>
+        Private Shared ReadOnly AllowedRoots As String() = {
+            "/Assets/Malls/",
+            "/Uploads/products/",
+            "/Uploads/comm/"
+        }
+
+        Private Const MallsRoot As String = "/Assets/Malls/"
 
         Protected Sub Page_Load(sender As Object, e As EventArgs) Handles Me.Load
             Try
@@ -46,22 +55,27 @@ Namespace STAR_DOM.Web
             Dim mime As String = ""
             Dim etag As String = ""
 
-            ' Database copy first: that row is the durable source.
-            Dim rows As List(Of DataRow) = Db.Rows(
-                "SELECT Data, Mime, ByteSize, Extract(EPOCH FROM UpdatedAt)::bigint AS Up " &
-                "FROM AssetImages WHERE Path = @p", Db.P("@p", path))
-            If rows.Count > 0 Then
-                Dim row As DataRow = rows(0)
-                bytes = RowReader.AsBytes(row, "Data")
-                mime = RowReader.AsStr(row, "Mime")
-                ' EPOCH seconds through Convert, not RowReader: RowReader has no
-                ' 64-bit reader, and this value passes Int32 in 2038.
-                etag = """" & RowReader.AsInt(row, "ByteSize").ToString() & "-" &
-                       Convert.ToInt64(row("Up")).ToString() & """"
-            End If
+            ' Database copy first: that row is the durable source. A pre-migration
+            ' install without the table falls through to the file copy below.
+            Try
+                Dim rows As List(Of DataRow) = Db.Rows(
+                    "SELECT Data, Mime, ByteSize, Extract(EPOCH FROM UpdatedAt)::bigint AS Up " &
+                    "FROM AssetImages WHERE Path = @p", Db.P("@p", path))
+                If rows.Count > 0 Then
+                    Dim row As DataRow = rows(0)
+                    bytes = RowReader.AsBytes(row, "Data")
+                    mime = RowReader.AsStr(row, "Mime")
+                    ' EPOCH seconds through Convert, not RowReader: RowReader has no
+                    ' 64-bit reader, and this value passes Int32 in 2038.
+                    etag = """" & RowReader.AsInt(row, "ByteSize").ToString() & "-" &
+                           Convert.ToInt64(row("Up")).ToString() & """"
+                End If
+            Catch
+                ' Table absent or unreachable: serve whatever file may still exist.
+            End Try
 
-            ' No row: the file may still be on this machine (a fresh clone, or a
-            ' row deleted on purpose). Serve it rather than a broken image.
+            ' No row: a legacy upload may still be on this machine. Read it, store it
+            ' in the database so every future request is DB-served, and send it.
             If bytes Is Nothing OrElse bytes.Length = 0 Then
                 Dim rel As String = path.TrimStart("/"c)
                 Try
@@ -69,6 +83,7 @@ Namespace STAR_DOM.Web
                     If IO.File.Exists(physical) Then
                         bytes = IO.File.ReadAllBytes(physical)
                         mime = MimeFor(physical)
+                        BackfillInsert(path, bytes, mime)
                     End If
                 Catch
                     ' Unmapped virtual path -- fall through to the 404.
@@ -103,19 +118,46 @@ Namespace STAR_DOM.Web
         End Sub
 
         ''' <summary>
-        ''' Accepts only a root-relative path under /Assets/Malls. Anything else --
-        ''' a different folder, a traversal, a query string, a backslash -- becomes
-        ''' "" and the caller 404s, so the endpoint can never read outside the one
-        ''' folder it exists for.
+        ''' Best-effort move of an on-disk upload into the database, so that after
+        ''' the first view the image no longer depends on the local folder.
+        ''' </summary>
+        Private Sub BackfillInsert(path As String, bytes As Byte(), mime As String)
+            Try
+                Db.Exec(
+                    "INSERT INTO AssetImages (Path, Data, Mime, ByteSize, UpdatedAt) VALUES (@p, @d, @m, @s, NOW()) " &
+                    "ON CONFLICT (Path) DO NOTHING",
+                    Db.P("@p", path), Db.P("@d", bytes),
+                    Db.P("@m", If(mime = "", "application/octet-stream", mime)),
+                    Db.P("@s", bytes.Length))
+            Catch
+                ' Backfill is opportunistic; a failure must not break the response.
+            End Try
+        End Sub
+
+        ''' <summary>
+        ''' Accepts only a root-relative path under one of AllowedRoots. Anything
+        ''' else -- a different folder, a traversal, a query string, a backslash --
+        ''' becomes "" and the caller 404s, so the endpoint can never read outside
+        ''' the folders it exists for.
         ''' </summary>
         Private Function Normalize(raw As String) As String
             Dim p As String = Trim(Convert.ToString(raw))
             If p = "" Then Return ""
             p = p.Replace("\", "/")
-            ' Accept both a bare filename and the full root-relative path, since
-            ' an <img src> may be written either way by a future caller.
-            If Not p.StartsWith("/") Then p = Root & p
-            If Not p.StartsWith(Root, StringComparison.OrdinalIgnoreCase) Then Return ""
+            ' Legacy rows: a commission upload was once stored without its leading
+            ' slash ("Uploads/comm/x.jpg"). Normalise that back before routing.
+            If p.StartsWith("Uploads/", StringComparison.OrdinalIgnoreCase) Then p = "/" & p
+            ' A bare filename (no leading slash) is a legacy venue name only.
+            If Not p.StartsWith("/") Then p = MallsRoot & p
+
+            Dim ok As Boolean = False
+            For Each root As String In AllowedRoots
+                If p.StartsWith(root, StringComparison.OrdinalIgnoreCase) Then
+                    ok = True
+                    Exit For
+                End If
+            Next
+            If Not ok Then Return ""
             If p.Contains("..") OrElse p.Contains("?") OrElse p.Contains("#") Then Return ""
             Return p
         End Function

@@ -121,10 +121,12 @@ STAR_DOM_Web
  Where an img tag or CSS background should fetch a stored asset path from.
 
  Venue photos under /Assets/Malls/ are held twice: the file in Git and the
- bytes in AssetImages. They are served by App/AssetImg.aspx, which reads the
- database row first and falls back to the file, so a lost folder still
- renders. Every other path (product art, logos, payment marks) is a plain
- static file and is returned untouched.
+ bytes in AssetImages. Product images and commission references under
+ /Uploads/ are DB-only, since a local Uploads folder is lost on redeploy.
+ All three are served by App/AssetImg.aspx, which reads the database row
+ first and falls back to the file, so a lost folder still renders. Every
+ other path (logos, payment marks) is a plain static file and is returned
+ untouched.
 
  The path is URL-encoded on the way out: several venue files carry spaces
  and one used to carry an apostrophe, which breaks a bare query string.
@@ -392,30 +394,39 @@ STAR_DOM_Web
 </member>
 <member name="T:STAR_DOM.Web.AssetImgPage">
  <summary>
- Streams one venue photo out of AssetImages (BYTEA), falling back to the
- file under Assets\Malls when no row exists.
+ Streams a stored image out of AssetImages (BYTEA). Venue photos fall back to
+ the file under Assets\Malls when no row exists; user uploads (product images
+ and commission references) are DB-only, and a legacy on-disk upload is
+ backfilled into the database the first time it is served.
 
  Why a database copy: Assets\Malls ships in Git, but the itinerary grid is
  the first thing a visitor sees, and a stray folder delete -- or a clone
  that never carried the images -- leaves every venue with the gradient
  placeholder. Holding the bytes here means a pg_dump carries them with
  everything else and the photos restore themselves, exactly like the QR
- image in PaymentQr.aspx.
+ image in PaymentQr.aspx. Customer and product uploads live here for the same
+ reason: a local Uploads folder does not survive a redeploy.
 
- Only paths under /Assets/Malls/ are served, so this endpoint cannot be
- turned into a general file reader: the query string is checked against
- that prefix and against ".." before it is used at all.
+ Only whitelisted prefixes are served, so this endpoint cannot be turned
+ into a general file reader: the query string is checked against the allowed
+ roots and against ".." before it is used at all.
  </summary>
 </member>
-<member name="F:STAR_DOM.Web.AssetImgPage.Root">
- <summary>The only folder this endpoint will read from.</summary>
+<member name="F:STAR_DOM.Web.AssetImgPage.AllowedRoots">
+ <summary>The folders this endpoint will read from.</summary>
+</member>
+<member name="M:STAR_DOM.Web.AssetImgPage.BackfillInsert(System.String,System.Byte[],System.String)">
+ <summary>
+ Best-effort move of an on-disk upload into the database, so that after
+ the first view the image no longer depends on the local folder.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Web.AssetImgPage.Normalize(System.String)">
  <summary>
- Accepts only a root-relative path under /Assets/Malls. Anything else --
- a different folder, a traversal, a query string, a backslash -- becomes
- "" and the caller 404s, so the endpoint can never read outside the one
- folder it exists for.
+ Accepts only a root-relative path under one of AllowedRoots. Anything
+ else -- a different folder, a traversal, a query string, a backslash --
+ becomes "" and the caller 404s, so the endpoint can never read outside
+ the folders it exists for.
  </summary>
 </member>
 <member name="M:STAR_DOM.Web.AssetImgPage.Fail(System.String)">
@@ -436,6 +447,12 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Web.CommissionHubPage.MerchantBridge">
  <summary>Bridges the customer-facing hub to the merchant pipeline, which used to be unreachable from here.</summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionRequestPage.ComposeAddr(System.String,System.String,System.String,System.String,System.String,System.String)">
+ <summary>The split delivery fields joined into the single line the commissions table stores.</summary>
+</member>
+<member name="M:STAR_DOM.Web.CommissionRequestPage.ReadPostedFile(System.Web.HttpPostedFile)">
+ <summary>Reads an uploaded file fully into memory so it can be written to the database.</summary>
 </member>
 <member name="M:STAR_DOM.Web.CommissionRequestPage.StepCompletion(System.Int32)">
  <summary>
@@ -500,6 +517,17 @@ STAR_DOM_Web
  reload and can be linked to. Trimmed once here because every use below
  compares against it to decide whether to render the "clear" affordance.
  </summary>
+</member>
+<member name="M:STAR_DOM.Web.ProductEditPage.SaveImages(System.Int32)">
+ <summary>
+ Applies the image edits from one save: removals first (the hidden
+ delimg field carries the ticked ids), then the new uploads. Bytes go
+ into AssetImages so they survive a redeploy; the first image on an
+ otherwise-empty product becomes its primary.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.ProductEditPage.ReadPostedFile(System.Web.HttpPostedFile)">
+ <summary>Reads an uploaded file fully into memory so it can be written to the database.</summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderActions(System.Text.StringBuilder,STAR_DOM.Models.Order)">
  <summary>Per-row actions: one panel for the row's step, then the View link.</summary>
@@ -807,6 +835,17 @@ STAR_DOM_Web
  but PostgreSQL refuses "timestamptz >= text" with SQLSTATE 42883.
  </summary>
 </member>
+<member name="M:STAR_DOM.Helpers.Clock.ToInstant(System.DateTime)">
+ <summary>
+ Treat a wall-clock Date (parsed from a form / stored without a zone) as
+ Asia/Manila local time and return the absolute instant, for binding to a
+ PostgreSQL TIMESTAMPTZ. Event windows are entered as Manila wall-clock, but
+ Npgsql stores an Unspecified DateTime as-is (i.e. as if it were UTC), which
+ shifted every saved window by +8h and left a running event stuck at "0 DAYS
+ TO GO". Routing the value through here keeps the stored instant equal to the
+ wall-clock the merchant actually typed.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Helpers.Clock.ParseTimeOfDay(System.String)">
  <summary>Parse "10:00 AM" style opening/closing times into a TimeOfDay. Returns Nothing if unparseable.</summary>
 </member>
@@ -959,11 +998,55 @@ STAR_DOM_Web
  push it off the end of the flash on long ones.
  </summary>
 </member>
+<member name="P:STAR_DOM.Models.UserAddress.Address">
+ <summary>House number and street.</summary>
+</member>
+<member name="P:STAR_DOM.Models.UserAddress.City">
+ <summary>City / municipality.</summary>
+</member>
+<member name="P:STAR_DOM.Models.UserAddress.Region">
+ <summary>Province (stored in the legacy Region column).</summary>
+</member>
+<member name="P:STAR_DOM.Models.UserAddress.Compose">
+ <summary>
+ The single delivery line the Orders/Commissions tables store, built from
+ the detailed parts so nothing the customer entered is dropped.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Reports.ReportRow">
  <summary>Key/value row used by report grids and chart series.</summary>
 </member>
 <member name="T:STAR_DOM.Reports.KpiBlock">
  <summary>Aggregated KPI block rendered on the reports screen.</summary>
+</member>
+<member name="T:STAR_DOM.Repositories.AssetImageRepository">
+ <summary>
+ Writes user-uploaded images (product photos, commission references) into the
+ AssetImages blob table instead of the local Uploads folder, so a redeploy --
+ or a fresh clone without the folder -- still shows every picture. The bytes
+ are served back through App/AssetImg.aspx, exactly like venue photos.
+ </summary>
+</member>
+<member name="F:STAR_DOM.Repositories.AssetImageRepository.MaxBytes">
+ <summary>Refuse anything larger; a product/reference photo never legitimately needs more.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.AssetImageRepository.Save(System.String,System.String,System.Byte[],System.String,System.Boolean)">
+ <summary>
+ Stores one image under <paramref name="folder"/> and returns its
+ root-relative path ("/Uploads/products/&lt;id&gt;.png"), or "" when the
+ input is empty or not an allowed image. Set <paramref name="allowDocuments"/>
+ to also accept PDFs (commission references can be spec sheets).
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.AssetImageRepository.Delete(System.String)">
+ <summary>Removes a stored image; harmless when the path is unknown or empty.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.AssetImageRepository.ExtensionFor(System.String,System.String)">
+ <summary>The extension to store under, favouring the uploaded name and
+ falling back to the declared content type. "" when neither is usable.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.AssetImageRepository.MimeFor(System.String)">
+ <summary>Content type for a stored extension, or "" when it is not an allowed image.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.CartRepository.ListBundleGroups">
  <summary>
@@ -1265,6 +1348,11 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.CategorySales">
  <summary>Sales by category across both channels: order lines and booth sales.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.UserAddressRepository.CreateIfNew(System.Int32,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
+ <summary>Save the detailed address from a checkout/commission form, unless
+ an address with the same street/barangay/city/zip already exists for this
+ user. Returns the address id (0 when nothing was saved).</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.UserRepository.ListMerchants">
  <summary>Commission creators/artists (Admin or Merchant).</summary>

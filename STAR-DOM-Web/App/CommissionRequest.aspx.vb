@@ -17,6 +17,7 @@ Namespace STAR_DOM.Web
         Private ReadOnly _catalog As New CatalogService()
         Private ReadOnly _svc As New CommissionService()
         Private ReadOnly _addrRepo As New UserAddressRepository()
+        Private ReadOnly _assets As New AssetImageRepository()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
@@ -49,14 +50,21 @@ Namespace STAR_DOM.Web
             Dim notes As String = Convert.ToString(Request.Form("notes"))
             ' The finished piece is delivered, so the address is collected with the
             ' request rather than chased once the art is done.
-            Dim address As String = Convert.ToString(Request.Form("address"))
+            Dim street As String = Convert.ToString(Request.Form("addrStreet")).Trim()
+            Dim barangay As String = Convert.ToString(Request.Form("addrBarangay")).Trim()
+            Dim city As String = Convert.ToString(Request.Form("addrCity")).Trim()
+            Dim province As String = Convert.ToString(Request.Form("addrProvince")).Trim()
+            Dim postalCode As String = Convert.ToString(Request.Form("addrZip")).Trim()
+            Dim landmark As String = Convert.ToString(Request.Form("addrLandmark")).Trim()
+            Dim address As String = ComposeAddr(street, barangay, city, province, postalCode, landmark)
             Dim phone As String = Convert.ToString(Request.Form("phone"))
             Dim savedAddrId As Integer = 0
             Integer.TryParse(Request.Form("savedAddressId"), savedAddrId)
-            If savedAddrId > 0 Then
+            ' No-JS fallback: a saved row chosen without the fields being filled.
+            If savedAddrId > 0 AndAlso street = "" Then
                 Dim a As UserAddress = _addrRepo.GetAddress(savedAddrId, STAR_DOM.Helpers.Session.CurrentUser.Id)
                 If a IsNot Nothing Then
-                    address = a.Address
+                    address = a.Compose
                     If String.IsNullOrWhiteSpace(phone) Then phone = a.Phone
                 End If
             End If
@@ -76,7 +84,9 @@ Namespace STAR_DOM.Web
             If Decimal.TryParse(b1, tmp) Then budgetMin = tmp
             If Decimal.TryParse(b2, tmp) Then budgetMax = tmp
 
-            ' file references
+            ' File references. The bytes go into AssetImages (not the local
+            ' Uploads folder), so they survive a redeploy the same way venue and
+            ' product images do; App/AssetImg.aspx serves them back.
             Dim refs As New List(Of (file As String, name As String, kb As Integer))()
             If Request.Files IsNot Nothing AndAlso Request.Files.Count > 0 Then
                 Dim allowed As String() = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"}
@@ -86,11 +96,9 @@ Namespace STAR_DOM.Web
                     Dim ext As String = Path.GetExtension(f.FileName).ToLowerInvariant()
                     If Array.IndexOf(allowed, ext) < 0 Then Continue For
                     If f.ContentLength > 25 * 1024 * 1024 Then Continue For
-                    Dim dirPath As String = Server.MapPath("~/Uploads/comm")
-                    Directory.CreateDirectory(dirPath)
-                    Dim stored As String = Guid.NewGuid().ToString("N") & ext
-                    f.SaveAs(Path.Combine(dirPath, stored))
-                    refs.Add(("Uploads/comm/" & stored, Path.GetFileName(f.FileName), f.ContentLength \ 1024))
+                    Dim bytes As Byte() = ReadPostedFile(f)
+                    Dim storedPath As String = _assets.Save("Uploads/comm", f.FileName, bytes, f.ContentType, allowDocuments:=True)
+                    If storedPath <> "" Then refs.Add((storedPath, IO.Path.GetFileName(f.FileName), f.ContentLength \ 1024))
                 Next
             End If
 
@@ -98,6 +106,11 @@ Namespace STAR_DOM.Web
                                                       deadline, budgetMin, budgetMax, notes, refs,
                                                       address, phone)
             If result.Success Then
+                ' Opt-in save so the buyer can reuse this delivery address.
+                If Request.Form("saveToProfile") IsNot Nothing AndAlso street <> "" Then
+                    _addrRepo.CreateIfNew(STAR_DOM.Helpers.Session.CurrentUser.Id, "Delivery",
+                                          street, barangay, city, province, postalCode, landmark, phone)
+                End If
                 Dim fresh As Commission = _svc.ListMyCommissions().OrderByDescending(Function(c) c.Id).FirstOrDefault()
                 Session("flash_msg") = result.Message
                 Session("flash_ok") = True
@@ -110,6 +123,27 @@ Namespace STAR_DOM.Web
                 RenderForm(result.Message)
             End If
         End Sub
+
+        ''' <summary>The split delivery fields joined into the single line the commissions table stores.</summary>
+        Private Shared Function ComposeAddr(street As String, barangay As String, city As String,
+                                            province As String, postalCode As String, landmark As String) As String
+            Dim sb As New StringBuilder()
+            sb.Append(If(street, "").Trim())
+            If Not String.IsNullOrWhiteSpace(barangay) Then sb.Append(", Brgy. " & barangay.Trim())
+            If Not String.IsNullOrWhiteSpace(city) Then sb.Append(", " & city.Trim())
+            If Not String.IsNullOrWhiteSpace(province) Then sb.Append(", " & province.Trim())
+            If Not String.IsNullOrWhiteSpace(postalCode) Then sb.Append(" " & postalCode.Trim())
+            If Not String.IsNullOrWhiteSpace(landmark) Then sb.Append(" · landmark: " & landmark.Trim())
+            Return sb.ToString()
+        End Function
+
+        ''' <summary>Reads an uploaded file fully into memory so it can be written to the database.</summary>
+        Private Shared Function ReadPostedFile(f As HttpPostedFile) As Byte()
+            Using ms As New MemoryStream()
+                f.InputStream.CopyTo(ms)
+                Return ms.ToArray()
+            End Using
+        End Function
 
         ' ---------------- GET: the five-step form ----------------
 
@@ -137,7 +171,7 @@ Namespace STAR_DOM.Web
                       Filled("budgetMax") <> "" OrElse Filled("deadline") <> ""
 
             ' Delivery: an address and a phone, since the finished piece is shipped.
-            done(4) = Filled("address") <> "" AndAlso Filled("phone") <> ""
+            done(4) = Filled("addrStreet") <> "" AndAlso Filled("phone") <> ""
 
             ' The last step is the review/submit screen itself: never pre-filled.
             done(5) = False
@@ -183,7 +217,12 @@ Namespace STAR_DOM.Web
             Dim keepBudgetMin As String = Filled("budgetMin")
             Dim keepBudgetMax As String = Filled("budgetMax")
             Dim keepNotes As String = Filled("notes")
-            Dim keepAddress As String = Filled("address")
+            Dim keepStreet As String = Filled("addrStreet")
+            Dim keepBarangay As String = Filled("addrBarangay")
+            Dim keepCity As String = Filled("addrCity")
+            Dim keepProvince As String = Filled("addrProvince")
+            Dim keepZip As String = Filled("addrZip")
+            Dim keepLandmark As String = Filled("addrLandmark")
             Dim keepPhone As String = Filled("phone")
             ' An <input type="date"> only accepts yyyy-MM-dd; echo back anything it
             ' would reject as empty rather than as a value the browser silently drops.
@@ -193,14 +232,7 @@ Namespace STAR_DOM.Web
                 Dim dlDate As Date
                 If Date.TryParse(dlText, dlDate) Then keepDeadline = dlDate.ToString("yyyy-MM-dd")
             End If
-            Dim useSavedAddr As String = Filled("useSavedAddress")
             Dim selectedAddrId As String = Filled("savedAddressId")
-            If useSavedAddr = "" AndAlso Session("com_savedaddr") IsNot Nothing Then useSavedAddr = Convert.ToString(Session("com_savedaddr"))
-            If selectedAddrId = "" AndAlso Session("com_savedaddrid") IsNot Nothing Then selectedAddrId = Convert.ToString(Session("com_savedaddrid"))
-            If keepAddress <> "" Then Session("com_keepaddr") = keepAddress
-            If keepPhone <> "" Then Session("com_keepphone") = keepPhone
-            If Session("com_keepaddr") IsNot Nothing AndAlso keepAddress = "" Then keepAddress = Convert.ToString(Session("com_keepaddr"))
-            If Session("com_keepphone") IsNot Nothing AndAlso keepPhone = "" Then keepPhone = Convert.ToString(Session("com_keepphone"))
             Dim sb As New StringBuilder()
             sb.Append(WebUi.Section("Custom Commercial Commission Request",
                                     "STAR:DOM ATELIER · BESPOKE COMMISSIONS",
@@ -315,34 +347,55 @@ Namespace STAR_DOM.Web
             sb.Append("<p class=""sub"">Your finished piece is delivered by J&amp;T Express. Shipping is free on " &
                       "commissions — this address is just where it goes.</p>")
             Dim addrs As List(Of UserAddress) = Nothing
-            Dim currentUser As Models.User = Nothing
             If STAR_DOM.Helpers.Session.CurrentUser IsNot Nothing Then
-                currentUser = STAR_DOM.Helpers.Session.CurrentUser
-                addrs = _addrRepo.ListByUserId(currentUser.Id)
+                addrs = _addrRepo.ListByUserId(STAR_DOM.Helpers.Session.CurrentUser.Id)
             End If
-            sb.Append("<div class='field'><label>Saved addresses</label>")
-            sb.Append("<select name='savedAddressId' style='width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px' onchange=""var v=this.value;if(v===''){document.getElementById('addrManual').style.display='block';}else{document.getElementById('addrManual').style.display='none';}"">")
-            sb.Append("<option value=''>— Add new / Enter manually —</option>")
-            If addrs IsNot Nothing Then
+            If addrs IsNot Nothing AndAlso addrs.Count > 0 Then
+                sb.Append("<div class='field'><label for='savedAddressId'>Use a saved address</label>")
+                sb.Append("<select id='savedAddressId' name='savedAddressId' style='width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px'>")
+                sb.Append("<option value=''>Enter a new address</option>")
                 For Each a As UserAddress In addrs
                     Dim sel As String = If(selectedAddrId = a.Id.ToString(), " selected", "")
-                    Dim txt As String = (If(a.Label <> "", a.Label & ": ", "")) & a.Address
-                    sb.Append("<option value='" & a.Id.ToString() & "'" & sel & ">" & WebUi.Esc(txt) & "</option>")
+                    sb.Append("<option value='" & a.Id.ToString() & "'" & sel &
+                              " data-street='" & WebUi.Attr(a.Address) &
+                              "' data-barangay='" & WebUi.Attr(a.Barangay) &
+                              "' data-city='" & WebUi.Attr(a.City) &
+                              "' data-province='" & WebUi.Attr(a.Region) &
+                              "' data-zip='" & WebUi.Attr(a.PostalCode) &
+                              "' data-landmark='" & WebUi.Attr(a.Landmark) &
+                              "' data-phone='" & WebUi.Attr(a.Phone) & "'>" &
+                              WebUi.Esc(If(a.Label <> "", a.Label & ": ", "") & a.Compose) & "</option>")
                 Next
+                sb.Append("</select>")
+                sb.Append("<div class='sub' style='font-size:11.5px;margin-top:4px'>Picking one fills the fields below — adjust anything that has changed.</div>")
+                sb.Append("</div>")
             End If
-            sb.Append("</select>")
-            sb.Append("<input type='hidden' name='useSavedAddress' value='" & WebUi.Attr(useSavedAddr) & "'>")
+            sb.Append("<div id='addrManual'>")
+            sb.Append("<div class='form-grid2'>")
+            sb.Append("<div class='field'><label for='ad'>House number and street *</label>")
+            sb.Append("<input id='ad' name='addrStreet' required value='" & WebUi.Attr(keepStreet) & "' placeholder='Blk 1 Lot 2, Sample St.'></div>")
+            sb.Append("<div class='field'><label for='ab'>Barangay</label>")
+            sb.Append("<input id='ab' name='addrBarangay' value='" & WebUi.Attr(keepBarangay) & "' placeholder='Barangay San Isidro'></div>")
             sb.Append("</div>")
-            Dim manualStyle2 As String = "display:block"
-            If selectedAddrId <> "" Then manualStyle2 = "display:none"
-            sb.Append("<div id='addrManual' style='" & manualStyle2 & "'>")
-            sb.Append("<div class='field'><label for='ad'>Delivery address *</label>")
-            sb.Append("<input id='ad' name='address' value='" & WebUi.Attr(keepAddress) & "' placeholder='House number, street, barangay, city, province'>")
+            sb.Append("<div class='form-grid2'>")
+            sb.Append("<div class='field'><label for='ac'>City / Municipality *</label>")
+            sb.Append("<input id='ac' name='addrCity' required value='" & WebUi.Attr(keepCity) & "' placeholder='Quezon City'></div>")
+            sb.Append("<div class='field'><label for='ap'>Province *</label>")
+            sb.Append("<input id='ap' name='addrProvince' required value='" & WebUi.Attr(keepProvince) & "' placeholder='Metro Manila'></div>")
+            sb.Append("</div>")
+            sb.Append("<div class='form-grid2'>")
+            sb.Append("<div class='field'><label for='az'>Postal code *</label>")
+            sb.Append("<input id='az' name='addrZip' required inputmode='numeric' pattern='[0-9]{4}' value='" & WebUi.Attr(keepZip) & "' placeholder='1101'></div>")
+            sb.Append("<div class='field'><label for='al'>Nearest landmark</label>")
+            sb.Append("<input id='al' name='addrLandmark' value='" & WebUi.Attr(keepLandmark) & "' placeholder='Near SM, beside bakery, etc.'></div>")
             sb.Append("</div>")
             sb.Append("<div class='field'><label for='ph'>Contact phone *</label>")
-            sb.Append("<input id='ph' name='phone' inputmode='tel' value='" & WebUi.Attr(keepPhone) & "' placeholder='09xx xxx xxxx'>")
+            sb.Append("<input id='ph' name='phone' required inputmode='tel' value='" & WebUi.Attr(keepPhone) & "' placeholder='09xx xxx xxxx'>")
             sb.Append("</div>")
-            sb.Append("<p class='sub' style='margin:6px 0 0;font-size:11px'>You can save addresses in <a href='/App/Profile.aspx'>your profile</a> for easier reuse.</p>")
+            sb.Append("<label class='row' style='gap:8px;align-items:center;font-size:13px;cursor:pointer'>")
+            sb.Append("<input type='checkbox' name='saveToProfile' value='1' checked style='width:auto;margin:0'>")
+            sb.Append("<span>Save this address to my profile so I can reuse it next time.</span></label>")
+            sb.Append("<p class='sub' style='margin:6px 0 0;font-size:11px'>Addresses saved here also appear on <a href='/App/Profile.aspx'>your profile</a>.</p>")
             sb.Append("</div>")
             sb.Append("</div>")
 
@@ -353,6 +406,24 @@ Namespace STAR_DOM.Web
             sb.Append("<button class=""btn primary"" type=""submit"" style=""font-size:15px;padding:12px 26px""><span class=""ic ms"">send</span><span>Submit Commission Request</span></button>")
             sb.Append("</div></div>")
             sb.Append("</form>")
+
+            ' Saved-address picker: only fill fields the chosen row actually carries.
+            sb.Append("<script>")
+            sb.Append("(function(){")
+            sb.Append("var sel=document.getElementById('savedAddressId');if(!sel)return;")
+            sb.Append("sel.addEventListener('change',function(){")
+            sb.Append("var o=sel.options[sel.selectedIndex];if(!o||!o.value)return;")
+            sb.Append("function fill(id,v){var el=document.getElementById(id);if(el&&v)el.value=v;}")
+            sb.Append("fill('ad',o.getAttribute('data-street'));")
+            sb.Append("fill('ab',o.getAttribute('data-barangay'));")
+            sb.Append("fill('ac',o.getAttribute('data-city'));")
+            sb.Append("fill('ap',o.getAttribute('data-province'));")
+            sb.Append("fill('az',o.getAttribute('data-zip'));")
+            sb.Append("fill('al',o.getAttribute('data-landmark'));")
+            sb.Append("fill('ph',o.getAttribute('data-phone'));")
+            sb.Append("});")
+            sb.Append("})();")
+            sb.Append("</" & "script>")
             Out.Text = sb.ToString()
         End Sub
 

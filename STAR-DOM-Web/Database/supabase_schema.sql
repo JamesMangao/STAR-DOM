@@ -628,6 +628,14 @@ CREATE INDEX IF NOT EXISTS IDX_AppErrors_Created ON AppErrors (CreatedAt);
 ALTER TABLE Bundles ADD COLUMN IF NOT EXISTS GroupSize INT NOT NULL DEFAULT 0;
 ALTER TABLE Bundles ADD COLUMN IF NOT EXISTS BundlePrice DECIMAL(12,2) NOT NULL DEFAULT 0;
 
+-- Saved delivery addresses became detailed: a single street line could not be
+-- split back into the parts a courier needs. Address stays the house number +
+-- street, City stays the city/municipality and Region doubles as the province;
+-- these three carry the rest.
+ALTER TABLE UserAddresses ADD COLUMN IF NOT EXISTS Barangay   VARCHAR(100) NOT NULL DEFAULT '';
+ALTER TABLE UserAddresses ADD COLUMN IF NOT EXISTS PostalCode VARCHAR(10)  NOT NULL DEFAULT '';
+ALTER TABLE UserAddresses ADD COLUMN IF NOT EXISTS Landmark   VARCHAR(120) NOT NULL DEFAULT '';
+
 -- Commission clarification round-trips are retired. The studio accepts a
 -- request or declines it, so "CLARIFICATION REQUESTED" and the message
 -- thread it hung off are gone from the product.

@@ -15,6 +15,7 @@ Namespace STAR_DOM.Web
         Protected Out As Literal
         Private ReadOnly _cart As New CartService()
         Private ReadOnly _orders As New OrderService()
+        Private ReadOnly _addresses As New UserAddressRepository()
 
         ' The orders table stores one ShippingAddress string, so the split inputs are
         ' joined back together by ComposeAddress on the way in.
@@ -181,6 +182,11 @@ Namespace STAR_DOM.Web
             Dim addr As String = ComposeAddress(d)
             Dim result As ServiceResult = _orders.Checkout("PENDING", addr, d.Phone, d.Notes, Nothing, "PENDING")
             If result.Success Then
+                ' Opt-in save: the buyer asked for next time's fields to be prefilled.
+                If Posted("saveToProfile") <> "" Then
+                    _addresses.CreateIfNew(STAR_DOM.Helpers.Session.CurrentUser.Id, "Delivery",
+                                           d.Street, d.Barangay, d.City, d.Province, d.Zip, d.Landmark, d.Phone)
+                End If
                 ' find the freshest order to deep-link into
                 Dim fresh As Order = _orders.ListMyOrders().OrderByDescending(Function(o) o.Id).FirstOrDefault()
                 Session("flash_msg") = "Order placed. The studio will return it with the final price and shipping fee — " &
@@ -281,7 +287,7 @@ Namespace STAR_DOM.Web
             ' Zone guide, so the eventual quote is never a surprise. Indicative only — the
             ' figure actually charged follows the parcel's weight when it is quoted.
             sb.Append("<div class=""sub"" style=""font-size:11.5px;margin:2px 0 10px;padding:9px 11px;background:var(--surface-low);border-radius:8px;border-left:3px solid var(--primary)"">")
-            sb.Append("<b style=""color:var(--ink)"">Typical J&amp;T zone rates:</b> Luzon ₱0–100 · Visayas ₱101–200 · Mindanao ₱201–300. " &
+            sb.Append("<b style=""color:var(--ink)"">Typical J&amp;T zone rates:</b> Luzon ₱0–100 · Visayas &amp; Mindanao ₱100–250. " &
                       "The exact fee follows the parcel's weight and is confirmed before dispatch.")
             sb.Append("</div>")
             ' delivery address. There is no pick-up alternative any more, so these
@@ -292,36 +298,42 @@ Namespace STAR_DOM.Web
             ' phone), so barangay is only filled when the line carries an explicit
             ' "Brgy." segment and the postal code / landmark always stay editable.
             Dim savedAddr As List(Of UserAddress) =
-                New UserAddressRepository().ListByUserId(STAR_DOM.Helpers.Session.CurrentUser.Id)
+                _addresses.ListByUserId(STAR_DOM.Helpers.Session.CurrentUser.Id)
             If savedAddr.Count > 0 Then
                 sb.Append("<div class=""field""><label for=""savedAddr"">Use a saved address</label>")
                 sb.Append("<select id=""savedAddr"" style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink)"">")
                 sb.Append("<option value="""">Enter a new address</option>")
                 For Each a As UserAddress In savedAddr
-                    ' One stored line ("Blk 1 Lot 2, Sample St., Brgy. San Isidro") is
-                    ' split back into the street and barangay the form asks for.
-                    Dim streetSegs As New List(Of String)()
-                    Dim aBrgy As String = ""
-                    For Each seg As String In SplitAddressLine(a.Address)
-                        If aBrgy = "" AndAlso LooksLikeBarangay(seg) Then
-                            aBrgy = StripBarangayPrefix(seg)
-                        Else
-                            streetSegs.Add(seg)
-                        End If
-                    Next
-                    Dim aStreet As String = String.Join(", ", streetSegs)
+                    ' New rows carry barangay/postal/landmark in their own columns.
+                    ' Older rows kept one street line ("Blk 1 Lot 2, Sample St.,
+                    ' Brgy. San Isidro"), so fall back to splitting that line.
+                    Dim aBrgy As String = a.Barangay
+                    Dim aStreet As String = a.Address
+                    If aBrgy = "" Then
+                        Dim streetSegs As New List(Of String)()
+                        For Each seg As String In SplitAddressLine(a.Address)
+                            If aBrgy = "" AndAlso LooksLikeBarangay(seg) Then
+                                aBrgy = StripBarangayPrefix(seg)
+                            Else
+                                streetSegs.Add(seg)
+                            End If
+                        Next
+                        aStreet = String.Join(", ", streetSegs)
+                    End If
                     sb.Append("<option value=""" & a.Id.ToString() &
                               """ data-street=""" & WebUi.Attr(aStreet) &
                               """ data-barangay=""" & WebUi.Attr(aBrgy) &
                               """ data-city=""" & WebUi.Attr(a.City) &
                               """ data-province=""" & WebUi.Attr(a.Region) &
+                              """ data-zip=""" & WebUi.Attr(a.PostalCode) &
+                              """ data-landmark=""" & WebUi.Attr(a.Landmark) &
                               """ data-phone=""" & WebUi.Attr(a.Phone) & """>" &
                               WebUi.Attr(a.Label) & " — " & WebUi.Attr(aStreet) &
                               If(aBrgy <> "", ", Brgy. " & WebUi.Attr(aBrgy), "") &
                               If(a.City <> "", ", " & WebUi.Attr(a.City), "") & "</option>")
                 Next
                 sb.Append("</select>")
-                sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:4px"">Picking one fills the fields below — postal code and landmark are never saved, so complete those.</div>")
+                sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:4px"">Picking one fills the fields below — adjust anything that has changed.</div>")
                 sb.Append("</div>")
             End If
             sb.Append("<div class=""field""><label for=""as1"">House number and street <span class=""sub"">*</span></label>")
@@ -344,6 +356,9 @@ Namespace STAR_DOM.Web
             ' shared fields
             sb.Append("<div class=""field""><label for=""ph"">Contact phone</label><input id=""ph"" name=""phone"" required placeholder=""09xx xxx xxxx"" value=""" & WebUi.Attr(phone) & """></div>")
             sb.Append("<div class=""field""><label for=""nt"">Order notes (optional)</label><textarea id=""nt"" name=""notes"" style=""min-height:70px"">" & WebUi.Esc(notes) & "</textarea></div>")
+            sb.Append("<label class=""row"" style=""gap:8px;align-items:center;font-size:13px;cursor:pointer"">")
+            sb.Append("<input type=""checkbox"" name=""saveToProfile"" value=""1"" checked style=""width:auto;margin:0"">")
+            sb.Append("<span>Save this address to my profile so I can reuse it next time.</span></label>")
             sb.Append("</div>")
 
             ' No payment method here. The studio prices the order and returns it with
@@ -406,6 +421,8 @@ Namespace STAR_DOM.Web
             sb.Append("fill('as2',o.getAttribute('data-barangay'));")
             sb.Append("fill('as3',o.getAttribute('data-city'));")
             sb.Append("fill('as4',o.getAttribute('data-province'));")
+            sb.Append("fill('as5',o.getAttribute('data-zip'));")
+            sb.Append("fill('as6',o.getAttribute('data-landmark'));")
             sb.Append("fill('ph',o.getAttribute('data-phone'));")
             sb.Append("});")
             sb.Append("})();")

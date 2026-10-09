@@ -1116,29 +1116,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   box-shadow: var(--sh-2), var(--stamp);
   border-radius: 4px;
   padding: 30px 34px 22px;
-  animation: rpPrint 1.5s cubic-bezier(.3, .15, .2, 1) both;
-  will-change: transform;
-}
-
-/* thermal-roll ejection: one continuous feed out of the printer slot */
-@keyframes rpPrint {
-  0%   { transform: translateY(-103%); }
-  100% { transform: translateY(0); }
-}
-
-/* moving scan band that follows the print head down the paper */
-.receipt-stage::after {
-  content: ""; position: absolute; left: -3%; right: -3%; top: -48vh;
-  height: 42vh; z-index: 3; pointer-events: none;
-  background: linear-gradient(180deg, rgba(28,26,23,0) 0%, rgba(28,26,23,.07) 35%, rgba(28,26,23,.13) 65%, rgba(28,26,23,0) 100%);
-  animation: rpScan 1.5s cubic-bezier(.3, .15, .2, 1) forwards;
-  will-change: transform;
-}
-@keyframes rpScan {
-  0%   { transform: translateY(0); opacity: 0; }
-  6%   { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { transform: translateY(158vh); opacity: 0; }
 }
 
 .rp-head {
@@ -1189,10 +1166,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rp-items th:first-child { width: 48px; }
 .rp-items th:nth-child(3), .rp-items th:nth-child(4), .rp-items td:nth-child(3), .rp-items td:nth-child(4) { text-align: right; }
 .rp-items td { padding: 7px 6px; border-bottom: 1px dashed var(--line-hi); vertical-align: top; }
-.rp-row { animation: rpFade .4s ease both; }
-.rp-i1 { animation-delay: .5s; } .rp-i2 { animation-delay: .58s; } .rp-i3 { animation-delay: .66s; }
-.rp-i4 { animation-delay: .74s; } .rp-i5 { animation-delay: .82s; } .rp-i6 { animation-delay: .9s; }
-@keyframes rpFade { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
 
 .rp-foot { display: flex; justify-content: flex-end; gap: 20px; padding-top: 16px; position: relative; }
 .rp-sums { width: 300px; }
@@ -1215,15 +1188,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   text-transform: uppercase;
   transform: rotate(-14deg);
   box-shadow: 0 0 0 4px rgba(183, 0, 17, .08);
-  opacity: 0;
-  animation: rpStamp .35s cubic-bezier(.34, 1.56, .64, 1) .75s forwards;
+  opacity: 1;
 }
 .rp-stamp .rp-check { font-size: 24px; line-height: 1; color: var(--green); }
-@keyframes rpStamp {
-  0%   { transform: scale(2.6) rotate(-14deg); opacity: 0; }
-  65%  { transform: scale(.92) rotate(-14deg); opacity: 1; }
-  100% { transform: scale(1) rotate(-14deg); opacity: 1; }
-}
 
 .rp-issuer {
   margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--line);

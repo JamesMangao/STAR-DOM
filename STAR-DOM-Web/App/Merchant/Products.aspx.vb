@@ -180,7 +180,6 @@ Namespace STAR_DOM.Web
                               If(lowFlag, "<span style=""color:var(--primary);font-size:11px;font-weight:700"">LOW</span>", "") & "</td>")
                     sb.Append("<td>")
                     Dim flags As New List(Of String)()
-                    If p.IsBoothExclusive Then flags.Add("BOOTH")
                     If p.IsFeatured Then flags.Add("FEATURED")
                     ' A set SalePrice is the checkout-time discount, never shown as a price
                     ' anywhere. Flag it so the merchant can tell why the cart differs,

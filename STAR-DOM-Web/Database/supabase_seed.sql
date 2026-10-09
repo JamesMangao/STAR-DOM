@@ -154,19 +154,19 @@ ON CONFLICT (Id) DO UPDATE SET Name = EXCLUDED.Name, Venue = EXCLUDED.Venue,
 INSERT INTO PopUpEvents (Id, LocationId, Name, Description, StartDate, EndDate, OpenTime, CloseTime, BoothNumber,
                          VenueDetail, Status, FeaturedGuest, IsCurrent, LineupText, ImageFile) VALUES
 (1, 1, 'Robinson''s Galleria South', 'Touch prints, inspect merchandise, watch live sketching, and pay instantly via local Philippine payment rails. Convention sticker sheets and on-site custom sketch slots available.',
- '2026-10-09 10:00:00', '2026-10-11 21:00:00', '10:00 AM', '9:00 PM', 'Stall A-12', 'Ground Atrium Activity Center', 'UPCOMING', '', FALSE, '', '/Assets/Malls/robinsons-galleria-south.webp'),
+ '2026-10-09 10:00:00+08', '2026-10-11 21:00:00+08', '10:00 AM', '9:00 PM', 'Stall A-12', 'Ground Atrium Activity Center', 'UPCOMING', '', FALSE, '', '/Assets/Malls/robinsons-galleria-south.webp'),
 (2, 2, 'SM City Santa Rosa', 'South Luzon Artisan Weekend Expo. Print swaps, sticker rallies, and live tablet painting demo sessions at the pavilion.',
- '2026-10-16 10:00:00', '2026-10-18 21:00:00', '10:00 AM', '9:00 PM', 'D-04', 'Ground Atrium (Booth D-04)', 'UPCOMING', '', FALSE, '', '/Assets/Malls/sm-city-santa-rosa.webp'),
+ '2026-10-16 10:00:00+08', '2026-10-18 21:00:00+08', '10:00 AM', '9:00 PM', 'D-04', 'Ground Atrium (Booth D-04)', 'UPCOMING', '', FALSE, '', '/Assets/Malls/sm-city-santa-rosa.webp'),
 (3, 3, 'Festival Mall Alabang', 'Metro Manila south bazaar with watercolor demos and gacha sticker dispensers.',
- '2026-10-23 10:00:00', '2026-10-25 21:00:00', '10:00 AM', '9:00 PM', 'Island F', 'Carousel Court (Island F)', 'UPCOMING', '', FALSE, '', '/Assets/Malls/festival-mall-alabang.webp'),
+ '2026-10-23 10:00:00+08', '2026-10-25 21:00:00+08', '10:00 AM', '9:00 PM', 'Island F', 'Carousel Court (Island F)', 'UPCOMING', '', FALSE, '', '/Assets/Malls/festival-mall-alabang.webp'),
 (4, 4, 'Ayala Malls South Park', 'Indie comic & print exhibition, live ink sketches open at 11:00 AM daily.',
- '2026-10-02 10:00:00', '2026-10-04 21:00:00', '10:00 AM', '9:00 PM', 'Central Pod', 'Level 2 Activity Area', 'UPCOMING', '', FALSE, '', '/Assets/Malls/ayala-south-park.webp'),
+ '2026-10-02 10:00:00+08', '2026-10-04 21:00:00+08', '10:00 AM', '9:00 PM', 'Central Pod', 'Level 2 Activity Area', 'UPCOMING', '', FALSE, '', '/Assets/Malls/ayala-south-park.webp'),
 (5, 5, 'Robinsons Place Manila', 'Midtown art fair with enamel pin rallies and convention merch. Grand finale of the 2026 tour, with a retrospective wall of the full catalogue.',
- '2026-11-13 10:00:00', '2026-11-15 21:00:00', '10:00 AM', '9:00 PM', 'Midtown Wing', 'Midtown Atrium Stage', 'UPCOMING', '', FALSE, '', '/Assets/Malls/robinsons-place-manila.webp'),
+ '2026-11-13 10:00:00+08', '2026-11-15 21:00:00+08', '10:00 AM', '9:00 PM', 'Midtown Wing', 'Midtown Atrium Stage', 'UPCOMING', '', FALSE, '', '/Assets/Malls/robinsons-place-manila.webp'),
 (6, 6, 'SM Southmall Artisan Fair', 'Santa Rosa artisan run — the full sticker catalogue on one wall, plus live sketching slots all day.',
- '2026-10-30 10:00:00', '2026-11-01 21:00:00', '10:00 AM', '9:00 PM', 'Stall K-02', 'Activity Center', 'UPCOMING', '', FALSE, '', '/Assets/Malls/sm-southmall-artisan-fair.webp'),
+ '2026-10-30 10:00:00+08', '2026-11-01 21:00:00+08', '10:00 AM', '9:00 PM', 'Stall K-02', 'Activity Center', 'UPCOMING', '', FALSE, '', '/Assets/Malls/sm-southmall-artisan-fair.webp'),
 (7, 7, 'U.P. Town Center Art Bazaar', 'University town bazaar — student-run booths, keychain bar, and portfolio review bookings with the artist.',
- '2026-11-06 10:00:00', '2026-11-08 21:00:00', '10:00 AM', '8:00 PM', 'Block 3', 'Open Plaza', 'UPCOMING', '', FALSE, '', '/Assets/Malls/up-town-center.webp')
+ '2026-11-06 10:00:00+08', '2026-11-08 21:00:00+08', '10:00 AM', '8:00 PM', 'Block 3', 'Open Plaza', 'UPCOMING', '', FALSE, '', '/Assets/Malls/up-town-center.webp')
 -- The tour is RECYCLED, not extended: the same seven venues come back around,
 -- one per weekend, rather than six invented malls that only had the gradient
 -- placeholder to show for them. Every row above is a re-dating of an event that
@@ -526,10 +526,10 @@ INSERT INTO EventInventory (EventId, ProductId, StartingStock, SoldQuantity, Rem
 
 -- ---------- Event sales (in-person booth takings for the active run) ----------
 INSERT INTO EventSales (EventId, OrderId, ProductId, Quantity, UnitPrice, TotalAmount, SaleType, PaymentMethod, SaleDate, Notes) VALUES
-(1, NULL, 1, 2, 30.00, 60.00, 'IN_PERSON', 'GCASH', '2026-10-09 11:20:00', 'Walk-in'),
-(1, NULL, 25, 1, 120.00, 120.00, 'QR',       'GOTYME', '2026-10-09 13:05:00', 'QR scan'),
-(1, NULL, 30, 1, 100.00, 100.00, 'IN_PERSON', 'CASH', '2026-10-09 14:40:00', 'Art Print sale'),
-(1, NULL, 56, 1, 150.00, 150.00, 'PREORDER', 'GCASH', '2026-10-09 16:10:00', 'Booth pre-order');
+(1, NULL, 1, 2, 30.00, 60.00, 'IN_PERSON', 'GCASH', '2026-10-09 11:20:00+08', 'Walk-in'),
+(1, NULL, 25, 1, 120.00, 120.00, 'QR',       'GOTYME', '2026-10-09 13:05:00+08', 'QR scan'),
+(1, NULL, 30, 1, 100.00, 100.00, 'IN_PERSON', 'CASH', '2026-10-09 14:40:00+08', 'Art Print sale'),
+(1, NULL, 56, 1, 150.00, 150.00, 'PREORDER', 'GCASH', '2026-10-09 16:10:00+08', 'Booth pre-order');
 
 -- ---------- Bundles ----------
 -- User specs: Stickers Bundle (4 for 100 PHP), Button pins Bundle (3 for 100 PHP)

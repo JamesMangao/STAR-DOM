@@ -295,14 +295,22 @@ Namespace STAR_DOM.Web
             Return "<div class=""art"" style=""background-image:url('" & Attr(AssetUrl(f)) & "');" & style & """></div>"
         End Function
 
+        ' Folders whose bytes live in AssetImages instead of a checked-in file.
+        ' (Module members are implicitly Shared, so no Shared keyword here.)
+        Private ReadOnly DbBackedRoots As String() = {
+            "/Assets/Malls/", "/Uploads/products/", "/Uploads/comm/"
+        }
+
         ''' <summary>
         ''' Where an img tag or CSS background should fetch a stored asset path from.
         '''
         ''' Venue photos under /Assets/Malls/ are held twice: the file in Git and the
-        ''' bytes in AssetImages. They are served by App/AssetImg.aspx, which reads the
-        ''' database row first and falls back to the file, so a lost folder still
-        ''' renders. Every other path (product art, logos, payment marks) is a plain
-        ''' static file and is returned untouched.
+        ''' bytes in AssetImages. Product images and commission references under
+        ''' /Uploads/ are DB-only, since a local Uploads folder is lost on redeploy.
+        ''' All three are served by App/AssetImg.aspx, which reads the database row
+        ''' first and falls back to the file, so a lost folder still renders. Every
+        ''' other path (logos, payment marks) is a plain static file and is returned
+        ''' untouched.
         '''
         ''' The path is URL-encoded on the way out: several venue files carry spaces
         ''' and one used to carry an apostrophe, which breaks a bare query string.
@@ -310,8 +318,17 @@ Namespace STAR_DOM.Web
         Public Function AssetUrl(path As Object) As String
             Dim f As String = Convert.ToString(path)
             If String.IsNullOrWhiteSpace(f) Then Return ""
-            If Not f.StartsWith("/Assets/Malls/", StringComparison.OrdinalIgnoreCase) Then Return f
+            ' Legacy commission rows were stored without the leading slash.
+            If f.StartsWith("Uploads/", StringComparison.OrdinalIgnoreCase) Then f = "/" & f
+            If Not IsDbBacked(f) Then Return f
             Return "/App/AssetImg.aspx?p=" & HttpUtility.UrlEncode(f)
+        End Function
+
+        Private Function IsDbBacked(path As String) As Boolean
+            For Each root As String In DbBackedRoots
+                If path.StartsWith(root, StringComparison.OrdinalIgnoreCase) Then Return True
+            Next
+            Return False
         End Function
 
         ''' <summary>

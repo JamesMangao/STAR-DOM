@@ -72,8 +72,12 @@ Namespace STAR_DOM.Repositories
         End Function
 
         Public Function ListUpcoming() As List(Of PopUpEvent)
+            ' The currently-running booth is already the hero on the locations page, so
+            ' drop any derived NOW OPEN event from "upcoming" instead of listing it twice
+            ' (once as live, once as a countdown card).
             Return Db.Rows(EventSelect & "WHERE e.Status <> 'CANCELLED' AND e.EndDate >= @now ORDER BY e.StartDate",
-                           Db.P("@now", Clock.SqlNow())).Select(Function(r) MapEvent(r)).ToList()
+                           Db.P("@now", Clock.SqlNow())).Select(Function(r) MapEvent(r)).
+                   Where(Function(e) e.Status <> "NOW OPEN").ToList()
         End Function
 
         Public Function GetCurrentEvent() As PopUpEvent
@@ -96,7 +100,8 @@ Namespace STAR_DOM.Repositories
                 "BoothNumber, VenueDetail, Status, FeaturedGuest, IsCurrent, ImageFile, LineupText, CreatedAt, UpdatedAt) " &
                 "VALUES (@l, @n, @d, @sd, @ed, @ot, @ct, @b, @vd, @s, @fg, @c, @img, @lt, NOW(), NOW())",
                 Db.P("@l", e.LocationId), Db.P("@n", e.Name), Db.P("@d", e.Description),
-                Db.P("@sd", e.StartDate), Db.P("@ed", e.EndDate), Db.P("@ot", e.OpenTime), Db.P("@ct", e.CloseTime),
+                Db.P("@sd", Clock.ToInstant(e.StartDate)), Db.P("@ed", Clock.ToInstant(e.EndDate)),
+                Db.P("@ot", e.OpenTime), Db.P("@ct", e.CloseTime),
                 Db.P("@b", e.BoothNumber), Db.P("@vd", e.VenueDetail), Db.P("@s", e.Status),
                 Db.P("@fg", e.FeaturedGuest), Db.P("@c", e.IsCurrent),
                 Db.P("@img", e.ImageFile), Db.P("@lt", e.LineupText))
@@ -108,7 +113,8 @@ Namespace STAR_DOM.Repositories
                 "OpenTime = @ot, CloseTime = @ct, BoothNumber = @b, VenueDetail = @vd, Status = @s, FeaturedGuest = @fg, " &
                 "ImageFile = @img, LineupText = @lt, UpdatedAt = NOW() WHERE Id = @id",
                 Db.P("@l", e.LocationId), Db.P("@n", e.Name), Db.P("@d", e.Description),
-                Db.P("@sd", e.StartDate), Db.P("@ed", e.EndDate), Db.P("@ot", e.OpenTime), Db.P("@ct", e.CloseTime),
+                Db.P("@sd", Clock.ToInstant(e.StartDate)), Db.P("@ed", Clock.ToInstant(e.EndDate)),
+                Db.P("@ot", e.OpenTime), Db.P("@ct", e.CloseTime),
                 Db.P("@b", e.BoothNumber), Db.P("@vd", e.VenueDetail), Db.P("@s", e.Status),
                 Db.P("@fg", e.FeaturedGuest), Db.P("@img", e.ImageFile), Db.P("@lt", e.LineupText), Db.P("@id", e.Id))
         End Sub

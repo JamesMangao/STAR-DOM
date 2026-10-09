@@ -45,6 +45,20 @@ Namespace STAR_DOM.Helpers
             Return New DateTimeOffset(DateTime.UtcNow, TimeSpan.Zero)
         End Function
 
+        ''' <summary>
+        ''' Treat a wall-clock Date (parsed from a form / stored without a zone) as
+        ''' Asia/Manila local time and return the absolute instant, for binding to a
+        ''' PostgreSQL TIMESTAMPTZ. Event windows are entered as Manila wall-clock, but
+        ''' Npgsql stores an Unspecified DateTime as-is (i.e. as if it were UTC), which
+        ''' shifted every saved window by +8h and left a running event stuck at "0 DAYS
+        ''' TO GO". Routing the value through here keeps the stored instant equal to the
+        ''' wall-clock the merchant actually typed.
+        ''' </summary>
+        Public Function ToInstant(wallClock As Date) As DateTimeOffset
+            Dim local As Date = DateTime.SpecifyKind(wallClock, DateTimeKind.Unspecified)
+            Return New DateTimeOffset(local, _tz.GetUtcOffset(local))
+        End Function
+
         ''' <summary>Parse "10:00 AM" style opening/closing times into a TimeOfDay. Returns Nothing if unparseable.</summary>
         Public Function ParseTimeOfDay(value As String) As TimeSpan?
             If String.IsNullOrWhiteSpace(value) Then Return Nothing

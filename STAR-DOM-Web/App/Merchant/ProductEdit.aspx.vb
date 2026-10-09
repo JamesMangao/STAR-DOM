@@ -13,6 +13,7 @@ Namespace STAR_DOM.Web
         Protected Out As Literal
         Private ReadOnly _products As New ProductRepository()
         Private ReadOnly _cats As New CategoryRepository()
+        Private ReadOnly _assets As New AssetImageRepository()
         Private _editingId As Integer = 0
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
@@ -78,14 +79,16 @@ Namespace STAR_DOM.Web
 
             p.IsActive = Request.Form("isActive") = "1"
             p.IsFeatured = Request.Form("featured") = "1"
-            p.IsBoothExclusive = Request.Form("booth") = "1"
 
             Try
+                Dim productId As Integer
                 If _editingId > 0 Then
+                    productId = _editingId
                     _products.Update(p)
                 Else
-                    _products.Create(p)
+                    productId = _products.Create(p)
                 End If
+                SaveImages(productId)
                 Session("flash_msg") = "Product saved."
                 Session("flash_ok") = True
                 Response.Redirect("/App/Merchant/Products.aspx", True)
@@ -93,6 +96,42 @@ Namespace STAR_DOM.Web
                 RenderForm(ex.Message, Convert.ToString(Request.Form("name")))
             End Try
         End Sub
+
+        ''' <summary>
+        ''' Applies the image edits from one save: removals first (the hidden
+        ''' delimg field carries the ticked ids), then the new uploads. Bytes go
+        ''' into AssetImages so they survive a redeploy; the first image on an
+        ''' otherwise-empty product becomes its primary.
+        ''' </summary>
+        Private Sub SaveImages(productId As Integer)
+            Dim delIds As String = Convert.ToString(Request.Form("delimg"))
+            If Not String.IsNullOrWhiteSpace(delIds) Then
+                For Each part As String In delIds.Split(","c)
+                    Dim imageId As Integer
+                    If Integer.TryParse(part.Trim(), imageId) AndAlso imageId > 0 Then _products.DeleteImage(imageId)
+                Next
+            End If
+
+            Dim count As Integer = _products.ListImages(productId).Count
+            If Request.Files Is Nothing Then Return
+            For i As Integer = 0 To Request.Files.Count - 1
+                Dim f As System.Web.HttpPostedFile = Request.Files(i)
+                If f Is Nothing OrElse f.ContentLength = 0 OrElse String.IsNullOrWhiteSpace(f.FileName) Then Continue For
+                Dim bytes As Byte() = ReadPostedFile(f)
+                Dim path As String = _assets.Save("Uploads/products", f.FileName, bytes, f.ContentType)
+                If path = "" Then Continue For
+                _products.AddImage(productId, path, count = 0, count)
+                count += 1
+            Next
+        End Sub
+
+        ''' <summary>Reads an uploaded file fully into memory so it can be written to the database.</summary>
+        Private Shared Function ReadPostedFile(f As System.Web.HttpPostedFile) As Byte()
+            Using ms As New System.IO.MemoryStream()
+                f.InputStream.CopyTo(ms)
+                Return ms.ToArray()
+            End Using
+        End Function
 
         Private Sub RenderForm(errorMsg As String, keepName As String)
             Dim p As Product = Nothing
@@ -102,9 +141,9 @@ Namespace STAR_DOM.Web
             If errorMsg <> "" Then sb.Append(WebUi.AlertBox(errorMsg))
             sb.Append("<a href=""/App/Merchant/Products.aspx"" class=""sub"">← Products</a>")
             sb.Append(WebUi.Section(If(p Is Nothing, "Add Product", "Edit Product — " & p.Name), "PRODUCT & STOCK",
-                                    "Name, price, stock and shelf flags sync to the marketplace and event booths."))
+                                    "Name, price, stock, photos and shelf flags all sync to the marketplace."))
 
-            sb.Append("<form method=""post"" action=""/App/Merchant/ProductEdit.aspx" & If(_editingId > 0, "?id=" & _editingId.ToString(), "") & """>")
+            sb.Append("<form method=""post"" enctype=""multipart/form-data"" action=""/App/Merchant/ProductEdit.aspx" & If(_editingId > 0, "?id=" & _editingId.ToString(), "") & """>")
             ' Nested inside the shell form, which the browser closes at this tag — so the
             ' shell's token is not submitted with this form. Carry its own.
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
@@ -113,7 +152,7 @@ Namespace STAR_DOM.Web
             sb.Append(Field("name", "Product name *", If(p IsNot Nothing, p.Name, keepName), True))
             sb.Append(Field("sku", "SKU *", If(p IsNot Nothing, p.Sku, ""), True))
             sb.Append(Field("brand", "Brand / studio", If(p IsNot Nothing, p.BrandName, ""), False))
-            sb.Append(Field("badge", "Badge label (e.g. BOOTH EXCLUSIVE)", If(p IsNot Nothing, p.BadgeLabel, ""), False))
+            sb.Append(Field("badge", "Badge label (e.g. NEW, LIMITED)", If(p IsNot Nothing, p.BadgeLabel, ""), False))
             sb.Append(Field("price", "Base price (₱)", If(p IsNot Nothing, p.BasePrice.ToString("0.00"), ""), True))
             sb.Append(Field("sale", "Sale price (₱, optional)", If(p IsNot Nothing AndAlso p.SalePrice.HasValue, p.SalePrice.Value.ToString("0.00"), ""), False))
             sb.Append(Field("stock", "Stock quantity", If(p IsNot Nothing, p.StockQuantity.ToString(), "0"), True))
@@ -129,10 +168,34 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""field""><label>Description</label><textarea name=""description"" style=""min-height:90px"">" &
                       WebUi.Esc(If(p IsNot Nothing, p.Description, "")) & "</textarea></div>")
 
+            ' ---- Product photos ----
+            sb.Append("<div class=""field""><label>Product photos</label>")
+            If p IsNot Nothing Then
+                Dim imgs As List(Of ProductImage) = _products.ListImages(p.Id)
+                If imgs.Count > 0 Then
+                    sb.Append("<div style=""display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"">")
+                    For Each im In imgs
+                        sb.Append("<label style=""display:block;cursor:pointer;position:relative"">")
+                        sb.Append("<img src=""" & WebUi.Attr(WebUi.AssetUrl(im.ImageFile)) & """ alt="""" " &
+                                  "style=""width:110px;height:110px;object-fit:cover;border:1px solid var(--line);border-radius:10px;display:block"">")
+                        If im.IsPrimary Then
+                            sb.Append("<span class=""badge"" style=""position:absolute;top:6px;left:6px"">Primary</span>")
+                        End If
+                        sb.Append("<span style=""display:flex;gap:5px;align-items:center;margin-top:5px;font-size:11.5px"">")
+                        sb.Append("<input type=""checkbox"" name=""delimg"" value=""" & im.Id.ToString() & """ style=""width:auto;margin:0""> Remove")
+                        sb.Append("</span></label>")
+                    Next
+                    sb.Append("</div>")
+                End If
+            End If
+            sb.Append("<input type=""file"" name=""img"" accept=""image/*"" multiple>")
+            sb.Append("<div class=""sub"" style=""font-size:11.5px;margin-top:4px"">JPG, PNG, GIF or WebP · up to 6 MB each. " &
+                      "The first photo becomes the primary image; tick Remove to delete one.</div>")
+            sb.Append("</div>")
+
             sb.Append("<div class=""frow"">")
             sb.Append(Checkbox("isActive", "Active on marketplace", p Is Nothing OrElse p.IsActive))
             sb.Append(Checkbox("featured", "Featured", p IsNot Nothing AndAlso p.IsFeatured))
-            sb.Append(Checkbox("booth", "Booth exclusive", p IsNot Nothing AndAlso p.IsBoothExclusive))
             sb.Append("</div>")
             sb.Append("<div class=""frow"">")
             sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">save</span><span>Save Product</span></button>")

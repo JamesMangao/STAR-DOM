@@ -120,14 +120,14 @@ Namespace STAR_DOM.Web
                     sb.Append("<div class=""row"" style=""align-items:center;gap:12px;padding:10px;background:var(--surface-low);border-radius:10px;border:1px solid var(--line)"">")
                     sb.Append("<div style=""flex:1"">")
                     sb.Append("<div style=""font-weight:700;color:var(--ink)"">" & WebUi.Esc(addr.Label) & "</div>")
-                    sb.Append("<div class=""sub"" style=""margin-top:2px"">" & WebUi.Esc(addr.Address) & "</div>")
+                    sb.Append("<div class=""sub"" style=""margin-top:2px"">" & WebUi.Esc(addr.Compose) & "</div>")
                     If addr.Phone <> "" Then
                         sb.Append("<div class=""sub"" style=""margin-top:2px"">📞 " & WebUi.Esc(addr.Phone) & "</div>")
                     End If
                     sb.Append("</div>")
                     ' Edit / Delete buttons
                     sb.Append("<div class=""frow"" style=""gap:6px"">")
-                    sb.Append("<button type='button' class=""btn ghost sm"" onclick=""var f=document.getElementById('editAddrForm'); var h=document.getElementById('saveAddrBtn'); if(h){h.value='" & addr.Id.ToString() & "';} if(f){f.elements['label'].value=" & Js(addr.Label) & "; f.elements['address'].value=" & Js(addr.Address) & "; f.elements['city'].value=" & Js(addr.City) & "; f.elements['region'].value=" & Js(addr.Region) & "; f.elements['phone'].value=" & Js(addr.Phone) & ";} var p=document.getElementById('editAddrPanel'); if(p){p.scrollIntoView({behavior:'smooth',block:'center'});}"" style=""border-radius:8px;padding:6px 10px""><span class=""ms sm"">edit</span> Edit</button>")
+                    sb.Append("<button type='button' class=""btn ghost sm"" onclick=""var f=document.getElementById('editAddrForm'); var h=document.getElementById('saveAddrBtn'); if(h){h.value='" & addr.Id.ToString() & "';} if(f){f.elements['label'].value=" & Js(addr.Label) & "; f.elements['address'].value=" & Js(addr.Address) & "; f.elements['brgy'].value=" & Js(addr.Barangay) & "; f.elements['city'].value=" & Js(addr.City) & "; f.elements['region'].value=" & Js(addr.Region) & "; f.elements['zip'].value=" & Js(addr.PostalCode) & "; f.elements['landmark'].value=" & Js(addr.Landmark) & "; f.elements['phone'].value=" & Js(addr.Phone) & ";} var p=document.getElementById('editAddrPanel'); if(p){p.scrollIntoView({behavior:'smooth',block:'center'});}"" style=""border-radius:8px;padding:6px 10px""><span class=""ms sm"">edit</span> Edit</button>")
                     sb.Append("<form method=""post"" action=""/App/Profile.aspx"" style=""display:inline"">")
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<button class=""btn danger sm"" type=""submit"" name=""deladdr"" value=""" & addr.Id.ToString() & """ data-confirm=""" & WebUi.Attr("Remove this address?") & """ style=""border-radius:8px;padding:6px 10px""><span class=""ms sm"">delete</span> Remove</button>")
@@ -147,14 +147,22 @@ Namespace STAR_DOM.Web
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<div class=""field""><label for=""addrLabel"">Label (e.g., Home, Office) *</label>")
             sb.Append("<input id=""addrLabel"" name=""label"" required style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""Home""></div>")
-            sb.Append("<div class=""field""><label for=""addrLine1"">Street address *</label>")
+            sb.Append("<div class=""field""><label for=""addrLine1"">House / street address *</label>")
             sb.Append("<input id=""addrLine1"" name=""address"" required style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""123 Main St, Apt 4B""></div>")
             sb.Append("<div class=""row"" style=""gap:10px"">")
-            sb.Append("<div class=""field"" style=""flex:1""><label for=""addrCity"">City *</label>")
+            sb.Append("<div class=""field"" style=""flex:1""><label for=""addrBrgy"">Barangay</label>")
+            sb.Append("<input id=""addrBrgy"" name=""brgy"" style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""Barangay Poblacion""></div>")
+            sb.Append("<div class=""field"" style=""flex:1""><label for=""addrCity"">City / Municipality *</label>")
             sb.Append("<input id=""addrCity"" name=""city"" required style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""Mandaluyong""></div>")
-            sb.Append("<div class=""field"" style=""flex:1""><label for=""addrRegion"">Region</label>")
-            sb.Append("<input id=""addrRegion"" name=""region"" style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""NCR""></div>")
             sb.Append("</div>")
+            sb.Append("<div class=""row"" style=""gap:10px"">")
+            sb.Append("<div class=""field"" style=""flex:2""><label for=""addrRegion"">Province</label>")
+            sb.Append("<input id=""addrRegion"" name=""region"" style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""Metro Manila""></div>")
+            sb.Append("<div class=""field"" style=""flex:1""><label for=""addrZip"">Postal code</label>")
+            sb.Append("<input id=""addrZip"" name=""zip"" inputmode=""numeric"" style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""1550""></div>")
+            sb.Append("</div>")
+            sb.Append("<div class=""field""><label for=""addrLandmark"">Landmark (optional)</label>")
+            sb.Append("<input id=""addrLandmark"" name=""landmark"" style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""Near the covered court / blue gate""></div>")
             sb.Append("<div class=""field""><label for=""addrPhone"">Contact phone (optional)</label>")
             sb.Append("<input id=""addrPhone"" name=""phone"" style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px"" placeholder=""09123456789""></div>")
             sb.Append("<button class=""btn primary"" type=""submit"" id=""saveAddrBtn"" name=""saveaddr"" value=""""><span class=""ic ms"">add_home</span><span>Save Address</span></button>")
@@ -173,23 +181,26 @@ Namespace STAR_DOM.Web
         Private Function HandleSaveAddress(userId As Integer, idText As String) As ServiceResult
             Dim label As String = Trim(Convert.ToString(Request.Form("label")))
             Dim address As String = Trim(Convert.ToString(Request.Form("address")))
+            Dim barangay As String = Trim(Convert.ToString(Request.Form("brgy")))
             Dim city As String = Trim(Convert.ToString(Request.Form("city")))
             Dim region As String = Trim(Convert.ToString(Request.Form("region")))
+            Dim postalCode As String = Trim(Convert.ToString(Request.Form("zip")))
+            Dim landmark As String = Trim(Convert.ToString(Request.Form("landmark")))
             Dim phone As String = Trim(Convert.ToString(Request.Form("phone")))
             Dim addrId As Integer = 0
             Integer.TryParse(Trim(Convert.ToString(idText)), addrId)
 
+            If label = "" Then Return ServiceResult.Fail("Please enter a label for this address.")
+            If address = "" Then Return ServiceResult.Fail("Please enter the house / street address.")
+            If city = "" Then Return ServiceResult.Fail("Please enter the city / municipality.")
+
             If addrId > 0 Then
                 ' Edit existing address
-                Return _addressRepo.UpdateAddress(addrId, userId, label, address, city, region, phone)
+                Return _addressRepo.UpdateAddress(addrId, userId, label, address, barangay, city, region, postalCode, landmark, phone)
             End If
 
             ' Add new address
-            If label = "" Then Return ServiceResult.Fail("Please enter a label for this address.")
-            If address = "" Then Return ServiceResult.Fail("Please enter the street address.")
-            If city = "" Then Return ServiceResult.Fail("Please enter the city.")
-
-            Return _addressRepo.CreateAddress(userId, label, address, city, region, phone)
+            Return _addressRepo.CreateAddress(userId, label, address, barangay, city, region, postalCode, landmark, phone)
         End Function
 
         ''' <summary>Single-quoted JavaScript string literal, safe to drop in an onclick attribute.</summary>

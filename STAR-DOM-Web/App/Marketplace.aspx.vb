@@ -146,18 +146,9 @@ Namespace STAR_DOM.Web
                         a.StockQuantity.ToString() & " remaining!</div>", "<div class=""stockline"" style=""padding:0 14px 12px"">" &
                         a.StockQuantity.ToString() & " in booth stock</div>"))
             sb.Append("</div>")
-            sb.Append("<div class=""grid"" style=""grid-template-columns:1fr 1fr;gap:12px;margin-top:12px"">")
-            sb.Append("<div class=""card"" style=""padding:0;overflow:hidden"">" & WebUi.ProductImg(b.PrimaryImageFile, b.Id, b.Name, "height:120px") &
+            sb.Append("<div class=""card"" style=""padding:0;overflow:hidden;margin-top:12px"">" & WebUi.ProductImg(b.PrimaryImageFile, b.Id, b.Name, "height:150px") &
                       "<div style=""padding:8px 10px;font-size:12px""><b>" & WebUi.Esc(b.Name) & "</b><br>" &
                       WebUi.Money(b.BasePrice) & "</div></div>")
-            ' The bundle deals belong on this tile too. The price above is the
-            ' single-item one, so the lines under it read as "or N for ₱M".
-            sb.Append("<div class=""card"" style=""background:var(--yellow);border-color:#eec200;display:flex;flex-direction:column;justify-content:center;gap:4px"">" &
-                      "<span class=""k-label"" style=""font-size:9px;letter-spacing:.12em;font-weight:800"">BAZAAR EXCLUSIVE</span>" &
-                      "<span style=""font-weight:800;font-size:20px"">" & WebUi.Money(b.BasePrice) & "</span>" &
-                      "<span style=""font-size:12px"">Nationwide J&T delivery</span>" &
-                      WebUi.BundleNoteBlock() & "</div>")
-            sb.Append("</div>")
             Return sb.ToString()
         End Function
 
