@@ -60,7 +60,7 @@ Browser → Pages (App\) → Services (rules) → Repositories (all SQL) → Pos
 
 ## 4. Numbers to Say Confidently
 
-- **29** database tables · **100** seeded products · **3** active bundles
+- **30** database tables · **100** seeded products · **3** active bundles
 - **33** renderable pages (32 `.aspx` + master) · ~**12,100** lines of VB.NET
 - Shipping: **quoted by J&T** — walang flat fee. Indicative zones:
   Luzon ₱0–100 · Visayas ₱101–200 · Mindanao ₱201–300; the exact figure follows
@@ -240,7 +240,7 @@ finalized) → **delivery-only** → received → completed.
 
 - No live payment gateway — reference numbers + studio verification, not API-verified.
 - Tracking links to J&T's own site; no webhook sync.
-- Booth stock adjusted manually (deliberate scope cut).
+- Booth takings are read-only in the reports (seeded demo rows) — no in-store sales-entry or per-event stock screen (deliberate scope cut).
 - Single-owner model; multi-tenant sellers would need role expansion.
 - Future: real e-wallet API, courier webhook, email notifications, PWA offline view.
 

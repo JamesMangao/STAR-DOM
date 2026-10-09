@@ -30,11 +30,22 @@ Namespace STAR_DOM.Web
             ' KPIs
             Dim mix = _reports.OmnichannelMix()
             sb.Append("<div class=""grid kpis"">")
-            sb.Append(Kpi("TOTAL REVENUE", "₱" & _reports.RevenueTotal().ToString("N2"), "paid orders + event takings"))
-            sb.Append(Kpi("ORDERS", _reports.OrdersCount().ToString(), _reports.OrdersCount("PENDING").ToString() & " pending"))
+            ' Every figure below is a live aggregate — nothing is cached or seeded —
+            ' but each one reads a different sales channel, so the captions now name
+            ' that channel. "ORDERS 0" next to a non-zero revenue used to look like
+            ' stale data when it simply meant no web order had ever been placed.
+            Dim onlineOrders As Integer = _reports.OrdersCount()
+            Dim paidOrders As Integer = _reports.PaidOrdersCount()
+            Dim boothSales As Integer = _reports.BoothSalesCount()
+            sb.Append(Kpi("TOTAL REVENUE", "₱" & _reports.RevenueTotal().ToString("N2"), "paid web orders + booth takings"))
+            sb.Append(Kpi("ORDERS", (onlineOrders + boothSales).ToString(),
+                          onlineOrders.ToString() & " online · " & boothSales.ToString() & " booth · " &
+                          _reports.OrdersCount("PENDING").ToString() & " pending"))
             sb.Append(Kpi("COMMISSION REVENUE", "₱" & _reports.CommissionRevenue().ToString("N2"), _reports.TotalCommissions().ToString() & " commissions"))
-            sb.Append(Kpi("EVENT GROSS", "₱" & mix.eventTotal.ToString("N2"), "in-person + QR + preorders"))
-            sb.Append(Kpi("WEB GROSS", "₱" & mix.onlineTotal.ToString("N2"), "online marketplace"))
+            sb.Append(Kpi("EVENT GROSS", "₱" & mix.eventTotal.ToString("N2"), boothSales.ToString() & " booth sales · in-person + QR + preorders"))
+            sb.Append(Kpi("WEB GROSS", "₱" & mix.onlineTotal.ToString("N2"),
+                          If(mix.onlineTotal > 0D, paidOrders.ToString() & " paid web orders · online marketplace",
+                             "no paid online orders yet · online marketplace")))
             sb.Append("</div>")
 
             sb.Append("<div class=""grid"" style=""grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"">")

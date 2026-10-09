@@ -166,8 +166,9 @@ Namespace STAR_DOM.Web
                     Dim lowFlag As Boolean = p.StockQuantity <= p.LowStockThreshold
                     sb.Append("<tr>")
                     sb.Append("<td>" & WebUi.Esc(p.Sku) & "</td>")
-                    sb.Append("<td><b>" & WebUi.Esc(p.Name) & "</b><br><span class=""sub"" style=""font-size:11px"">" &
-                              WebUi.Esc(p.BrandName) & "</span></td>")
+                    ' No brand/studio line under the name: the studio is a single seller,
+                    ' so the vendor name on every row was noise the merchant asked to drop.
+                    sb.Append("<td><b>" & WebUi.Esc(p.Name) & "</b></td>")
                     sb.Append("<td>" & WebUi.Esc(p.CategoryName) & "</td>")
                     sb.Append("<td>" & WebUi.Money(p.BasePrice) & "</td>")
                     ' The row id rides on the button and the qty input is named

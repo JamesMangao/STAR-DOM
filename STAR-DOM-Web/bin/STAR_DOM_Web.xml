@@ -511,6 +511,13 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
 </member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.RecentOrdersPanel">
+ <summary>
+ The last five paid web orders, newest first. Kept web-only now that the
+ dashboard no longer mixes in booth takings, so the tile below never
+ contradicts the numbers above it.
+ </summary>
+</member>
 <member name="P:STAR_DOM.Web.MerchantProductsPage.Search">
  <summary>
  The live filter text, from ?q= on the URL so a search survives a
@@ -1326,6 +1333,12 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.ReportRepository.EventStats">
  <summary>Revenue + sales-count per event in one grouped query (kills dashboard N+1).</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.PaidOrdersCount">
+ <summary>Online orders whose payment has actually landed — the count behind WEB GROSS.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.BoothSalesCount">
+ <summary>Booth/QR/pre-order rows recorded at pop-up events — the count behind EVENT GROSS.</summary>
+</member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.ReviewingCustomers">
  <summary>
  Shoppers who actually left an approved review.
@@ -1337,17 +1350,32 @@ STAR_DOM_Web
  count for anywhere that really means "registered accounts".
  </summary>
 </member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.RevenueLastNDays(System.Int32)">
- <summary>Daily revenue for the last N days, paid orders and event takings together.</summary>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebRevenueLastNDays(System.Int32)">
+ <summary>Daily paid web orders for the last N days (web only now that booth tracking is gone).</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.MonthlySales(System.Int32)">
- <summary>Monthly revenue for the last N months, paid orders and event takings together.</summary>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebRevenueForMonth(System.String)">
+ <summary>Web revenue for a specific calendar month (paid orders only).</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.ProductSales(System.Int32)">
- <summary>Best-selling products across both channels: order lines and booth sales.</summary>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebDailySales(System.Int32)">
+ <summary>Daily paid web orders for the last N days (web only).</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.CategorySales">
- <summary>Sales by category across both channels: order lines and booth sales.</summary>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebMonthlySales(System.Int32)">
+ <summary>Monthly paid web orders for the last N months (web only).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebProductSales(System.Int32)">
+ <summary>Best-selling products from paid web orders only.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebCategorySales">
+ <summary>Sales by category from paid web orders only.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebPaymentMethodBreakdown">
+ <summary>Payment method mix from paid web orders only (no booth sales).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebHourlyTraffic">
+ <summary>Web-only hourly traffic (paid web orders, last 72h).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ReportRepository.WebRevenueTotal">
+ <summary>Total paid web orders only — the web revenue stream now that booth sales are gone.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.UserAddressRepository.CreateIfNew(System.Int32,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
  <summary>Save the detailed address from a checkout/commission form, unless
@@ -1662,6 +1690,12 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Services.ReportService.MarketplaceRevenue">
  <summary>Paid web orders not tied to a pop-up event — the digital marketplace KPI.</summary>
+</member>
+<member name="M:STAR_DOM.Services.ReportService.PaidOrdersCount">
+ <summary>Online orders whose payment has landed (the count behind WEB GROSS, web only now).</summary>
+</member>
+<member name="M:STAR_DOM.Services.ReportService.BoothSalesCount">
+ <summary>Booth/QR/pre-order sales recorded at pop-up events (count behind EVENT GROSS).</summary>
 </member>
 </members>
 </doc>

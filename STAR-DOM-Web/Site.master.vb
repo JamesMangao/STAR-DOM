@@ -322,11 +322,13 @@ Namespace STAR_DOM.Web
                 sb.Append("</div>")
             End If
 
-            ' Every signed-in role owns an account profile (saved addresses, password),
-            ' and it is not tied to the shopper or studio nav — so it gets its own group
-            ' that rides along for customers, merchants, and admins alike. Without this
-            ' the page was reachable only by typing its URL.
-            If STAR_DOM.Helpers.Session.IsAuthenticated Then
+            ' PROFILE IS SHOPPER-ONLY. Saved addresses, customer order history and the
+            ' password card belong to the buying account; the studio side has its own
+            ' pages, so admins get no ACCOUNT group and no profile link. The page itself
+            ' is fenced the same way (Profile.aspx.vb), so typing the URL does not
+            ' reopen it.
+            If STAR_DOM.Helpers.Session.IsAuthenticated AndAlso
+               Not STAR_DOM.Helpers.Session.CanManageStore Then
                 sb.Append("<div class=""nav-group"">")
                 sb.Append("<div class=""nav-head"">ACCOUNT<span class=""pill small gray"">SETTINGS</span></div>")
                 sb.Append(NavLink(New NavItem("My Profile", "/App/Profile.aspx", "", "", "person")))

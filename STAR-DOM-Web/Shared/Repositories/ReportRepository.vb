@@ -62,8 +62,18 @@ Namespace STAR_DOM.Repositories
             Return Db.ScalarInt("SELECT COUNT(*) FROM Orders WHERE Status = @s", Db.P("@s", status))
         End Function
 
+        ''' <summary>Online orders whose payment has actually landed — the count behind WEB GROSS.</summary>
+        Public Function PaidOrdersCount() As Integer
+            Return Db.ScalarInt("SELECT COUNT(*) FROM Orders WHERE PaymentStatus = 'PAID'")
+        End Function
+
         Public Function OrdersForEvent(eventId As Integer) As Integer
             Return Db.ScalarInt("SELECT COUNT(*) FROM Orders WHERE EventId = @e", Db.P("@e", eventId))
+        End Function
+
+        ''' <summary>Booth/QR/pre-order rows recorded at pop-up events — the count behind EVENT GROSS.</summary>
+        Public Function BoothSalesCount() As Integer
+            Return Db.ScalarInt("SELECT COUNT(*) FROM EventSales")
         End Function
 
         Public Function EventSalesCount(eventId As Integer) As Integer

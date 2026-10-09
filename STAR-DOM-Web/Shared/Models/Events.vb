@@ -80,8 +80,8 @@ Namespace STAR_DOM.Models
         Public Property PaymentMethod As String
         Public Property SaleDate As Date
         Public Property Notes As String
-
         Public Property ProductName As String
+        Public Property EventName As String
     End Class
 
 End Namespace

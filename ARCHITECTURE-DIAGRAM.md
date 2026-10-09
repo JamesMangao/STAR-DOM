@@ -32,8 +32,8 @@ flowchart TD
 
         subgraph Biz[Shared\ — Models · Repositories · Services]
             SVC["Services<br/>Auth · Cart · Catalog · Order · Commission<br/>Event · Report · Notification"]
-            REPO["Repositories (11)<br/>User · Product · Category · Cart · Order<br/>PaymentSetting · Commission · Event · Receipt · Report · Notification"]
-            MODEL["Models (7) + Reports\ReportDtos<br/>Helpers: PasswordHasher · Fmt · AppColors · Clock"]
+            REPO["Repositories (13)<br/>User · UserAddress · Product · Category · Cart · Order<br/>PaymentSetting · Commission · Event · Receipt · Report · Notification · AssetImage"]
+            MODEL["Models (8) + Reports\ReportDtos<br/>Helpers: PasswordHasher · Fmt · AppColors · Clock"]
         end
 
         DB["Code\Db.vb<br/>ConnString() = env vars → Db_* → web.config<br/>UriToConnString() for postgresql:// URIs"]
@@ -43,7 +43,7 @@ flowchart TD
         direction TB
         LOCAL["Local fallback<br/>tools\pgsql (vendored 16.4) + tools\pgdata<br/>db 'stardom' — per machine"]
         SUPA["Supabase project (shared, PostgreSQL 17.6)<br/>Session pooler :5432, SSL required"]
-        TABLES["29 tables<br/>users · products · orders · payments · carts<br/>events · booths · commissions · reviews · notifications<br/>paymentsettings.qrimagedata BYTEA"]
+        TABLES["30 tables<br/>users · products · orders · payments · carts<br/>events · booths · commissions · reviews · notifications<br/>paymentsettings.qrimagedata BYTEA"]
     end
 
     B -->|GET / POST /| R

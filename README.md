@@ -22,7 +22,7 @@ design system and a little vanilla JavaScript.
 |---|---|
 | **Language** | VB.NET |
 | **Framework** | ASP.NET Web Forms, .NET Framework 4.8 |
-| **Database** | PostgreSQL via Npgsql 4.1.10 — 29 tables, no ORM, parameterised SQL throughout |
+| **Database** | PostgreSQL via Npgsql 4.1.10 — 30 tables, no ORM, parameterised SQL throughout |
 | **Hosting** | IIS Express 10 locally, or Mono/XSP4 in a Docker image on Render |
 | **Roles** | Only two: **ADMIN** (the store owner, who is also the artist) and **CUSTOMER** |
 | **Payments** | GCash / GOtyme by QR, paid against a studio-quoted J&T fee — no COD |
@@ -57,7 +57,7 @@ That one rule is what stops a change rippling across the whole site.
 - **Store owner (`admin`, or the legacy `mika`/`renzo`/`puffu` owner
   accounts):** dashboard KPIs, products & stock (online stock is
   adjusted manually after physical booth sales — the site sells online only),
-  event & booth manager with per-event inventory, commission pipeline
+  event & booth manager, commission pipeline
   (accept + quote / decline / production), orders & payments:
   **confirm & quote** an order (entering the J&T fee IS the confirmation),
   book J&T with the tracking number, and **verify submitted payments** behind
@@ -87,7 +87,7 @@ clear about what is live and what is demonstration data:
 | | |
 |---|---|
 | Cart, checkout, orders, payments, commissions, stock, reviews | **real** — real tables, real SQL, real writes |
-| Products, users, events, booth inventory | seeded from `supabase_seed.sql` (100 products, 9 users, 7 events) |
+| Products, users, events, booth inventory | seeded from `supabase_seed.sql` (100 products, 10 users, 7 events) |
 | Wallet QR images | **real uploads**, stored in the database |
 | Some dashboard KPI captions | **hardcoded sample text** — e.g. `All venues pre-cleared for mall merchant badges` |
 | Orders & payments | **never seeded** — every order/payment row is written live. The shared Supabase currently holds a handful of demo rows from end-to-end verification (3 orders, 3 payments, 2 receipts at the time of writing) |

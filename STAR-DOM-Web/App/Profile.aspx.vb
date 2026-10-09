@@ -18,6 +18,13 @@ Namespace STAR_DOM.Web
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
+            ' The profile page is shopper-only (saved delivery addresses, password,
+            ' customer order history). Studio accounts have their own area and no
+            ' PROFILE nav entry any more, so a typed URL sends them to their own home
+            ' instead of an account page they are not meant to have.
+            If STAR_DOM.Helpers.Session.CanManageStore Then
+                Response.Redirect("/App/Merchant/Dashboard.aspx", True)
+            End If
             Try
                 Dim currentUserId As Integer = STAR_DOM.Helpers.Session.CurrentUser.Id
                 If Guard.IsPost() Then

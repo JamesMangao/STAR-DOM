@@ -282,7 +282,8 @@ Namespace STAR_DOM.Repositories
                 .Quantity = RowReader.AsInt(r, "Quantity"), .UnitPrice = RowReader.AsDec(r, "UnitPrice"),
                 .TotalAmount = RowReader.AsDec(r, "TotalAmount"), .SaleType = RowReader.AsStr(r, "SaleType"),
                 .PaymentMethod = RowReader.AsStr(r, "PaymentMethod"), .SaleDate = RowReader.AsDate(r, "SaleDate"),
-                .Notes = RowReader.AsStr(r, "Notes"), .ProductName = RowReader.AsStr(r, "ProductName")
+                .Notes = RowReader.AsStr(r, "Notes"), .ProductName = RowReader.AsStr(r, "ProductName"),
+                .EventName = RowReader.AsStr(r, "EventName")
             }
         End Function
 

@@ -52,6 +52,7 @@ Namespace STAR_DOM.Web
             Dim eventStats As Dictionary(Of Integer, (rev As Decimal, salesCnt As Integer)) = _reports.EventStats()
             sb.Append("<div class=""grid kpis"">")
             sb.Append(DigitalMarketplaceKpi())
+            sb.Append(BoothTakingsKpi())
             sb.Append("</div>")
 
             ' ---- Workbench ----
@@ -101,6 +102,24 @@ Namespace STAR_DOM.Web
             ' soundbox readouts were POS terminal status, not anything the app tracks.
             sb.Append("</div>")
             Return sb.ToString()
+        End Function
+
+        ''' <summary>
+        ''' Booth/QR/pre-order takings, live from EventSales. Sits beside the digital
+        ''' marketplace tile because the two are the two halves of TOTAL REVENUE:
+        ''' showing only the online one made the dashboard open on ₱0.00 while the
+        ''' reports page next door showed real money, which read as broken numbers
+        ''' rather than an empty sales channel.
+        ''' </summary>
+        Private Function BoothTakingsKpi() As String
+            Dim takings As Decimal = _reports.EventRevenueTotal()
+            Dim sales As Integer = _reports.BoothSalesCount()
+            Return "<div class=""kpi k-icon"">" &
+                   "<span class=""k-ic"" style=""border-radius:9px;background:var(--yellow-soft);color:var(--primary)"">" & WebUi.Ic("storefront") & "</span>" &
+                   "<div class=""k-label"">Event Booth Takings</div>" &
+                   "<div class=""k-value"">" & Fmt_Php(takings) & "</div>" &
+                   "<div class=""k-sub""><b style=""color:var(--ink)"">" & sales.ToString() &
+                   If(sales = 1, " Booth Sale", " Booth Sales") & "</b> &nbsp;&bull;&nbsp; in-person, QR &amp; pre-orders</div></div>"
         End Function
 
         Private Function DigitalMarketplaceKpi() As String
@@ -204,17 +223,33 @@ Namespace STAR_DOM.Web
             Return sb.ToString()
         End Function
 
+        ''' <summary>
+        ''' The last five sales from BOTH channels, newest first: web orders and booth
+        ''' takings. Panels fed by Orders alone read "No orders yet" while the tile
+        ''' above showed money, so the dashboard contradicted itself on first load.
+        ''' </summary>
         Private Function RecentOrdersPanel() As String
             Dim sb As New StringBuilder()
-            Dim recent As List(Of Order) = _reports.RecentOrders(5)
-            sb.Append("<div class=""panel""><div class=""panel-hd""><h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--primary)"">" & WebUi.Ic("package_2", "sm") & "</span> Recent Orders</h3></div><div class=""panel-bd"">")
-            If recent.Count = 0 Then
-                sb.Append(WebUi.EmptyRow("No orders yet."))
+            Dim rows As New List(Of (sortDate As Date, html As String))()
+            For Each o As Order In _reports.RecentOrders(5)
+                rows.Add((o.CreatedAt,
+                          "<span><a href=""/App/Merchant/Orders.aspx"" style=""font-weight:700"">" & WebUi.Esc(o.OrderNumber) & "</a> · " & WebUi.Esc(o.CustomerName) & "</span>" &
+                          "<span>" & WebUi.Money(o.TotalAmount) & " " & WebUi.Badge(o.Status) & "</span>"))
+            Next
+            For Each s As EventSale In _events.ListAllSales()
+                rows.Add((s.SaleDate,
+                          "<span><b>" & WebUi.Esc(s.ProductName) & "</b> · " & WebUi.Esc(If(s.EventName = "", "Booth sale", s.EventName)) &
+                          If(s.PaymentMethod = "", "", " · " & WebUi.Esc(s.PaymentMethod)) & "</span>" &
+                          "<span>" & WebUi.Money(s.TotalAmount) & " " & WebUi.Pill(If(s.SaleType = "", "SALE", s.SaleType.Replace("_", " ").ToUpperInvariant()), "yellow") & "</span>"))
+            Next
+            rows.Sort(Function(x, y) y.sortDate.CompareTo(x.sortDate))
+
+            sb.Append("<div class=""panel""><div class=""panel-hd""><h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--primary)"">" & WebUi.Ic("package_2", "sm") & "</span> Recent Sales</h3></div><div class=""panel-bd"">")
+            If rows.Count = 0 Then
+                sb.Append(WebUi.EmptyRow("No sales yet — web orders and booth takings both appear here."))
             Else
-                For Each o As Order In recent
-                    sb.Append("<div class=""row space-between"" style=""padding:5px 0;border-bottom:1px solid #f3e9e6"">")
-                    sb.Append("<span><a href=""/App/Merchant/Orders.aspx"" style=""font-weight:700"">" & WebUi.Esc(o.OrderNumber) & "</a> · " & WebUi.Esc(o.CustomerName) & "</span>")
-                    sb.Append("<span>" & WebUi.Money(o.TotalAmount) & " " & WebUi.Badge(o.Status) & "</span></div>")
+                For Each r As (sortDate As Date, html As String) In rows.Take(5)
+                    sb.Append("<div class=""row space-between"" style=""padding:5px 0;border-bottom:1px solid #f3e9e6"">" & r.html & "</div>")
                 Next
             End If
             sb.Append("</div></div>")

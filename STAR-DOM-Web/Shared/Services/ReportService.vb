@@ -35,8 +35,18 @@ Namespace STAR_DOM.Services
             Return _repo.OrdersCount(status)
         End Function
 
+        ''' <summary>Online orders whose payment has landed (the count behind WEB GROSS).</summary>
+        Public Function PaidOrdersCount() As Integer
+            Return _repo.PaidOrdersCount()
+        End Function
+
         Public Function OrdersForEvent(eventId As Integer) As Integer
             Return _repo.OrdersForEvent(eventId)
+        End Function
+
+        ''' <summary>Booth/QR/pre-order sales recorded at pop-up events (count behind EVENT GROSS).</summary>
+        Public Function BoothSalesCount() As Integer
+            Return _repo.BoothSalesCount()
         End Function
 
         Public Function EventSalesCount(eventId As Integer) As Integer
