@@ -78,9 +78,12 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""panel""><div class=""top-accent""></div><div class=""panel-bd"">")
             sb.Append("<div class=""page-head"" style=""margin-bottom:0;border:0;padding:0"">")
             sb.Append("<div style=""display:flex;gap:14px;flex-wrap:wrap"">")
-            ' photo
+            ' photo — use the same image pipeline as the customer-facing locations page.
+            ' ProductImg checks ev.ImageFile and only falls back to gradient art when
+            ' the event has no photo on file, so the admin sees the real booth photo
+            ' the customer sees instead of a bare maroon gradient.
             sb.Append("<div class=""photo-frame"" style=""width:100%;max-width:230px;height:150px;flex-shrink:0"">")
-            sb.Append(WebUi.Art(ev.Id * 7 + 3, ev.Name, "height:150px"))
+            sb.Append(WebUi.ProductImg(ev.ImageFile, ev.Id * 7 + 3, ev.Name, "height:150px"))
             sb.Append("<div class=""ph-overlay""><span class=""ph-eyebrow"">Active Footprint</span>")
             sb.Append("<span class=""ph-title"">" & WebUi.BoothLabel(ev.BoothNumber) & "</span></div></div>")
             ' info

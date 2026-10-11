@@ -34,13 +34,14 @@ Namespace STAR_DOM.Repositories
         End Function
 
         ''' <summary>
-        ''' Stores the e-wallet transaction number the customer paid against and parks
-        ''' the commission in PAYMENT PENDING. Nothing about the payment is confirmed
-        ''' here — the studio still has to verify it, exactly as with an order.
+        ''' Stores the e-wallet channel and transaction number the customer paid
+        ''' against and parks the commission in PAYMENT PENDING. Nothing about the
+        ''' payment is confirmed here — the studio still has to verify it, exactly as
+        ''' with an order.
         ''' </summary>
-        Public Sub SetPaymentReference(id As Integer, reference As String)
-            Db.Exec("UPDATE Commissions SET PaymentReference = @r, UpdatedAt = NOW() WHERE Id = @id",
-                    Db.P("@r", reference), Db.P("@id", id))
+        Public Sub SetPaymentReference(id As Integer, reference As String, method As String)
+            Db.Exec("UPDATE Commissions SET PaymentReference = @r, PaymentMethod = @pm, UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@r", reference), Db.P("@pm", If(method, "").Trim().ToUpperInvariant()), Db.P("@id", id))
         End Sub
 
         ''' <summary>Studio verification of the commission payment; stamps the moment it happened.</summary>
@@ -50,9 +51,9 @@ Namespace STAR_DOM.Repositories
         End Sub
 
         ''' <summary>
-        ''' Courier hand-off. Blank tracking is allowed and kept as blank: a personal
-        ''' handover or a pickup has no waybill, and inventing one would put a dead
-        ''' tracking link in front of the customer.
+        ''' Courier hand-off. Tracking is mandatory: the service layer refuses to
+        ''' deliver without a J&amp;T number, so a stored DELIVERED commission always
+        ''' carries the waybill the customer can trace.
         ''' </summary>
         Public Sub SetDelivery(id As Integer, tracking As String)
             Db.Exec("UPDATE Commissions SET TrackingNumber = @t, DeliveredAt = NOW(), UpdatedAt = NOW() WHERE Id = @id",
@@ -263,6 +264,7 @@ Namespace STAR_DOM.Repositories
                 .ShippingAddress = RowReader.AsStr(r, "ShippingAddress"),
                 .ContactPhone = RowReader.AsStr(r, "ContactPhone"),
                 .PaymentReference = RowReader.AsStr(r, "PaymentReference"),
+                .PaymentMethod = RowReader.AsStr(r, "PaymentMethod"),
                 .PaymentConfirmedAt = RowReader.AsNullableDate(r, "PaymentConfirmedAt"),
                 .TrackingNumber = RowReader.AsStr(r, "TrackingNumber"),
                 .DeliveredAt = RowReader.AsNullableDate(r, "DeliveredAt"),

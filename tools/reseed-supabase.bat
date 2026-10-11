@@ -7,8 +7,9 @@ rem  payments, users, the QR images and every payment setting are
 rem  dropped and replaced by the committed schema + seed. There is
 rem  no undo; take a pg_dump first if the data matters.
 rem
-rem  Why this exists: the portable copy in tools\pgdata is only ever
-rem  a development fallback, and nothing in it travels with a clone.
+rem  Why this exists: the database is Supabase and nothing about it travels
+rem  with a clone, so a teammate who wants the schema and seed loaded has to
+rem  run this against the shared project once.
 rem  Pointing the app at Supabase instead means every machine reads
 rem  and writes the same database, so "which machine has the real
 rem  data" stops being a question.

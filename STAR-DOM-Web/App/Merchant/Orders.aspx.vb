@@ -95,7 +95,7 @@ Namespace STAR_DOM.Web
                     Dim id As Integer = 0
                     Integer.TryParse(Request.Form("cancel"), id)
                     If id > 0 Then
-                        Dim r As ServiceResult = _orders.UpdateOrderState(id, "CANCELLED")
+                        Dim r As ServiceResult = _orders.UpdateOrderState(id, "CANCELLED", "", Convert.ToString(Request.Form("reason")))
                         Session("flash_msg") = r.Message
                         Session("flash_ok") = r.Success
                     End If
@@ -305,7 +305,7 @@ Namespace STAR_DOM.Web
             ' it stays a single line on every row.
             If o.Status = "PENDING" Then
                 tail.Append(ActButton("cancel", o.Id.ToString(), "Cancel",
-                                      "Cancel this order?", True, inForm))
+                                      "Cancel this order?", True, inForm, True))
             End If
 
             Dim panel As String
@@ -362,12 +362,16 @@ Namespace STAR_DOM.Web
         ''' data-confirm flow are unchanged.
         ''' </summary>
         Private Function ActButton(name As String, value As String, labelHtml As String,
-                                   confirm As String, danger As Boolean, inForm As Boolean) As String
+                                   confirm As String, danger As Boolean, inForm As Boolean,
+                                   Optional reasonRequired As Boolean = False) As String
             Dim b As New StringBuilder()
             b.Append("<button class=""" & If(danger, "btn danger sm", "btn ghost sm") &
                      """ type=""submit"" name=""" & name & """ value=""" & WebUi.Attr(value) &
                      """ data-confirm=""" & WebUi.Attr(confirm) & """")
             If danger Then b.Append(" data-confirm-danger")
+            If reasonRequired Then
+                b.Append(" data-confirm-reason=""reason"" data-confirm-reason-label=""Reason for cancelling (shared with the customer) *""")
+            End If
             b.Append(">").Append(labelHtml).Append("</button>")
             If inForm Then Return b.ToString()
             Return "<form method=""post"">" & STAR_DOM.Web.Csrf.HiddenField() & b.ToString() & "</form>"

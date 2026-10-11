@@ -3,6 +3,7 @@ Imports System.Web.UI
 Imports System.Web.UI.WebControls
 Imports STAR_DOM.Helpers
 Imports STAR_DOM.Models
+Imports STAR_DOM.Repositories
 Imports STAR_DOM.Services
 
 Namespace STAR_DOM.Web
@@ -76,7 +77,7 @@ Namespace STAR_DOM.Web
                 ' studio's password, so they only exist as POST forms. A GET link
                 ' could confirm real money from a stray click or a link preview.
                 Case "cancel"
-                    Return _svc.Cancel(cm.Id)
+                    Return _svc.Cancel(cm.Id, Convert.ToString(Request.QueryString("reason")))
                 Case Else
                     Return Nothing
             End Select
@@ -103,9 +104,11 @@ Namespace STAR_DOM.Web
                     Return _svc.AcceptAndOffer(cm.Id, price, est, Convert.ToString(Request.Form("merchantNotes")))
                 Case "pay"
                     ' The customer submits what they paid against; it still has to be
-                    ' verified by the studio before production opens.
+                    ' verified by the studio before production opens. The channel they
+                    ' paid through travels with the reference so the studio checks the
+                    ' right account.
                     Dim ref As String = Convert.ToString(Request.Form("ref"))
-                    Return _svc.SubmitPayment(cm.Id, ref)
+                    Return _svc.SubmitPayment(cm.Id, ref, Convert.ToString(Request.Form("method")))
                 Case "confirmpay"
                     If Not _svc.CanManageCommission(cm) Then Return ServiceResult.Fail("Not your commission.")
                     Return _svc.ConfirmPayment(cm.Id, Convert.ToString(Request.Form("pw")))
@@ -328,6 +331,17 @@ Namespace STAR_DOM.Web
             Dim isOwner As Boolean = cm.CustomerId = STAR_DOM.Helpers.Session.CurrentUser.Id
             Dim showPanel As String = Trim(Convert.ToString(Request.QueryString("panel"))).ToLowerInvariant()
 
+            ' A customer may only cancel while nothing has been verified as paid and
+            ' work has not started. The service enforces this too; the flag just keeps
+            ' the button off states where the action would be refused.
+            Dim canCancelCustomer As Boolean = (Not cm.PaymentConfirmed) AndAlso
+                (st = "SUBMITTED" OrElse st = "PENDING REVIEW" OrElse st = "OFFER SENT" OrElse
+                 st = "CUSTOMER CONFIRMED" OrElse st = "PAYMENT PENDING" OrElse st = "PAYMENT DECLINED")
+            ' The studio can stop a commission up until it has been handed to the
+            ' courier; the customer is notified with the reason.
+            Dim canCancelMerchant As Boolean = st <> "CANCELLED" AndAlso st <> "COMPLETED" AndAlso
+                st <> "DECLINED" AndAlso st <> "RECEIVED" AndAlso st <> "DELIVERED"
+
             sb.Append("<h3 style=""margin-bottom:8px"">Actions</h3>")
             sb.Append("<div class=""frow"">")
 
@@ -375,6 +389,12 @@ Namespace STAR_DOM.Web
                     Case "FINALIZED"
                         sb.Append(PanelLink(cm, "deliver", "Deliver to customer", "primary", showPanel, "local_shipping"))
                 End Select
+                If canCancelMerchant Then
+                    sb.Append("<a class=""btn danger"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() &
+                              "&act=cancel"" data-confirm=""Cancel this commission?"" data-confirm-reason=""reason"" " &
+                              "data-confirm-reason-label=""Reason for cancelling (shared with the customer) *"" " &
+                              "data-confirm-danger""><span class=""ic ms"">cancel</span><span>Cancel</span></a>")
+                End If
             End If
 
             If isOwner Then
@@ -401,9 +421,11 @@ Namespace STAR_DOM.Web
                                   "<span class=""ic ms"">task_alt</span><span>Mark as received</span></button>")
                         sb.Append("</form>")
                 End Select
-                If st = "PENDING REVIEW" OrElse st = "SUBMITTED" OrElse st = "OFFER SENT" Then
+                If canCancelCustomer Then
                     sb.Append("<a class=""btn danger"" href=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() &
-                              "&act=cancel"" data-confirm=""Cancel this request?"" data-confirm-danger""><span class=""ic ms"">cancel</span><span>Cancel Request</span></a>")
+                              "&act=cancel"" data-confirm=""Cancel this request?"" data-confirm-reason=""reason"" " &
+                              "data-confirm-reason-label=""Reason for cancelling *"" " &
+                              "data-confirm-danger""><span class=""ic ms"">cancel</span><span>Cancel Request</span></a>")
                 End If
             End If
             sb.Append("</div>")
@@ -422,18 +444,13 @@ Namespace STAR_DOM.Web
                                         "<div class=""field""><label>Reason (shared with the customer)</label><textarea name=""note"" required style=""min-height:80px""></textarea></div>"))
                 Case "pay"
                     Dim due As Decimal = If(cm.FinalPrice.HasValue, cm.FinalPrice.Value, 0D)
-                    sb.Append(PanelForm(cm, "pay", "Pay in full",
-                                        "<p class=""sub"" style=""margin:0 0 10px"">Amount due: <b style=""color:var(--primary)"">" &
-                                        WebUi.Money(due) & "</b> — one payment, no deposit. Shipping is free.</p>" &
-                                        "<div class=""field""><label>GCash / GOtyme reference no. *</label>" &
-                                        "<input name=""ref"" required placeholder=""From your payment receipt""></div>" &
-                                        "<p class=""sub"" style=""margin:0"">The studio verifies this before production starts.</p>"))
+                    sb.Append(PayPanel(cm, due))
                 Case "deliver"
                     sb.Append(PanelForm(cm, "deliver", "Deliver to the customer",
                                         "<p class=""sub"" style=""margin:0 0 10px"">Delivering to <b>" &
                                         WebUi.Esc(cm.ShippingAddress) & "</b>. Shipping is free on commissions.</p>" &
-                                        "<div class=""field""><label>J&amp;T tracking no. (optional)</label>" &
-                                        "<input name=""tracking"" placeholder=""Leave blank for pickup or a personal handover""></div>"))
+                                        "<div class=""field""><label>J&amp;T tracking no. *</label>" &
+                                        "<input name=""tracking"" required placeholder=""e.g. JT0123456789""></div>"))
                 Case "sendreview"
                     sb.Append(PanelForm(cm, "revisionupload", "Send the work to the customer for review",
                                         "<p class=""sub"" style=""margin:0 0 10px"">Upload a photo of the piece so far. The customer " &
@@ -444,6 +461,108 @@ Namespace STAR_DOM.Web
                                         "<textarea name=""revisionNotes"" style=""min-height:60px"" placeholder=""e.g. Base colours done, working on the lettering next""></textarea></div>",
                                         True))
             End Select
+            Return sb.ToString()
+        End Function
+
+        ''' <summary>
+        ''' Customer payment panel for a commission: pick GCash or GOtyme, scan the
+        ''' official QR (streamed from PaymentSettings), then submit the reference.
+        ''' The chosen channel travels with the POST so the studio verifies the
+        ''' reference against the right account, exactly like an order.
+        ''' </summary>
+        Private Function PayPanel(cm As Commission, due As Decimal) As String
+            Dim psRepo As New PaymentSettingRepository()
+            Dim channels As New List(Of String)()
+            For Each ch As String In {PaymentSettingRepository.Gcash, PaymentSettingRepository.GOtyme}
+                If psRepo.IsChannelEnabled(ch) Then channels.Add(ch)
+            Next
+
+            Dim sb As New StringBuilder()
+            sb.Append("<div style=""margin-top:12px;border-top:1px solid var(--line);padding-top:12px"">")
+            sb.Append("<h4 style=""margin:0 0 8px"">Pay in full</h4>")
+            sb.Append("<p class=""sub"" style=""margin:0 0 10px"">Amount due: <b style=""color:var(--primary)"">" &
+                      WebUi.Money(due) & "</b> — one payment, no deposit. Shipping is free.</p>")
+            If channels.Count = 0 Then
+                sb.Append("<p class=""sub"" style=""margin:0"">No payment channel is available right now. " &
+                          WebUi.Esc(PaymentSetting.SupportContact) & "</p></div>")
+                Return sb.ToString()
+            End If
+
+            sb.Append("<form method=""post"" action=""/App/CommissionDetail.aspx?id=" & cm.Id.ToString() & """ " &
+                      "style=""display:flex;flex-direction:column;gap:12px"">")
+            sb.Append("<div class=""field"" style=""margin:0""><label>Payment method *</label>")
+            sb.Append("<select name=""method"" id=""cmPayMethod"" required " &
+                      "style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink);outline:none"">")
+            sb.Append("<option value="""">Choose a payment method…</option>")
+            For Each ch In channels
+                sb.Append("<option value=""" & ch & """>" & WebUi.Esc(WebUi.ChannelBrand(ch)) & "</option>")
+            Next
+            sb.Append("</select></div>")
+            sb.Append("<button type=""button"" class=""btn ghost sm"" onclick=""cmQrOpen()"" style=""align-self:flex-start"">" &
+                      "<span class=""ms sm"">qr_code_2</span><span>Scan to Pay / show QR</span></button>")
+            sb.Append("<div class=""field"" style=""margin:0""><label>Reference no. *</label>" &
+                      "<input name=""ref"" required placeholder=""From your payment receipt""></div>")
+            sb.Append("<p class=""sub"" style=""margin:0"">The studio verifies this before production starts.</p>")
+            sb.Append("<button class=""btn primary"" type=""submit"" name=""kind"" value=""pay"">" &
+                      "<span class=""ic ms"">check</span><span>Confirm &amp; I've Paid</span></button>")
+            sb.Append("</form>")
+
+            ' Scan to Pay popup. One modal with a panel per enabled channel; the
+            ' select above decides which panel shows, so both wallets share a single
+            ' element (two modals would collide on id and on window.openQrPayModal).
+            sb.Append("<div class=""modal-backdrop"" id=""cmQrModal"" aria-hidden=""true"">")
+            sb.Append("<div class=""modal-card"" role=""dialog"" aria-modal=""true"" style=""max-width:440px;text-align:center;padding:24px 26px"">")
+            sb.Append("<div style=""display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"">")
+            sb.Append("<b style=""font-size:15px;color:var(--ink)"">Scan to Pay</b>")
+            sb.Append("<button type=""button"" onclick=""cmQrClose()"" aria-label=""Close"" style=""background:none;border:none;cursor:pointer;color:var(--ink-soft);padding:4px""><span class=""ms"">close</span></button>")
+            sb.Append("</div>")
+            For Each ch In channels
+                Dim ps As PaymentSetting = psRepo.GetByChannel(ch)
+                Dim img As String = WebUi.QrImageUrl(ps, ch)
+                Dim brand As String = WebUi.ChannelBrand(ch)
+                sb.Append("<div class=""cm-qr-panel"" data-channel=""" & ch & """ style=""display:none"">")
+                sb.Append("<div class=""sub"" style=""font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px"">" & WebUi.Esc(brand) & "</div>")
+                If img <> "" Then
+                    sb.Append("<div style=""background:#fff;border:2px solid var(--line);border-radius:16px;padding:14px;margin:6px auto 12px;display:inline-block"">")
+                    sb.Append("<img src=""" & WebUi.Attr(img) & """ alt=""" & WebUi.Attr(brand & " QR code") & """ width=""180"" height=""180"" style=""display:block;margin:0 auto;object-fit:contain;background:#fff"">")
+                    sb.Append("</div>")
+                End If
+                If ps IsNot Nothing AndAlso ps.QrCaption <> "" Then
+                    sb.Append("<div class=""sub"" style=""font-size:10.5px;margin-bottom:8px"">" & WebUi.Esc(ps.QrCaption) & "</div>")
+                End If
+                sb.Append("<div class=""card"" style=""background:var(--surface-low);border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 10px;text-align:left"">")
+                If ps IsNot Nothing AndAlso ps.AccountName <> "" Then
+                    sb.Append("<div class=""row space-between"" style=""margin-bottom:4px""><span class=""sub"" style=""font-size:11px"">Account Name</span><b style=""font-size:12px"">" & WebUi.Esc(ps.AccountName) & "</b></div>")
+                End If
+                If ps IsNot Nothing AndAlso ps.AccountNumber <> "" Then
+                    sb.Append("<div class=""row space-between"" style=""margin-bottom:4px""><span class=""sub"" style=""font-size:11px"">" & WebUi.Esc(brand) & " Number</span><b style=""font-size:13px"">" & WebUi.Esc(ps.AccountNumber) & "</b></div>")
+                End If
+                sb.Append("<div class=""row space-between""><span class=""sub"" style=""font-size:11px"">Amount Due</span><b style=""font-size:14px;color:var(--primary)"">" & WebUi.Money(due) & "</b></div>")
+                sb.Append("</div>")
+                If img = "" AndAlso (ps Is Nothing OrElse (ps.AccountName = "" AndAlso ps.AccountNumber = "")) Then
+                    sb.Append("<p class=""sub"" style=""margin:0 0 10px"">No QR or account is configured for this channel yet. " & WebUi.Esc(PaymentSetting.SupportContact) & "</p>")
+                ElseIf img = "" Then
+                    sb.Append("<p class=""sub"" style=""margin:0 0 10px"">Scan not set — send the amount to the account above, then enter your reference.</p>")
+                End If
+                sb.Append("</div>")
+            Next
+            sb.Append("<button type=""button"" class=""btn ghost"" onclick=""cmQrClose()"" style=""margin-top:8px"">Close</button>")
+            sb.Append("</div></div>")
+            sb.Append("<" & "script>")
+            sb.Append("(function(){")
+            sb.Append("function show(ch){var m=document.getElementById('cmQrModal');if(!m)return;")
+            sb.Append("var panels=m.querySelectorAll('.cm-qr-panel');var any=false;")
+            sb.Append("for(var i=0;i<panels.length;i++){var on=panels[i].getAttribute('data-channel')===ch;panels[i].style.display=on?'block':'none';if(on)any=true;}")
+            sb.Append("if(!any&&panels.length){panels[0].style.display='block';}")
+            sb.Append("m.classList.add('open');m.setAttribute('aria-hidden','false');}")
+            sb.Append("window.cmQrOpen=function(){var sel=document.getElementById('cmPayMethod');var ch=sel?sel.value:'';if(!ch){if(sel)sel.focus();return;}show(ch);};")
+            sb.Append("window.cmQrClose=function(){var m=document.getElementById('cmQrModal');if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true');}};")
+            sb.Append("var m=document.getElementById('cmQrModal');")
+            sb.Append("if(m){m.addEventListener('click',function(e){if(e.target===m)window.cmQrClose();});}")
+            sb.Append("document.addEventListener('keydown',function(e){var mm=document.getElementById('cmQrModal');if(mm&&mm.classList.contains('open')&&e.key==='Escape')window.cmQrClose();});")
+            sb.Append("})();")
+            sb.Append("</" & "script>")
+            sb.Append("</div>")
             Return sb.ToString()
         End Function
 
@@ -526,7 +645,7 @@ Namespace STAR_DOM.Web
             _notif.Notify(cm.CustomerId, "Work ready for review – " & cm.CommissionNumber,
                           "The studio sent a photo of your commission. Review it and either request changes " &
                           "or approve it for finalization.",
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Sent to the customer for review.")
         End Function
 

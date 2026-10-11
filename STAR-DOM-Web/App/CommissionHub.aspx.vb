@@ -31,6 +31,10 @@ Namespace STAR_DOM.Web
         Private Sub RenderHub()
             Dim sb As New StringBuilder()
             Dim slots As List(Of CommissionSlotView) = _catalog.CommissionSlots()
+            ' A notification can deep-link to one of the rows below (?hl=<id>), so the
+            ' customer lands on the exact commission already scrolled to and flashing.
+            Dim hl As Integer = 0
+            Integer.TryParse(Request.QueryString("hl"), hl)
 
             sb.Append(HubHeader(slots.Count))
             sb.Append(WebUi.Section("Open Commission Slots", "BESPOKE ART, DELIVERED TO YOU",
@@ -65,7 +69,8 @@ Namespace STAR_DOM.Web
                 Next
                 sb.Append("</tr></thead><tbody>")
                 For Each c As Commission In mine
-                    sb.Append("<tr>")
+                    sb.Append("<tr" & If(hl > 0 AndAlso c.Id = hl,
+                                          " id=""cm-" & c.Id.ToString() & """ class=""cm-flash""", "") & ">")
                     sb.Append("<td><b>" & WebUi.Esc(c.CommissionNumber) & "</b><br><span class=""sub"" style=""font-size:12px"">" &
                               WebUi.Esc(c.Title) & "</span></td>")
                     sb.Append("<td>" & WebUi.Esc(c.CategoryName) & "</td>")
@@ -78,8 +83,21 @@ Namespace STAR_DOM.Web
                 sb.Append("</tbody></table></div>")
             End If
 
+            If hl > 0 Then sb.Append(HighlightScript(hl))
+
             Out.Text = sb.ToString()
         End Sub
+
+        ''' <summary>
+        ''' Scrolls the deep-linked row (?hl=) into view and lets it flash for a few
+        ''' seconds so the customer spots which commission the notification was about.
+        ''' No-op when that id is not on the page.
+        ''' </summary>
+        Private Function HighlightScript(id As Integer) As String
+            Return "<script>(function(){var el=document.getElementById('cm-" & id.ToString() &
+                   "');if(!el)return;setTimeout(function(){el.scrollIntoView({behavior:'smooth',block:'center'});},60);" &
+                   "setTimeout(function(){el.classList.remove('cm-flash');},3200);})();</" & "script>"
+        End Function
 
         ''' <summary>Page-level "Request a Commission" CTA so the action is always reachable, even with zero open slots.</summary>
         Private Function HubHeader(openSlots As Integer) As String

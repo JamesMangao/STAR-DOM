@@ -1528,3 +1528,19 @@ body.page-leaving .auth-shell {
   .toast-wrap { left: 14px; right: 14px; top: 68px; }
   .toast { min-width: 0; width: 100%; }
 }
+
+/* ── Deep-linked row highlight (notification ?hl=<id>) ──────────────────── */
+/* A commission notification links to its row with ?hl=<id>; the row carries
+   .cm-flash so the customer/merchant sees which one it was. The class is
+   removed by script after ~3s; the animation below runs the same length. */
+@keyframes cmFlash {
+  0%   { background: var(--yellow-soft, #fff3b8); }
+  65%  { background: var(--yellow-soft, #fff3b8); }
+  100% { background: transparent; }
+}
+tr.cm-flash > td { animation: cmFlash 3s ease-out forwards; }
+tr.cm-flash > td:first-child { box-shadow: inset 4px 0 0 var(--primary, #b70011); }
+tr.cm-flash:hover > td { background: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  tr.cm-flash > td { animation: none; background: var(--yellow-soft, #fff3b8); }
+}

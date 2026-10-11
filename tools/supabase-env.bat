@@ -2,10 +2,10 @@
 rem ============================================================
 rem  Loads the Supabase connection string into the environment.
 rem
-rem  Code\Db.vb prefers SUPABASE_DB_URL over the localhost fallback in
-rem  web.config, so once this has run every page talks to Supabase
-rem  instead of the portable copy in tools\pgdata. Nothing else needs
-rem  to change: the same code, the same queries, the same schema.
+rem  Code\Db.vb reads SUPABASE_DB_URL, so once this has run every page
+rem  talks to Supabase. Nothing else needs to change: the same code,
+rem  the same queries, the same schema. There is no other database
+rem  to talk to, so this file is what makes the site work at all.
 rem
 rem  Reads tools\supabase-credentials.txt, which is git-ignored. Call
 rem  this from a batch that has not already called setlocal, or the

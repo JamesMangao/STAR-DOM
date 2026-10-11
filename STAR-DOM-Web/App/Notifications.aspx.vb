@@ -87,12 +87,27 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Function ResolveLink(path As String) As String
-            Select Case path.ToLowerInvariant()
+            ' A link may name a record after a colon (e.g. "commission-hub:55") so the
+            ' destination page can scroll to and flash that exact row. Split it off
+            ' before matching the page key; a bare key still resolves as before.
+            Dim key As String = path
+            Dim idPart As String = ""
+            Dim sep As Integer = path.IndexOf(":"c)
+            If sep >= 0 Then
+                key = path.Substring(0, sep)
+                idPart = path.Substring(sep + 1)
+            End If
+            ' Only a positive integer is ever appended, so nothing user-typed can
+            ' reach the query string.
+            Dim hl As String = ""
+            Dim hlId As Integer = 0
+            If Integer.TryParse(idPart, hlId) AndAlso hlId > 0 Then hl = "?hl=" & hlId.ToString()
+            Select Case key.ToLowerInvariant()
                 Case "marketplace", "home" : Return "/App/Marketplace.aspx"
                 Case "catalog" : Return "/App/Catalog.aspx"
                 Case "orders", "my-orders" : Return "/App/Orders.aspx"
-                Case "commission-hub", "commissions" : Return "/App/CommissionHub.aspx"
-                Case "commission-pipeline" : Return "/App/Merchant/Pipeline.aspx"
+                Case "commission-hub", "commissions" : Return "/App/CommissionHub.aspx" & hl
+                Case "commission-pipeline" : Return "/App/Merchant/Pipeline.aspx" & hl
                 Case "merchant-dashboard" : Return "/App/Merchant/Dashboard.aspx"
                 Case "popup-locations", "events" : Return "/App/PopupLocations.aspx"
                 Case Else : Return ""

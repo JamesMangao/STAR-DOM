@@ -127,6 +127,7 @@
     <Compile Include="App\Merchant\Reviews.aspx.vb" />
     <Compile Include="App\Admin\Users.aspx.vb" />
     <Compile Include="App\Admin\PaymentSettings.aspx.vb" />
+    <Compile Include="App\Admin\AdminPopupLocations.aspx.vb" />
     <Compile Include="App\Receipt.aspx.vb" />
   </ItemGroup>
 
@@ -177,6 +178,7 @@
     <Content Include="App\Merchant\Reviews.aspx" />
     <Content Include="App\Admin\Users.aspx" />
     <Content Include="App\Admin\PaymentSettings.aspx" />
+    <Content Include="App\Admin\AdminPopupLocations.aspx" />
     <Content Include="App\Receipt.aspx" />
   </ItemGroup>
   <ItemGroup>

@@ -45,17 +45,17 @@ packages/
 !STAR-DOM-Web/packages/
 !STAR-DOM-Web/bin/
 
-# The portable PostgreSQL SERVER runtime is committed (tools/pgsql/bin, lib,
-# share ~ 119 MB) so a fresh clone can run the site with zero downloads.
-# Excluded: pgAdmin 4 / include / symbols (not needed to run the DB), and the
-# data directory (tools/pgdata) which start-db.bat initialises on first run.
-# Original source if ever needed again:
+# The PostgreSQL CLIENT (tools/pgsql/bin, lib, share ~ 120 MB) is committed so a
+# fresh clone can run setup.bat, doctor.bat and reseed-supabase.bat with zero
+# downloads. There is no local PostgreSQL SERVER any more: the database is
+# Supabase, so no data directory and no initdb step exist.
+# Excluded: pgAdmin 4 / include / symbols / docs (not needed to talk to a
+# remote database). Original source if ever needed again:
 # https://www.enterprisedb.com/download-postgresql-binaries
 tools/pgsql/*
 !tools/pgsql/bin/
 !tools/pgsql/lib/
 !tools/pgsql/share/
-tools/pgdata/
 
 # AI tool workspaces
 .freebuff/

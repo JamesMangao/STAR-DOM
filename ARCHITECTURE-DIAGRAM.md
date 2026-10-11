@@ -1,140 +1,219 @@
-# Architecture
+# Architecture — STAR:DOM
 
-STAR:DOM is a single ASP.NET Web Forms site (one process, one .NET Framework
-4.8 AppDomain) in front of one PostgreSQL database. There is no API tier, no
-ORM and no client-side framework — the browser gets HTML, CSS and a little
-vanilla JavaScript.
+## What this is, in one paragraph
 
-## Runtime request path
+STAR:DOM is a single ASP.NET Web Forms website written in VB.NET, talking to one
+PostgreSQL database hosted on Supabase. There is no separate frontend build, no
+API layer, and no ORM. The browser receives plain HTML, one CSS file, and a
+little vanilla JavaScript. Everything — the shop, the cart, the payment flow,
+the admin console — is the same application, the same process, the same database.
+
+---
+
+## The one idea that explains the whole codebase
+
+Every request travels the same road, and each layer is only allowed to talk to
+the next one:
+
+```
+Browser  →  Page  →  Service  →  Repository  →  Database
+```
+
+| Layer | Job | Example |
+|---|---|---|
+| **Page** (`App\*.aspx.vb`) | Render HTML. Read what the user asked for. | "Show me the Orders page" |
+| **Service** (`Shared\Services\`) | The business rules. *"An order can only be cancelled while it is PENDING and unpaid."* | "Cancel this order" |
+| **Repository** (`Shared\Repositories\`) | All the SQL. Every query in the project lives here. | `UPDATE Orders SET ...` |
+| **Model** (`Shared\Models\`) | Plain data shapes. No behaviour. | `Order`, `Commission`, `Product` |
+
+Rendering runs the same road in reverse: a page builds HTML through
+`Code\WebUi.vb`, so a card, table, badge or modal looks identical everywhere.
+
+**The rule that keeps it maintainable:** a page never writes SQL, and a
+repository never writes HTML. That one boundary is what stops a change in one
+screen from rippling across the whole site.
+
+---
+
+## The full request path
 
 ```mermaid
 flowchart TD
-    B[Browser / customer, admin, owner]
+    B["Browser"]
 
-    subgraph Host[Windows machine or Render container]
+    subgraph Host["Windows machine (or Render container)"]
         direction TB
-        R["run-website.bat<br/>share-website.bat<br/>(load tools\supabase-env.bat, then IIS Express :8095<br/>or Mono/XSP4 in Docker)"]
+        R["Launcher: run-website.bat<br/>reads the password file, exports SUPABASE_DB_URL,<br/>then starts IIS Express on port 8095"]
 
-        subgraph Web[STAR-DOM-Web — ASP.NET Web Forms]
+        subgraph Web["STAR-DOM-Web — the website"]
             direction TB
-            PAGES["App\*.aspx + .aspx.vb<br/>Marketplace · Catalog · Product · Cart · Checkout<br/>OrderDetail · Orders · Commissions · Reviews<br/>Profile · Notifications · Receipt"]
-            ADM["App\Admin + App\Merchant<br/>Users · PaymentSettings<br/>Dashboard · Products · Events · Pipeline · Orders · Reports"]
-            QR["App\PaymentQr.aspx<br/>streams PaymentSettings.QrImageData (BYTEA)<br/>ETag + HEAD, 1x1 GIF fallback"]
-            MSTR["Shared\Site.master<br/>shell, CSRF token, sign-in gate"]
+            PAGES["Pages — App\*.aspx<br/>Shop · Cart · Checkout · Orders<br/>Commissions · Reviews · Profile"]
+            ADM["Studio pages — App\Merchant, App\Admin<br/>Orders · Pipeline · Products · Events<br/>Reports · Reviews · Users · Payment Settings"]
+            SHELL["Site.master<br/>the shell: navigation, sign-in, session check"]
         end
 
-        subgraph Core[Code\ — web helpers]
-            GUARD["Guard.vb — role gates"]
-            CSRF["Csrf.vb — per-session POST token<br/>verified in Global.asax.vb"]
-            WEBUI["WebUi.vb — branding, QrPaymentModal, helpers"]
-            SESS["Helpers\Session.vb · Validators · ChartSeries"]
+        subgraph Core["Code\ — web helpers"]
+            GUARD["Guard — who is allowed here"]
+            CSRF["Csrf — per-session token"]
+            WEBUI["WebUi — shared look and feel"]
         end
 
-        subgraph Biz[Shared\ — Models · Repositories · Services]
-            SVC["Services<br/>Auth · Cart · Catalog · Order · Commission<br/>Event · Report · Notification"]
-            REPO["Repositories (13)<br/>User · UserAddress · Product · Category · Cart · Order<br/>PaymentSetting · Commission · Event · Receipt · Report · Notification · AssetImage"]
-            MODEL["Models (8) + Reports\ReportDtos<br/>Helpers: PasswordHasher · Fmt · AppColors · Clock"]
+        subgraph Biz["Shared\ — business logic"]
+            SVC["Services (8)<br/>Auth · Cart · Catalog · Order<br/>Commission · Event · Report · Notification"]
+            REPO["Repositories (13)<br/>all SQL lives here"]
+            MODEL["Models — plain data"]
         end
 
-        DB["Code\Db.vb<br/>ConnString() = env vars → Db_* → web.config<br/>UriToConnString() for postgresql:// URIs"]
+        DB["Db.vb<br/>finds the connection string from the environment"]
     end
 
-    subgraph Data[PostgreSQL]
-        direction TB
-        LOCAL["Local fallback<br/>tools\pgsql (vendored 16.4) + tools\pgdata<br/>db 'stardom' — per machine"]
-        SUPA["Supabase project (shared, PostgreSQL 17.6)<br/>Session pooler :5432, SSL required"]
-        TABLES["30 tables<br/>users · products · orders · payments · carts<br/>events · booths · commissions · reviews · notifications<br/>paymentsettings.qrimagedata BYTEA"]
-    end
+    SUPA[("Supabase — PostgreSQL<br/>one shared database<br/>Session pooler, port 5432, SSL")]
 
-    B -->|GET / POST /| R
+    B -->|"GET / POST /"| R
     R --> PAGES
     R --> ADM
-    R --> QR
-    PAGES --> MSTR
-    ADM --> MSTR
+    PAGES --> SHELL
+    ADM --> SHELL
     PAGES --> GUARD
     PAGES --> WEBUI
     ADM --> GUARD
-    GUARD --> SESS
-    WEBUI --> SESS
     PAGES --> SVC
     ADM --> SVC
-    QR --> REPO
     SVC --> REPO
     SVC --> MODEL
     REPO --> MODEL
     REPO --> DB
-    QR --> DB
-    DB -->|"tools\supabase-credentials.txt exists"| SUPA
-    DB -->|"set SD_LOCAL_DB=1"| LOCAL
-    SUPA --> TABLES
-    LOCAL --> TABLES
-    CSRF -.->|"403 + AppErrors on mismatch"| PAGES
+    DB -->|"password from tools\supabase-credentials.txt"| SUPA
+    CSRF -.->|"rejects the POST if it does not match"| PAGES
 ```
-
-## Layer rules
-
-| Layer | May call | Must not |
-|---|---|---|
-| `App\*.aspx.vb` | `Code\*`, `Shared\Services\*` | touch `Npgsql` directly |
-| `App\PaymentQr.aspx.vb` | `Shared\Repositories\PaymentSettingRepository` | render HTML — it only streams bytes |
-| `Shared\Services` | `Shared\Repositories`, `Shared\Models` | know about `HttpContext` |
-| `Shared\Repositories` | `Shared\Models`, `Code\Db.vb` | build HTML or write business rules |
-| `Shared\Models` | nothing | contain behaviour beyond validation |
-
-Everything is parameterised SQL through Npgsql 4.1.10; there is no ORM and no
-string-concatenated query anywhere. `Code\Db.vb` is the single place that knows
-which database it is talking to, which is why switching between Supabase and
-the local copy is an environment variable and not a code change.
-
-## Two endpoints worth knowing
-
-- **`App\PaymentQr.aspx?ch=GCASH|GOTYME`** — the wallet QR codes live in
-  `paymentsettings.qrimagedata` (`BYTEA`), not on disk. This page streams the
-  bytes with an `ETag`, answers `HEAD`, and returns a 1×1 GIF when a channel has
-  no image yet, so no `<img>` ever breaks. `paymentsettings.qrimagefile` is read
-  only as a fallback for rows uploaded by an older build.
-- **`Global.asax.vb`** — `Application_AcquireRequestState` is where the CSRF
-  token is verified for every POST, because pages emit their own raw
-  `<form method="post">` markup rather than going through a control.
-
-## Order & payment state machine — the one place with states
-
-There is no payment method at checkout: the studio must first quote the J&T
-fee — which is what makes the total final — so the customer pays only after
-the order comes back quoted. The two-step payment verification means one side
-alone can never complete a payment.
-
-```mermaid
-stateDiagram-v2
-    [*] --> PENDING: checkout (address + phone)<br/>PaymentMethod parked PENDING, shipping not yet quoted
-    PENDING --> CONFIRMED: studio quotes J&amp;T fee + password<br/>(ConfirmWithShippingFee — total is now final)
-    CONFIRMED --> SUBMITTED: customer pays GCash/GOtyme<br/>enters e-wallet reference + password
-    SUBMITTED --> PAID: studio verifies ref + password<br/>(ConfirmPayment — receipt issued)
-    SUBMITTED --> FAILED: studio declines ref + password<br/>(customer gets support line, may resubmit)
-    FAILED --> SUBMITTED: customer resubmits a corrected reference
-    PAID --> PROCESSING: studio starts fulfilment (refused until PAID)
-    PROCESSING --> SHIPPED: book J&amp;T — waybill typed in
-    SHIPPED --> DELIVERED: delivered — checks the STORED waybill
-    DELIVERED --> RECEIVED: customer "Confirm order received" (unlocks reviews)
-    PENDING --> CANCELLED
-    CONFIRMED --> CANCELLED
-    PROCESSING --> CANCELLED
-    note right of SUBMITTED
-        PaymentStatus lives beside OrderStatus:
-        PENDING -&gt; SUBMITTED -&gt; PAID (or FAILED).
-        SHIPPED/DELIVERED refuse while PaymentStatus &lt;&gt; PAID.
-    end note
-```
-
-The Scan-to-Pay popup is generated once by `WebUi.QrPaymentModal` and shown
-from **Order Detail** (checkout has no popup any more — the order is written
-immediately and payment waits until the fee is quoted).
 
 ---
 
-The repository-layout picture below is rendered by GitDiagram from the GitHub
-repo and is therefore refreshed by pushing; the diagrams above are hand-written
-and always current.
+## Where the data lives
 
-[![Architecture diagram of jamesmangao/stardom](https://gitdiagram.com/jamesmangao/stardom/diagram.png)](https://gitdiagram.com/jamesmangao/stardom?utm_source=readme&utm_medium=picture)
+**One database: Supabase.** Every machine — yours, your teammate's, the Render
+server — reads and writes the same rows. There is no local database and no
+per-machine copy, which means a demo behaves the same for everyone and two
+people can never see different data.
+
+The password cannot live in git, so each machine provides it once:
+
+```
+tools\supabase-credentials.txt   ← git-ignored, written by setup.bat
+        ↓
+run-website.bat reads it, exports SUPABASE_DB_URL
+        ↓
+IIS Express inherits the variable
+        ↓
+Code\Db.vb builds the connection from it
+```
+
+`Db.vb` tries, in order:
+
+1. `SUPABASE_DB_URL` (the whole connection URI)
+2. `DB_HOST` + `DB_USER` + `DB_PASSWORD`, etc.
+3. a `STAR_DOM` connection string in `web.config` — **absent on purpose**
+
+If none of those is set, the app says exactly what is missing and points at
+`setup.bat`. It does **not** guess a host and fail with a confusing error.
+
+`tools\pgsql` is committed (about 120 MB) but only as a **client** — the
+`psql` command-line tool. `setup.bat`, `doctor.bat` and
+`tools\reseed-supabase.bat` use it to test the connection and to reload the
+schema. It is not a server and there is nothing to start.
+
+---
+
+## Layer rules
+
+| Layer | May call | Must never |
+|---|---|---|
+| Pages | `Code\*`, `Shared\Services\*` | write SQL |
+| `App\PaymentQr.aspx.vb` | the payment-settings repository | render HTML — it only streams bytes |
+| Services | Repositories, Models | know that a web request exists |
+| Repositories | Models, `Code\Db.vb` | build HTML or hold business rules |
+| Models | nothing | carry behaviour beyond validation |
+
+Every query is parameterised through one helper, so there is no
+string-concatenated SQL anywhere in the project.
+
+---
+
+## How an order travels
+
+The important design choice: **there is no payment step at checkout.** The
+customer cannot pay yet, because nobody knows the shipping cost. J&T charges
+by weight, so the studio has to weigh and quote it first. Only after that is
+there a final number to pay.
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: customer checks out<br/>address + phone only
+    PENDING --> CONFIRMED: studio enters the J&T fee<br/>(the total is now final)
+    CONFIRMED --> SUBMITTED: customer pays by GCash / GOtyme<br/>and enters the reference + password
+    SUBMITTED --> PAID: studio verifies it + password<br/>(receipt is issued)
+    SUBMITTED --> FAILED: studio declines it + password
+    FAILED --> SUBMITTED: customer resubmits a corrected reference
+    PAID --> PROCESSING: studio starts packing
+    PROCESSING --> SHIPPED: studio books J&T and types the waybill
+    SHIPPED --> DELIVERED: checks the stored waybill
+    DELIVERED --> RECEIVED: customer confirms it arrived
+
+    PENDING --> CANCELLED
+    CONFIRMED --> CANCELLED
+
+    note right of PAID
+        Nothing ships before this point.
+        PROCESSING, SHIPPED and DELIVERED all
+        refuse while the payment is not PAID.
+    end note
+
+    note right of CANCELLED
+        Only the customer can cancel, only while
+        PENDING and unpaid, and only with a reason.
+    end note
+```
+
+**Why the payment takes two people.** The customer's submission only parks the
+payment as `SUBMITTED`. Only the studio, behind a password, can make it `PAID`.
+Neither side alone can complete a payment — which is exactly how a real store
+should work.
+
+---
+
+## How a commission travels
+
+Same two-person rule, plus a real production stage:
+
+```
+request (5 steps) → studio accepts and quotes a price → customer confirms
+  → customer pays (channel + reference) → studio verifies → production starts
+  → photos for review → any revisions → finalization
+  → delivered with a J&T number → customer confirms receipt
+```
+
+Two things worth knowing: an artist's open-request **capacity is enforced** (a
+customer cannot flood a queue), and a commission can only be marked delivered
+once a tracking number is recorded.
+
+---
+
+## Two files worth knowing about
+
+**`App\PaymentQr.aspx`** — the wallet QR images live inside the database
+(`paymentsettings.qrimagedata`), not on disk. This page streams the bytes with
+an `ETag`, answers `HEAD`, and returns a tiny transparent image when a channel
+has no QR yet, so an `<img>` never breaks. Because the images are in the
+database, a backup or a new machine gets them for free.
+
+**`Global.asax.vb`** — this is where the CSRF token is checked on every POST.
+The pages build their own raw `<form>` markup rather than using server
+controls, so the check cannot live in each page. One place means a new page
+cannot forget it.
+
+---
+
+The repository-layout picture below is rendered by GitDiagram and refreshes
+when the repo is pushed. The diagrams above are hand-written and always current.
+
+[![Architecture diagram](https://gitdiagram.com/jamesmangao/stardom/diagram.png)](https://gitdiagram.com/jamesmangao/stardom)

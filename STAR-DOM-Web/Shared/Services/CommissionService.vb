@@ -65,6 +65,20 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail(clean(0))
             End If
 
+            ' Enforce the artist's open-request capacity. Without a ceiling the same
+            ' buyer could pile unlimited requests onto one artist's hub cards; the
+            ' capacity the artist set is what bounds the pipeline. A zero/blank
+            ' capacity means the artist is not taking requests at all.
+            Dim artist As User = _users.GetById(merchantId)
+            Dim capacity As Integer = If(artist IsNot Nothing, artist.CommissionSlotCapacity, 0)
+            If capacity <= 0 Then
+                Return ServiceResult.Fail("This artist is not accepting commission requests right now.")
+            End If
+            If _repo.OpenSlotCount(merchantId) >= capacity Then
+                Return ServiceResult.Fail("This artist's commission queue is full (" & capacity.ToString() &
+                                           " open). Please try again once a slot frees up.")
+            End If
+
             ' CommissionNumber is a unique placeholder; the real number is set after the
             ' auto-increment id is known, so concurrent submissions can never collide.
             ' "REQ-P" plus a 32-char GUID is 37 characters, which fits the
@@ -104,10 +118,10 @@ Namespace STAR_DOM.Services
             _notif.Notify(merchantId, "New commission – " & number,
                           Session.DisplayName & " submitted a " & title & " request (Qty " & quantity.ToString() &
                           "). Review it in the Commission Pipeline.",
-                          "COMMISSION", "commission-pipeline")
+                          "COMMISSION", "commission-pipeline:" & cm.Id)
             _notif.Notify(Session.CurrentUser.Id, "Commission submitted – " & number,
                           "Your request is now PENDING REVIEW. You'll be notified of the merchant's response.",
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Commission " & number & " submitted!", id)
         End Function
 
@@ -160,7 +174,7 @@ Namespace STAR_DOM.Services
                           "The merchant sent you a quote of " & Fmt.PHP(finalPrice) &
                           If(completionDate.HasValue, " with completion by " & Fmt.DateF(completionDate.Value), "") &
                           ". Confirm to proceed.",
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Offer sent to the customer.")
         End Function
 
@@ -171,7 +185,7 @@ Namespace STAR_DOM.Services
             _repo.UpdateStatus(commissionId, "", CommissionStatuses.Declined, Session.DisplayName, note)
             _notif.Notify(cm.CustomerId, "Commission declined – " & cm.CommissionNumber,
                           If(String.IsNullOrWhiteSpace(note), "The merchant declined your request.", note),
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Commission declined.")
         End Function
 
@@ -189,7 +203,7 @@ Namespace STAR_DOM.Services
                                Session.DisplayName, "Customer confirmed the offer")
             _notif.Notify(cm.MerchantId, "Offer confirmed – " & cm.CommissionNumber,
                           Session.DisplayName & " confirmed your quote. Awaiting payment.",
-                          "COMMISSION", "commission-pipeline")
+                          "COMMISSION", "commission-pipeline:" & cm.Id)
             Return ServiceResult.Ok("Offer confirmed. Please complete payment to start production.")
         End Function
 
@@ -203,7 +217,7 @@ Namespace STAR_DOM.Services
         ''' PENDING so the studio can verify it — the same two-step an order goes
         ''' through, and the reason production never starts on an unverified transfer.
         ''' </summary>
-        Public Function SubmitPayment(commissionId As Integer, reference As String) As ServiceResult
+        Public Function SubmitPayment(commissionId As Integer, reference As String, method As String) As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
             If cm.CustomerId <> Session.CurrentUser.Id Then Return ServiceResult.Fail("Not your commission.")
@@ -216,26 +230,40 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Ok("Payment already submitted — waiting for the studio to confirm it.")
             End If
 
+            ' The channel is part of the record now, not free text: it decides which
+            ' account the reference is checked against, so it must be a live, enabled
+            ' e-wallet channel.
+            Dim channel As String = If(method, "").Trim().ToUpperInvariant()
+            If channel = PaymentSettingRepository.LegacyMaya Then channel = PaymentSettingRepository.GOtyme
+            If Not PaymentSetting.IsEWallet(channel) Then
+                Return ServiceResult.Fail("Choose GCash or GOtyme as your payment method.")
+            End If
+            If Not New PaymentSettingRepository().IsChannelEnabled(channel) Then
+                Return ServiceResult.Fail(PaymentSetting.PaymentFailedMessage(
+                    "That payment channel is not available right now. " &
+                    "Please choose another or try again later."))
+            End If
+
             Dim ref As String = If(reference, "").Trim()
             If ref = "" Then
                 Return ServiceResult.Fail(PaymentSetting.PaymentFailedMessage(
                     "Enter the GCash or GOtyme reference number from your payment receipt."))
             End If
 
-            _repo.SetPaymentReference(commissionId, ref)
+            _repo.SetPaymentReference(commissionId, ref, channel)
             Dim fromStatus As String = If(String.Equals(cm.Status, CommissionStatuses.PaymentDeclined, StringComparison.OrdinalIgnoreCase),
                                           CommissionStatuses.PaymentDeclined, CommissionStatuses.CustomerConfirmed)
             Dim err As String = _repo.UpdateStatus(commissionId, fromStatus,
                                                     CommissionStatuses.PaymentPending, Session.DisplayName,
-                                                    "Customer submitted payment (ref " & ref & ")")
+                                                    "Customer submitted payment via " & PaymentSetting.DisplayName(channel) & " (ref " & ref & ")")
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
             _notif.Notify(cm.MerchantId, "Payment submitted – " & cm.CommissionNumber,
                           Session.DisplayName & " submitted their payment (ref " & ref & "). " &
                           "Please verify it so production can start.",
-                          "COMMISSION", "commission-pipeline")
+                          "COMMISSION", "commission-pipeline:" & cm.Id)
             _notif.Notify(cm.CustomerId, "Payment submitted – " & cm.CommissionNumber,
                           "We've got your payment details. The studio will confirm it shortly.",
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Payment submitted. The studio will confirm it before production starts.")
         End Function
 
@@ -273,25 +301,33 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail(
                     "No reference number was submitted, so this payment cannot be verified.")
             End If
-            _repo.MarkPaymentConfirmed(commissionId)
-            Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.PaymentPending,
-                                                    CommissionStatuses.Paid, Session.DisplayName,
-                                                    "Payment confirmed (ref " & cm.PaymentReference & ")")
-            If err IsNot Nothing Then Return ServiceResult.Fail(err)
-            ' Auto-start production once payment is confirmed.
-            Dim prodErr As String = _repo.UpdateStatus(commissionId, CommissionStatuses.Paid,
-                                                       CommissionStatuses.InProduction, Session.DisplayName,
-                                                       "Production started automatically after payment confirmation")
-            If prodErr IsNot Nothing Then
-                ' Payment was confirmed but production couldn't start — rollback the status
-                ' so the commission doesn't get stuck in PAID with no way forward.
-                _repo.UpdateStatus(commissionId, CommissionStatuses.InProduction, CommissionStatuses.Paid, Session.DisplayName, "Production start failed, payment status reverted")
-                Db.LogError("CommissionService.ConfirmPayment", New Exception("Production start failed after payment confirm: " & prodErr))
-                Return ServiceResult.Fail("Payment confirmed but production could not start. Please try again or contact support.")
-            End If
+            ' Confirming the payment and moving to IN PRODUCTION is two writes that
+            ' must land together: MarkPaymentConfirmed + the PAID history entry + the
+            ' IN PRODUCTION history entry. Previously a failure on the second left
+            ' the commission PAID with a confirmed payment and no way forward.
+            ' One transaction now either commits the whole advance or leaves the
+            ' commission untouched in PAYMENT PENDING.
+            Try
+                Db.InTransaction(Function() As Boolean
+                    _repo.MarkPaymentConfirmed(commissionId)
+                    Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.PaymentPending,
+                                                            CommissionStatuses.Paid, Session.DisplayName,
+                                                            "Payment confirmed (ref " & cm.PaymentReference & ")")
+                    If err IsNot Nothing Then Throw New InvalidOperationException(err)
+                    ' Auto-start production once payment is confirmed.
+                    Dim prodErr As String = _repo.UpdateStatus(commissionId, CommissionStatuses.Paid,
+                                                               CommissionStatuses.InProduction, Session.DisplayName,
+                                                               "Production started automatically after payment confirmation")
+                    If prodErr IsNot Nothing Then Throw New InvalidOperationException(prodErr)
+                    Return True
+                End Function)
+            Catch ex As Exception
+                Db.LogError("CommissionService.ConfirmPayment", ex)
+                Return ServiceResult.Fail("Payment could not be confirmed. Please try again or contact support.")
+            End Try
             _notif.Notify(cm.CustomerId, "Payment confirmed – " & cm.CommissionNumber,
                           "Your payment (ref " & cm.PaymentReference & ") is confirmed. Production is starting.",
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Payment confirmed. Production is now in progress.")
         End Function
 
@@ -322,15 +358,55 @@ Namespace STAR_DOM.Services
                           PaymentSetting.PaymentFailedMessage(
                               "The seller could not confirm your payment for this commission. " &
                               "Please check your reference number and resubmit."),
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Payment declined. The customer has been notified.")
         End Function
 
-        Public Function Cancel(commissionId As Integer) As ServiceResult
+        ''' <summary>
+        ''' Cancel a commission. A customer may only cancel while nothing has been
+        ''' paid and work has not started; once payment is confirmed or production is
+        ''' under way only the studio side can stop it. A reason is mandatory — an
+        ''' order/commission that silently disappears gives the other side nothing.
+        ''' </summary>
+        Public Function Cancel(commissionId As Integer, Optional reason As String = "") As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
             If cm Is Nothing Then Return ServiceResult.Fail("Commission not found.")
             If Not CanAccess(cm) Then Return ServiceResult.Fail("Not authorized.")
-            _repo.UpdateStatus(commissionId, "", CommissionStatuses.Cancelled, Session.DisplayName, "Request cancelled")
+
+            Dim isMerchant As Boolean = CanManageCommission(cm)
+            Dim isOwner As Boolean = cm.CustomerId = Session.CurrentUser.Id
+            Dim st As String = If(cm.Status, "").ToUpperInvariant()
+
+            If st = CommissionStatuses.Cancelled OrElse st = "COMPLETED" OrElse
+               st = CommissionStatuses.Declined OrElse st = CommissionStatuses.Received Then
+                Return ServiceResult.Fail("This commission can no longer be cancelled.")
+            End If
+
+            If isOwner AndAlso Not isMerchant Then
+                If cm.PaymentConfirmed Then
+                    Return ServiceResult.Fail("This commission has already been paid for, so it can no longer be " &
+                                              "cancelled here. " & PaymentSetting.SupportContact)
+                End If
+                If st = CommissionStatuses.InProduction OrElse st = CommissionStatuses.Revision OrElse
+                   st = CommissionStatuses.FinalizeRequested OrElse st = CommissionStatuses.Finalized OrElse
+                   st = CommissionStatuses.Delivered Then
+                    Return ServiceResult.Fail("This commission is already in progress and can no longer be " &
+                                              "cancelled here. " & PaymentSetting.SupportContact)
+                End If
+            End If
+
+            Dim why As String = If(reason, "").Trim()
+            If why = "" Then
+                Return ServiceResult.Fail("Please tell us why you're cancelling this commission.")
+            End If
+
+            _repo.UpdateStatus(commissionId, "", CommissionStatuses.Cancelled, Session.DisplayName,
+                               "Cancelled — " & why)
+            Dim audience As Integer = If(isOwner AndAlso Not isMerchant, cm.MerchantId, cm.CustomerId)
+            _notif.Notify(audience, "Commission cancelled – " & cm.CommissionNumber,
+                          If(isOwner AndAlso Not isMerchant, "The customer", "The studio") &
+                          " cancelled this commission. Reason: " & why,
+                          "COMMISSION", If(isOwner AndAlso Not isMerchant, "commission-pipeline:" & cm.Id, "commission-hub:" & cm.Id))
             Return ServiceResult.Ok("Commission cancelled.")
         End Function
 
@@ -386,7 +462,7 @@ Namespace STAR_DOM.Services
             _notif.Notify(cm.MerchantId, "Revision requested – " & cm.CommissionNumber,
                           Session.DisplayName & " wants changes: " & note &
                           " — rework the piece and send it for review again.",
-                          "COMMISSION", "commission-pipeline")
+                          "COMMISSION", "commission-pipeline:" & cm.Id)
             Return ServiceResult.Ok("Revision sent. The studio will rework it and send it back for review.")
         End Function
 
@@ -408,7 +484,7 @@ Namespace STAR_DOM.Services
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
             _notif.Notify(cm.MerchantId, "Finalization requested – " & cm.CommissionNumber,
                           Session.DisplayName & " approved the work. Finalize it and send it to delivery.",
-                          "COMMISSION", "commission-pipeline")
+                          "COMMISSION", "commission-pipeline:" & cm.Id)
             Return ServiceResult.Ok("Finalization requested. The studio will finalize and deliver your commission.")
         End Function
 
@@ -423,10 +499,11 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
-        ''' Hand the finished piece over. A commission is delivered the same way an
-        ''' order is: booking a courier is optional (most are collected in person, so
-        ''' the tracking number may stay blank), but the customer is the one who
-        ''' confirms receipt — the studio cannot mark its own parcel as received.
+        ''' Hand the finished piece over. Tracking is mandatory: the studio must
+        ''' record the J&amp;T waybill before the commission can be marked DELIVERED,
+        ''' so a delivered commission always carries a number the customer can trace.
+        ''' The customer is still the one who confirms receipt — the studio cannot
+        ''' mark its own parcel as received.
         ''' </summary>
         Public Function MarkDelivered(commissionId As Integer, Optional tracking As String = "") As ServiceResult
             Dim cm As Commission = _repo.GetById(commissionId)
@@ -438,14 +515,18 @@ Namespace STAR_DOM.Services
             If String.IsNullOrWhiteSpace(cm.ShippingAddress) Then
                 Return ServiceResult.Fail("This commission has no delivery address on file.")
             End If
-            _repo.SetDelivery(commissionId, Trim(If(tracking, "")))
+            Dim waybill As String = Trim(If(tracking, ""))
+            If waybill = "" Then
+                Return ServiceResult.Fail("Enter the J&T tracking number for this delivery.")
+            End If
+            _repo.SetDelivery(commissionId, waybill)
             Dim err As String = _repo.UpdateStatus(commissionId, CommissionStatuses.Finalized,
                                                     CommissionStatuses.Delivered, Session.DisplayName,
                                                     "Delivered to customer")
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
             _notif.Notify(cm.CustomerId, "Commission delivered – " & cm.CommissionNumber,
                           "Your commission has been delivered. Please confirm you received it.",
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Commission delivered — waiting for the customer to confirm receipt.")
         End Function
 
@@ -471,7 +552,7 @@ Namespace STAR_DOM.Services
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
             _notif.Notify(cm.MerchantId, "Commission received – " & cm.CommissionNumber,
                           Session.DisplayName & " confirmed your commission arrived. Enjoy!",
-                          "COMMISSION", "commission-pipeline")
+                          "COMMISSION", "commission-pipeline:" & cm.Id)
             Return ServiceResult.Ok("Thanks for confirming! Enjoy your art.")
         End Function
 
@@ -523,7 +604,7 @@ Namespace STAR_DOM.Services
             If err IsNot Nothing Then Return ServiceResult.Fail(err)
             _notif.Notify(cm.CustomerId, "Update – " & cm.CommissionNumber,
                           "Your commission is now: " & toStatus.Replace("_", " ") & ".",
-                          "COMMISSION", "commission-hub")
+                          "COMMISSION", "commission-hub:" & cm.Id)
             Return ServiceResult.Ok("Commission moved to " & toStatus & ".")
         End Function
 

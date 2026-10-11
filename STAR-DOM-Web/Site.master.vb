@@ -24,6 +24,25 @@ Namespace STAR_DOM.Web
         Protected toastWrap As System.Web.UI.HtmlControls.HtmlGenericControl
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
+            ' Re-check the signed-in account on every request. A User cached in Session
+            ' can outlive a role change, a suspension, or a delete, so the shell asks the
+            ' DB each time and signs the request out when the account is gone or no
+            ' longer ACTIVE. Done before render so no privileged markup is built.
+            If STAR_DOM.Helpers.Session.IsAuthenticated Then
+                Dim stillValid As Boolean
+                Try
+                    stillValid = New AuthService().RefreshSession()
+                Catch
+                    ' A transient DB failure must not silently sign the user out.
+                    stillValid = True
+                End Try
+                If Not stillValid Then
+                    Session("flash_msg") = "Your session has ended. Please sign in again."
+                    Response.Redirect("/Login.aspx?expired=1", True)
+                    Return
+                End If
+            End If
+
             If Not IsPostBack Then
                 Try
                     RenderShell()
@@ -318,6 +337,7 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""nav-group"">")
                 sb.Append("<div class=""nav-head"">SYSTEM<span class=""pill small gray"">ADMIN</span></div>")
                 sb.Append(NavLink(New NavItem("Admin Console", "/App/Admin/Users.aspx", "", "", "admin_panel_settings")))
+                sb.Append(NavLink(New NavItem("Pop-up Locations", "/App/Admin/AdminPopupLocations.aspx", "LIVE", "red", "pin_drop")))
                 sb.Append(NavLink(New NavItem("Payment Settings", "/App/Admin/PaymentSettings.aspx", "", "", "qr_code_2")))
                 sb.Append("</div>")
             End If

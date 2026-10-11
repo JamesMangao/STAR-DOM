@@ -1,17 +1,14 @@
 @echo off
 rem ============================================================
 rem  STAR:DOM Website - share it publicly via a Cloudflare tunnel
-rem  Makes sure a database is available, runs IIS Express on port
-rem  8095, then opens a free
+rem  Runs IIS Express on port 8095, then opens a free
 rem  Cloudflare "quick tunnel" so anyone with the link can view
 rem  the site without installing anything on their side.
 rem  Close this window to stop sharing.
 rem
-rem  Database selection is identical to run-website.bat: Supabase when
-rem  tools\supabase-credentials.txt exists, otherwise the portable local
-rem  copy. Sharing a public tunnel pointed at a private local database
-rem  would show seed data to everyone; with Supabase the tunnel and every
-rem  other machine read the same thing.
+rem  The database is Supabase, always. Sharing a tunnel pointed at a
+rem  per-machine local copy would show one machine's data to everyone,
+rem  so there is no local database to point at.
 rem ============================================================
 setlocal
 title STAR:DOM - Share via Cloudflare
@@ -55,27 +52,20 @@ exit /b 1
 
 :cfd_found
 
-rem --- pick the database: Supabase when configured, else the local one ---
+rem --- the database is Supabase; it needs no local process ---
 rem Exported before IIS Express starts so the worker process inherits it.
-if not defined SD_LOCAL_DB (
-    if exist "%~dp0tools\supabase-credentials.txt" (
-        call "%~dp0tools\supabase-env.bat"
-        if errorlevel 1 (
-            echo Could not read the Supabase credentials - see the messages above.
-            pause
-            exit /b 1
-        )
-        echo Database: Supabase ^(shared - same data on every machine^)
-    )
-)
-
-rem --- make sure the database is available (starts the local one if needed) ---
-call "%~dp0start-db.bat"
-if errorlevel 1 (
-    echo The database did not start - see the messages above.
+if not exist "%~dp0tools\supabase-credentials.txt" (
+    echo tools\supabase-credentials.txt is missing - run setup.bat first.
     pause
     exit /b 1
 )
+call "%~dp0tools\supabase-env.bat"
+if errorlevel 1 (
+    echo Could not read the Supabase credentials - see the messages above.
+    pause
+    exit /b 1
+)
+echo Database: Supabase ^(shared - every machine sees the same data^)
 
 echo [1/3] Starting IIS Express on http://localhost:8095 ...
 start "STAR:DOM - IIS Express" /min "%IISEXE%" /path:"%SITE%" /port:8095 /clr:v4.0 /systray:false

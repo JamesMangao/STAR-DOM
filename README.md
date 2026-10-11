@@ -11,6 +11,141 @@ everything from a merchant studio.
 
 **Repository:** github.com/JamesMangao/STAR-DOM
 
+---
+
+## The Website
+
+This section describes the site as a **product** — what it looks like, what is on
+it, and what each page is for. The engineering sections follow further down.
+
+### The brand
+
+STAR:DOM is a pop-up artisan brand. The visual language is warm, hand-made and
+deliberately not corporate — it should feel like a booth at a weekend market,
+not like a bank portal.
+
+| | |
+|---|---|
+| **Primary** | Deep red `#b70011` — the brand colour, used for prices, CTAs and the logo |
+| **Accent** | Warm yellow `#fed01b` — highlights, badges, the "LIVE" markers |
+| **Surfaces** | Cream, not white: `#fff8f5` page, `#faf2ee` → `#eee7e3` raised panels, `#ffffff` cards |
+| **Ink** | Near-black brown `#1e1b19`, softening to `#5c403c` and `#8a6a62` |
+| **Type** | **Sora** 600/700/800 for headings, **Plus Jakarta Sans** 400–800 for body |
+| **Icons** | Material Symbols Outlined — one outlined glyph per action, never emoji |
+
+The palette, spacing, radius and motion all live as CSS custom properties in the
+top of `css\site.css`, so changing the brand means editing tokens rather than
+hunting through markup. `css\site.css` is the entire design system (~1,460
+lines): cards, tables, badges, buttons, modals, the step rail, the toast
+wrapper, toasts, skeleton states, and the responsive breakpoints down to phone
+width.
+
+### Who uses it
+
+There are exactly **two roles**, and this is not negotiable — the whole site is
+built on it.
+
+- **CUSTOMER** — anyone who registers. Browses, buys, requests commissions.
+- **ADMIN** — the store owner, who is *also* the artist. One account, so the
+  person making the art is the person running the shop. Registration always
+  creates a CUSTOMER; only the owner can promote anyone.
+
+The customer-facing pages and the studio pages are therefore the *same* pages
+with a different shell: signing in as `admin` swaps the storefront navigation
+for the studio navigation.
+
+### Every page on the site
+
+33 pages. "Who" is who can see it — anonymous visitors get the storefront.
+
+#### Storefront (anonymous)
+
+| Page | URL | What it is |
+|---|---|---|
+| Home | `/` | The landing page — hero, live pop-up status, featured products, categories, stat strip, open commission slots |
+| Pop-up Locations | `/App/PopupLocations.aspx` | Where the brand has been and will be: current pop-up as a hero, upcoming schedule, mall photos streamed from the database |
+| Products Catalog | `/App/Catalog.aspx` | The full catalog with category filtering and search |
+| Product | `/App/Product.aspx?id=` | One product: photos, description, stock, bundle deal, add to cart / save for later |
+| Marketplace | `/App/Marketplace.aspx` | The browsable shop grid, open commission slot cards, pop-up banner |
+| Sign in / Register | `/Login.aspx`, `/Register.aspx` | Both remember where you were, so you land back on the product you clicked |
+
+#### Customer (signed in)
+
+| Page | URL | What it is |
+|---|---|---|
+| Cart | `/App/Cart.aspx` | Line items, quantity, saved-for-later items, move between cart and wishlist |
+| Checkout | `/App/Checkout.aspx` | Delivery address + contact phone only. **Place Order writes the order immediately** — there is no payment popup here, because the shipping fee is not known yet |
+| My Orders / Wishlist | `/App/Orders.aspx` | Every order with live status, plus the wishlist, on one page |
+| Order Detail | `/App/OrderDetail.aspx?id=` | The order timeline, items, receipt, tracking, Scan-to-Pay, and cancel-while-pending |
+| Commission Hub | `/App/CommissionHub.aspx` | Your commission requests and the artists' open slots |
+| Request a Commission | `/App/CommissionRequest.aspx` | A 5-step rail — describe the piece, reference, sizing, budget, delivery |
+| Commission Detail | `/App/CommissionDetail.aspx?id=` | Offer, payment, production, review, delivery — the whole conversation with the studio |
+| Notifications | `/App/Notifications.aspx` | Every alert, deep-linking to the exact order or commission it is about |
+| Profile | `/App/Profile.aspx` | Name, email, phone, password, and saved delivery addresses |
+| Receipt | `/App/Receipt.aspx` | BIR-style receipt with the VAT breakdown |
+
+#### Studio + admin (`admin`)
+
+| Page | URL | What it is |
+|---|---|---|
+| Merchant Dashboard | `/App/Merchant/Dashboard.aspx` | KPIs, revenue, current event, quick actions |
+| Orders & Payments | `/App/Merchant/Orders.aspx` | Quote the J&T fee, verify or decline payments behind a password, book the waybill, move the order along |
+| Commission Pipeline | `/App/Merchant/Pipeline.aspx` | Every request: accept and quote, decline, production, send for review, deliver |
+| Products & Stock | `/App/Merchant/Products.aspx` | Add, edit, retire. Stock is adjusted by hand after physical booth sales |
+| Event & Booth Manager | `/App/Merchant/Events.aspx`, `EventEdit.aspx` | Pop-up schedule, booth numbers, venue photos |
+| Event Sales Reports | `/App/Merchant/Reports.aspx` | Booth takings and web takings side by side |
+| Reviews | `/App/Merchant/Reviews.aspx` | Moderate what customers wrote |
+| Admin Console | `/App/Admin/Users.aspx` | Users and roles |
+| Pop-up Locations (admin) | `/App/Admin/AdminPopupLocations.aspx` | The same schedule as the storefront, with editing |
+| Payment Settings | `/App/Admin/PaymentSettings.aspx` | GCash / GOtyme QR images, account name and number, captions, what customers see |
+
+Two more are infrastructure and have no navigation: `/App/AssetImg.aspx`
+streams venue photos out of the database, and `/App/PaymentQr.aspx` streams a
+wallet's QR image.
+
+### The two journeys
+
+**Buying.** Browse → product → cart → checkout (address + phone, nothing else)
+→ **Place Order**. The order is written right there in a single transaction, with
+the shipping fee *not* yet included, because J&T only weighs the parcel later.
+Then on **My Orders**:
+
+1. The studio enters the J&T fee on the order. *That entry is the confirmation* —
+   the order becomes `CONFIRMED` and the total is final.
+2. The customer opens **Scan to Pay**, sees the admin's GCash or GOtyme QR,
+   pays in their own wallet app, and submits the **reference number plus their
+   password**. This only parks the payment as `SUBMITTED`.
+3. The studio verifies it behind their own password. Confirm → `PAID` and the
+   official receipt issues. Decline → `FAILED`, and the customer gets the
+   support line to resubmit.
+
+Nothing ships on an unverified payment: `PROCESSING`, `SHIPPED` and `DELIVERED`
+all refuse until the payment is `PAID`, and `DELIVERED` checks the *stored*
+waybill. Customers confirm arrival, which unlocks their review.
+
+**Commissioning.** Request (5 steps) → the studio accepts and quotes a price and
+completion date → the customer confirms → pays by the same two-step
+verify-before-production rule, now recording **which** wallet they used → the
+studio confirms and production starts automatically → photos for review → any
+revisions → finalization → delivery with a mandatory J&T number → the customer
+confirms receipt.
+
+Each artist's queue has a **capacity** the site actually enforces — a new request
+is refused once the artist is at their limit, so a queue cannot be flooded.
+
+### Rules a customer can feel
+
+- **You cannot cancel what is already moving.** An order can be cancelled by the
+  customer only while it is still `PENDING` and unpaid. Once it is processing,
+  paid or shipped, cancelling is a conversation with the studio, not a button.
+- **Cancelling always asks why.** Orders and commissions both require a reason,
+  and the studio sees it. A cancellation that silently vanishes helps nobody.
+- **Cancelling is not a refund.** A cancelled order is marked `CANCELLED`, never
+  `REFUNDED` — nothing was refunded, and a paid order keeps its `PAID` record.
+- **A session cannot outlive your account.** Suspending a user or changing their
+  role takes effect on their very next page load, not whenever they decide to
+  log out.
+
 ## What this is
 
 A single ASP.NET Web Forms application: one process, one .NET Framework
@@ -53,7 +188,9 @@ That one rule is what stops a change rippling across the whole site.
   through the J&T status line + tracker link and confirm it arrived ("Confirm
   order received") to unlock reviews, pop-up locations & schedules,
   commission requests (5-step wizard; commissioned products are
-  delivery-only), reviews, notifications, profile.
+  delivery-only), reviews, notifications, profile. A **wishlist** sits on the
+  same page as the orders, and an order can be cancelled **only while it is
+  still `PENDING` and unpaid** — and never without saying why.
 - **Store owner (`admin`, or the legacy `mika`/`renzo`/`puffu` owner
   accounts):** dashboard KPIs, products & stock (online stock is
   adjusted manually after physical booth sales — the site sells online only),
@@ -62,8 +199,12 @@ That one rule is what stops a change rippling across the whole site.
   **confirm & quote** an order (entering the J&T fee IS the confirmation),
   book J&T with the tracking number, and **verify submitted payments** behind
   a **password re-entry** (confirm → PAID + official receipt, or decline →
-  customer is handed the support line), sales reports, review moderation,
-  Admin Console (users & roles), and **Payment Settings**.
+  customer is handed the support line), sales reports showing **booth takings
+  and web takings side by side**, review moderation,
+  Admin Console (users & roles), admin **Pop-up Locations**, and
+  **Payment Settings**. A commission is only marked delivered once a **J&T
+  tracking number** is recorded, so a finished piece always carries proof of
+  the hand-off.
 - **Admin:** the owner account IS the admin — STAR:DOM has exactly two roles:
   ADMIN (store owner, who is also the merchant/artist) and CUSTOMER. New
   registrations always become CUSTOMER; only the owner can manage accounts.
@@ -101,11 +242,11 @@ it is the surrounding flavour text that is illustrative.
 ```
 <your clone folder>
 ├── setup.bat                     <- ★ run ONCE on a new machine
+├── doctor.bat                    <- ★ diagnose a machine, changes nothing
 ├── run-website.bat               <- ★ run this to start the site
 ├── build.bat                     <- run after any code change
 ├── share-website.bat             <- share the site publicly via a Cloudflare tunnel
 │                                    (cloudflared ships in tools\cloudflared\)
-├── start-db.bat                  <- local portable PostgreSQL helper (fallback)
 ├── STAR-DOM-Web.sln              <- open this in Visual Studio (optional)
 ├── Dockerfile / render.yaml      <- Render deploy (Mono + XSP4)
 ├── tools\                        <- PostgreSQL runtime (committed) + Supabase scripts
@@ -113,6 +254,7 @@ it is the surrounding flavour text that is illustrative.
 │   ├── supabase-env.bat          <- loads SUPABASE_DB_URL into the environment
 │   ├── set-credentials.ps1       <- masked password prompt used by setup.bat
 │   ├── reseed-supabase.bat       <- wipes + reloads Supabase from schema/seed
+│   ├── generate_mall_images_sql.py <- rebuilds Database\mall_images.sql from Assets\Malls
 │   ├── supabase-credentials.example.txt
 │   ├── supabase\prod-ca-2021.crt <- Supabase root CA (must be installed)
 │   └── pgsql\                    <- PostgreSQL server runtime (committed, fallback)
@@ -139,9 +281,9 @@ it is the surrounding flavour text that is illustrative.
 | Repositories | `Shared\Repositories` | Models, `Code\Db.vb` | build HTML or hold business rules |
 | Models | `Shared\Models` | nothing | carry behaviour beyond validation |
 
-`Code\Db.vb` is the only place that decides which database to
-talk to, which is why switching between Supabase and the local fallback is
-an environment variable rather than a code change.
+`Code\Db.vb` is the only place that decides which database to talk to.
+There is only one — Supabase — and it is reached through environment
+variables, so a new host needs configuration rather than a code change.
 
 [ARCHITECTURE-DIAGRAM.md](ARCHITECTURE-DIAGRAM.md) draws the full request
 path, the layer rules and the order & payment state machine.
@@ -280,9 +422,34 @@ git clone https://github.com/JamesMangao/STAR-DOM.git
 cd STAR-DOM
 setup.bat
 ```
-Installs IIS Express, trusts the Supabase CA, asks for your database password
-behind a masked prompt, writes the credentials file, and proves the database
-answers. Safe to re-run — it skips whatever is already done.
+That is the whole procedure. `setup.bat` finds or installs IIS Express, checks
+the .NET 4.8 runtime, checks the ports, trusts the Supabase CA, picks a
+database, and builds the site. It is safe to re-run — every step is skipped if
+it is already done.
+
+**It works with no password at all.** A clone is deliberately self-sufficient:
+the PostgreSQL server (`tools\pgsql`), the built site (`bin\`) and the schema
+and seed (`Database\*.sql`) are all committed, so the **local** database
+bootstraps itself on first run with no account, no network and no secret. That
+is the default. If you want the shared Supabase database instead, answer `y`
+at the prompt and it will ask for the password behind a masked input.
+
+```bat
+setup.bat
+setup.bat --check      verify this machine, change nothing
+```
+
+That is the whole procedure. It finds or installs IIS Express, checks the
+.NET 4.8 runtime, checks the port, trusts the Supabase CA, asks for the
+database password once, builds the site, and then proves Supabase really
+answers. It is safe to re-run — every step is skipped if already done.
+
+**The only manual step is the database password**, and that is unavoidable: a
+password does not belong in git. Everything else is either in the repo or done
+for you. `setup.bat` asks for it behind a masked input (nothing is echoed, no
+Notepad) and writes it once to the git-ignored
+`tools\supabase-credentials.txt`. Get it from Supabase → Project Settings →
+Database → Connection string → the **Session pooler** tab.
 
 **Start the site**
 ```bat
@@ -290,6 +457,25 @@ run-website.bat
 ```
 Prints which database it chose, starts IIS Express on **8095**, opens the
 browser. Sign in as `admin` / `admin123`.
+
+Override the port if 8095 is taken:
+```bat
+set SD_PORT=8096 && run-website.bat
+```
+
+**Something works on your machine but not on theirs?**
+```bat
+doctor.bat
+```
+It changes nothing — it only looks. It checks IIS Express (via the registry,
+not a hardcoded path), the .NET runtime, the built output, the vendored DLL
+count, the credentials, whether Supabase actually answers, the CA, and both
+ports. Run it on **both** machines and compare the lines that differ; that
+difference is almost always the answer.
+
+```bat
+doctor.bat --quiet      only print problems, exit 1 if any
+```
 
 **After you change code**
 ```bat
@@ -330,52 +516,49 @@ A Cloudflare tunnel; the URL it prints works on any device.
 
 ## Requirements
 
-**On a brand-new machine, run [`setup.bat`](setup.bat) once.** It installs IIS
-Express from the bundled MSI, trusts the Supabase CA in your user store, asks
-for the database password behind a masked prompt (so it never appears on
-screen), writes the credentials file, and then proves Supabase answers.
-Everything it needs is in the repo, and every path is derived from its own
-folder, so it works from any drive or folder. Re-run it any time — it skips
-whatever is already done.
+**On a brand-new machine, run [`setup.bat`](setup.bat) once**, or nothing. It
+finds or installs IIS Express from the bundled MSI, checks the .NET Framework
+4.8 runtime, checks that the website port is free, trusts the Supabase CA in
+your user store, asks for the database password, builds the site, and then
+proves the database really answers. Everything it needs is in the repo, and
+every path is derived from its own folder, so it works from any drive or
+folder. Re-run it any time — it skips whatever is already done.
+
+If something works on one machine but not another, run
+[`doctor.bat`](doctor.bat) on **both** and compare the output.
 
 | Requirement | Status |
 |---|---|
 | **Windows 10/11** | .NET Framework 4.8 runtime is preinstalled |
-| **IIS Express 10** | installed by `setup.bat` from `tools\downloads\` |
-| **A PostgreSQL database** | ✅ Supabase (shared, intended) or the portable copy in `tools\pgsql` (fallback) |
-| **Supabase root CA** | trusted by `setup.bat` — see [Which database?](#which-database) |
-
-`run-website.bat` and `share-website.bat` pick the database for you. If
-`tools\supabase-credentials.txt` exists they load `SUPABASE_DB_URL` and use
-**Supabase**; otherwise they fall back to the portable PostgreSQL in
-`tools\pgsql`, which auto-initialises itself on first run. The site prefers
-env vars (`SUPABASE_DB_URL` / `POSTGRES_URL` / `DB_*`) and falls back to the
-`web.config` connection string (localhost only).
-
-Force the local copy with `set SD_LOCAL_DB=1` before running a launcher.
+| **IIS Express 10** | found automatically, or installed by `setup.bat` from `tools\downloads\` |
+| **A PostgreSQL database** | ✅ **Supabase**. This is the only database; there is no local one |
+| **The database password** | asked once by `setup.bat`, stored in the git-ignored credentials file |
+| **Supabase root CA** | trusted by `setup.bat` |
 
 
 ## Which database?
 
-There are **two**, and only one of them is real. The launchers decide
-automatically.
+**There is only one: Supabase.** There is no local PostgreSQL server and no
+per-machine data directory. That is deliberate — a second database is a second
+source of truth, and the usual result is "it works on my machine" because the
+two machines had different rows.
 
-| | **Supabase** (intended) | **Local** (fallback) |
-|---|---|---|
-| Enabled by | `tools\supabase-credentials.txt` existing | that file being absent |
-| Data | **shared by every machine** | per-machine, seed data only |
-| QR codes | travel with the database | travel with the database |
-| Needs setup | the CA + a credentials file | none |
-| Force it | *(default)* | `set SD_LOCAL_DB=1` |
+`run-website.bat` and `share-website.bat` load `SUPABASE_DB_URL` from
+`tools\supabase-credentials.txt` and export it before IIS Express starts, so
+every machine reads and writes the same data.
 
-Nothing is hardcoded either way. `Code\Db.vb` resolves the connection in this
-order:
+`Code\Db.vb` resolves the connection in this order:
 
 1. `SUPABASE_DB_URL` / `POSTGRES_URL` / `DATABASE_URL`
-2. `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` (+ `DB_SSLMODE`)
-3. the `web.config` connection string (localhost, development only)
+2. `SUPABASE_URL` + `SUPABASE_DB_PASSWORD`, or
+   `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` (+ `DB_SSLMODE`)
+3. a connection string named `STAR_DOM` in `web.config` — **absent on purpose**,
+   for a self-hosted PostgreSQL
 
-`web.config` therefore never holds a real password.
+There is **no fourth fallback**. A machine with nothing configured raises an
+error that names the missing setting and points at `setup.bat`, instead of
+quietly attempting to connect to some host that is not there. `web.config`
+therefore never holds a real password, and has no connection string at all.
 
 ### Pointing a machine at Supabase
 
@@ -521,33 +704,30 @@ It walks the four steps and skips whatever is already in place:
 
 | Step | What it does | Admin? |
 |---|---|---|
-| 1 | Installs IIS Express from the bundled MSI | only if not already installed |
-| 2 | Trusts the Supabase CA in your **user** store | no |
-| 3 | Copies the credentials template and asks for the password **behind a masked prompt** | no |
-| 4 | Connects to Supabase and runs `SELECT 1` to prove it works | no |
+| 1 | Finds IIS Express in the registry, or installs it from the bundled MSI | only if not already installed |
+| 2 | Checks the .NET Framework 4.8 runtime is present | no |
+| 3 | Checks port 8095 is free | no |
+| 4 | Trusts the Supabase CA in your **user** store | no |
+| 5 | Asks for the database password **behind a masked prompt** | no |
+| 6 | Builds the site, then runs `SELECT 1` against Supabase to prove it | no |
 
 Exit code `0` means every step passed. If it reports INCOMPLETE, fix the named
-step and run it again — it is safe to re-run.
+step and run it again — it is safe to re-run. `setup.bat --check` verifies
+without changing anything.
 
 ### Or do it by hand
 
 1. **Windows 10/11** — the .NET Framework 4.8 runtime is preinstalled.
 2. **IIS Express 10** — double-click `tools\downloads\iisexpress_amd64_en-US.msi`,
    or `winget install Microsoft.IISExpress`.
-3. **A database** — pick ONE (see [Which database?](#which-database)):
-   - **Local portable PostgreSQL (INCLUDED in the repo — nothing to download):**
-     the PostgreSQL 16.4 server runtime is committed under `tools\pgsql\`
-     (bin/lib/share, ~119 MB; pgAdmin and the data directory are excluded).
-     Just run `start-db.bat` (or either launcher): on first run it
-     auto-initialises the data directory, creates the `stardom` database and
-     loads the schema + seed — no manual steps.
-   - **Supabase (shared — the intended setup):** create a free project, run
-     `Database\supabase_schema.sql` then `Database\supabase_seed.sql` in the SQL
-     editor (or, on a machine that can already reach the database, run
-     `tools\reseed-supabase.bat` instead — it does both). Then, two steps on
-     **each** machine, from the repo folder:
-     ```bat
-     certutil -user -addstore -f Root tools\supabase\prod-ca-2021.crt
+3. **A database** — see [Which database?](#which-database). It is Supabase, and
+   there is no local alternative. Create a free project, run
+   `Database\supabase_schema.sql` then `Database\supabase_seed.sql` in the SQL
+   editor (or, on a machine that can already reach the database, run
+   `tools\reseed-supabase.bat` instead — it does both). Then, two steps on
+   **each** machine, from the repo folder:
+   ```bat
+   certutil -user -addstore -f Root tools\supabase\prod-ca-2021.crt
      copy tools\supabase-credentials.example.txt tools\supabase-credentials.txt
      ```
      and paste the **Session pooler** URL (port 5432,
@@ -560,17 +740,15 @@ step and run it again — it is safe to re-run.
 
 Because the database is shared, the QR codes, users, products and orders are
 already there — a new machine starts with the same data, and needs no dump.
-Use `set SD_LOCAL_DB=1` in front of a launcher to work against the local
-fallback copy instead.
 
 Notes:
 - You do NOT need Visual Studio to run the site — the committed `bin\` DLL
   works as-is. Build only after code changes, with `build.bat`.
 - **Nothing in this repo depends on where it lives.** `run-website.bat`,
-  `share-website.bat`, `start-db.bat`, `build.bat`, `tools\supabase-env.bat`
-  and `tools\reseed-supabase.bat` all derive their paths from `%~dp0`, so the
-  repo works from any drive, folder name or location — and there is no
-  absolute path to edit when you move it.
+  `share-website.bat`, `build.bat`, `setup.bat`, `doctor.bat`,
+  `tools\supabase-env.bat` and `tools\reseed-supabase.bat` all derive their
+  paths from `%~dp0`, so the repo works from any drive, folder name or
+  location — and there is no absolute path to edit when you move it.
 - **Render deploy needs nothing local:** push to GitHub, create a Render Web
   Service from the repo, set `SUPABASE_DB_URL` in the dashboard — Render builds
   the Docker image (Mono/XSP4) from source.

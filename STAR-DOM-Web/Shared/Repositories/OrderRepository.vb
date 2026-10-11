@@ -182,6 +182,23 @@ Namespace STAR_DOM.Repositories
                     Db.P("@s", paymentStatus), Db.P("@id", orderId))
         End Sub
 
+        ''' <summary>Records why an order was cancelled (customer or studio).</summary>
+        Public Sub SetCancelReason(orderId As Integer, reason As String)
+            Db.Exec("UPDATE Orders SET CancelReason = @r, UpdatedAt = NOW() WHERE Id = @id",
+                    Db.P("@r", If(reason, "")), Db.P("@id", orderId))
+        End Sub
+
+        ''' <summary>
+        ''' Cancels this order's still-open Payment rows. When an order is cancelled
+        ''' the payment that was never completed must not stay PENDING, or the order
+        ''' reads as both cancelled and awaiting payment. Paid/refunded rows are left
+        ''' alone because real money movement is not ours to rewrite here.
+        ''' </summary>
+        Public Sub CancelPayments(orderId As Integer)
+            Db.Exec("UPDATE Payments SET Status = 'CANCELLED' WHERE OrderId = @o AND Status IN ('PENDING', 'SUBMITTED')",
+                    Db.P("@o", orderId))
+        End Sub
+
         ''' <summary>
         ''' Records which channel the customer chose. Checkout parks the method as
         ''' "PENDING" because the studio quotes the order first, so the real channel
@@ -378,6 +395,7 @@ Namespace STAR_DOM.Repositories
                 .TotalAmount = RowReader.AsDec(r, "TotalAmount"), .PaymentMethod = RowReader.AsStr(r, "PaymentMethod"),
                 .PaymentStatus = RowReader.AsStr(r, "PaymentStatus"), .ShippingAddress = RowReader.AsStr(r, "ShippingAddress"),
                 .ContactPhone = RowReader.AsStr(r, "ContactPhone"), .Notes = RowReader.AsStr(r, "Notes"),
+                .CancelReason = RowReader.AsStr(r, "CancelReason"),
                 .CreatedAt = RowReader.AsDate(r, "CreatedAt"), .UpdatedAt = RowReader.AsDate(r, "UpdatedAt"),
                 .CustomerName = RowReader.AsStr(r, "CustomerName"), .CustomerEmail = RowReader.AsStr(r, "CustomerEmail"),
                 .ItemCount = RowReader.AsInt(r, "ItemCount"),

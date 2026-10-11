@@ -17,7 +17,9 @@ Namespace STAR_DOM.Database
         ''' Builds an Npgsql connection string from Supabase's environment variables.
         ''' Supabase hands out the database host as a sibling of the project URL
         ''' (project-ref.supabase.co becomes db.project-ref.supabase.co), so both
-        ''' spellings are accepted.
+        ''' spellings are accepted. There is no built-in default: a machine with no
+        ''' configuration raises a message that says so, rather than silently
+        ''' attempting some other database.
         ''' </summary>
         Public Function ConnString() As String
             ' 1. A ready-made URI (Supabase's "connection string" / add-on databases).
@@ -49,15 +51,25 @@ Namespace STAR_DOM.Database
                     host, port, name, user, pass, ssl, AppTimeZone())
             End If
 
-            ' 3. web.config (local development / self-hosted fallback).
+            ' 3. A connection string named STAR_DOM in web.config, for a self-hosted
+            '    PostgreSQL. Absent from the committed config on purpose.
             Dim csSetting = ConfigurationManager.ConnectionStrings("STAR_DOM")
             If csSetting IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(csSetting.ConnectionString) Then
                 Return csSetting.ConnectionString
             End If
 
-            ' 4. Local Postgres default.
-            Return "Host=localhost;Port=5432;Database=stardom;Username=postgres;Password=postgres;" &
-                   "SSL Mode=Disable;Timeout=15;Command Timeout=30;Timezone=" & AppTimeZone()
+            ' 4. Nothing configured. There is no local database to fall back to, and
+            '    guessing one used to produce "connection refused on localhost:5432",
+            '    which looks like the site is broken rather than unconfigured. Say
+            '    what is actually missing and how to fix it.
+            Throw New InvalidOperationException(
+                "No database connection is configured." & vbCrLf & vbCrLf &
+                "STAR:DOM talks to Supabase, and the password is deliberately not in git." & vbCrLf &
+                "On a development machine, run setup.bat once - it writes the" & vbCrLf &
+                "git-ignored tools\supabase-credentials.txt and exports SUPABASE_DB_URL." & vbCrLf &
+                "On a host, set SUPABASE_DB_URL (or DB_HOST / DB_USER / DB_PASSWORD) in" & vbCrLf &
+                "the environment before starting the application pool." & vbCrLf & vbCrLf &
+                "Run doctor.bat to see which of these is missing.")
         End Function
 
         ''' <summary>

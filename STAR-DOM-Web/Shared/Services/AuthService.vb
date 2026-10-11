@@ -87,15 +87,24 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Password updated successfully.")
         End Function
 
-        Public Sub RefreshSession()
-            If Session.IsAuthenticated Then
-                Dim fresh As User = _users.GetById(Session.CurrentUser.Id)
-                If fresh IsNot Nothing Then
-                    Session.CurrentUser = fresh
-                    Session.CurrentRoleName = fresh.RoleName
-                End If
+        ''' <summary>
+        ''' Re-reads the signed-in user and returns whether the session is still valid.
+        ''' A cached User can outlive a role change, a suspension, or a deleted account;
+        ''' the caller (Site.master) uses False to sign the request out. Returns True
+        ''' when nobody is signed in, since that is not an invalid session.
+        ''' </summary>
+        Public Function RefreshSession() As Boolean
+            If Not Session.IsAuthenticated Then Return True
+            Dim fresh As User = _users.GetById(Session.CurrentUser.Id)
+            If fresh Is Nothing OrElse
+               Not String.Equals(fresh.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) Then
+                Session.Clear()
+                Return False
             End If
-        End Sub
+            Session.CurrentUser = fresh
+            Session.CurrentRoleName = fresh.RoleName
+            Return True
+        End Function
 
         Public Function MerchantId() As Integer
             If Session.IsAuthenticated Then Return Session.CurrentUser.Id

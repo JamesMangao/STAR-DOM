@@ -84,7 +84,7 @@ Namespace STAR_DOM.Web
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
                 End If
                 If Guard.IsPost() AndAlso Request.Form("cancelOrder") = o.Id.ToString() Then
-                    Dim r3 As ServiceResult = _orders.UpdateOrderState(o.Id, "CANCELLED")
+                    Dim r3 As ServiceResult = _orders.UpdateOrderState(o.Id, "CANCELLED", "", Convert.ToString(Request.Form("reason")))
                     Session("flash_msg") = r3.Message
                     Session("flash_ok") = r3.Success
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
@@ -330,7 +330,9 @@ Namespace STAR_DOM.Web
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<button class=""btn danger"" type=""submit"" name=""cancelOrder"" value=""" & o.Id.ToString() &
-                              """ data-confirm=""Cancel this order?"" data-confirm-danger"" style=""border-radius:10px;padding:8px 16px""><span class=""ic ms"">cancel</span><span>Cancel Order</span></button>")
+                              """ data-confirm=""Cancel this order?"" data-confirm-reason=""reason"" " &
+                              "data-confirm-reason-label=""Reason for cancelling *"" data-confirm-danger " &
+                              "style=""border-radius:10px;padding:8px 16px""><span class=""ic ms"">cancel</span><span>Cancel Order</span></button>")
                     sb.Append("</form></div>")
                 End If
                 sb.Append("</div>")

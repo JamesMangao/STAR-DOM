@@ -182,9 +182,12 @@ Namespace STAR_DOM.Web
                       WebUi.Esc(If(ev IsNot Nothing, ev.Description, "")) & "</textarea></div>")
             sb.Append("<div class=""field""><label>Event photo (optional)</label>")
             sb.Append("<input type=""file"" name=""eventPhoto"" accept=""image/*"" style=""margin-top:4px""></div>")
-            If ev IsNot Nothing AndAlso ev.ImageFile <> "" Then
+            If ev IsNot Nothing AndAlso ev.ImageFile.Trim() <> "" Then
                 sb.Append("<div style=""margin-top:8px"">")
-                sb.Append("<img src=""" & WebUi.Attr(ev.ImageFile) & """ alt=""Event photo"" style=""max-width:300px;border:1px solid var(--line);border-radius:8px;display:block"">")
+                ' Use ProductImg so the stored path is routed through AssetUrl/AsetImg
+                ' like every other venue photo in the app — a bare img src would bypass
+                ' the DB-backed streaming endpoint and break on machines without the file.
+                sb.Append(WebUi.ProductImg(ev.ImageFile, ev.Id * 3 + 1, ev.Name, "max-width:300px;border:1px solid var(--line);border-radius:8px;display:block"))
                 sb.Append("<p class=""sub"" style=""margin:4px 0 0"">Current photo. Upload a new one to replace it.</p></div>")
             End If
             sb.Append("<div class=""frow"">")

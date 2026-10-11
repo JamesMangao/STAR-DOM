@@ -516,6 +516,13 @@ Namespace STAR_DOM.Services
                order.Status = "DELIVERED" OrElse order.Status = "RECEIVED" Then
                 Return ServiceResult.Fail("This order is already on its way — the shipping fee can no longer be changed.")
             End If
+            ' Once the customer has paid against a quoted total the total is settled:
+            ' re-quoting now would change what they were charged after the fact. A
+            ' still-unpaid CONFIRMED order may be corrected; a SUBMITTED or PAID one
+            ' may not.
+            If order.PaymentStatus = "SUBMITTED" OrElse order.PaymentStatus = "PAID" Then
+                Return ServiceResult.Fail("The customer has already paid against this total, so the shipping fee can no longer be changed.")
+            End If
 
             ' Parsed with InvariantCulture so a comma decimal separator cannot turn a
             ' fee into something wildly larger (or negative) than intended.
@@ -566,10 +573,34 @@ Namespace STAR_DOM.Services
                                     " (includes " & Fmt.PHP(confirmed.ShippingFee) & " shipping).")
         End Function
 
-        ''' <summary>Merchant updates fulfilment state, keeping the payment status consistent.</summary>
-        Public Function UpdateOrderState(orderId As Integer, newStatus As String, Optional tracking As String = "") As ServiceResult
+        ''' <summary>
+        ''' Merchant updates fulfilment state, keeping the payment status consistent.
+        ''' A customer may also call this to cancel their own order, but only while it
+        ''' is still PENDING and nothing has been paid. A reason is mandatory for any
+        ''' cancellation, from either side.
+        ''' </summary>
+        Public Function UpdateOrderState(orderId As Integer, newStatus As String, Optional tracking As String = "", Optional reason As String = "") As ServiceResult
             Dim order As Order = _orders.GetById(orderId)
             If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+
+            ' Authorization. Fulfilment transitions are store-only; a customer may
+            ' only cancel their own order. Without this check any signed-in user could
+            ' POST UpdateOrderState and cancel (or advance) somebody else's order.
+            Dim isStore As Boolean = Session.CanManageStore
+            Dim isOwnOrder As Boolean = Session.IsAuthenticated AndAlso order.UserId = Session.CurrentUser.Id
+            If newStatus = "CANCELLED" AndAlso Not isStore Then
+                If Not isOwnOrder Then Return ServiceResult.Fail("Not authorized.")
+                If order.Status <> "PENDING" Then
+                    Return ServiceResult.Fail("This order is already being processed and can no longer be " &
+                                              "cancelled here. " & PaymentSetting.SupportContact)
+                End If
+                If order.PaymentStatus = "SUBMITTED" OrElse order.PaymentStatus = "PAID" Then
+                    Return ServiceResult.Fail("A payment has already been submitted for this order, so it can no " &
+                                              "longer be cancelled here. " & PaymentSetting.SupportContact)
+                End If
+            ElseIf Not isStore Then
+                Return ServiceResult.Fail("Not authorized.")
+            End If
 
             ' A delivery order cannot be confirmed on a bare status change: the courier
             ' fee is what the customer is quoted, so it has to be entered through
@@ -608,24 +639,55 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail("Book this order with J&T (enter its tracking number) before marking it as DELIVERED.")
             End If
 
+            ' Every cancellation carries a reason: an order that simply disappears
+            ' gives the other side nothing to act on. Required for the customer and
+            ' the studio alike.
+            Dim why As String = If(reason, "").Trim()
+            If newStatus = "CANCELLED" AndAlso why = "" Then
+                Return ServiceResult.Fail("Please tell us why you're cancelling this order.")
+            End If
+
             Dim wasCancelled As Boolean = order.Status = "CANCELLED"
 
-            ' Validate state machine loosely (same-state is allowed for re-saves)
-            _orders.UpdateStatus(orderId, newStatus)
-
-            If newStatus = "SHIPPED" OrElse newStatus = "DELIVERED" Then
-                _orders.UpdateShipping(orderId, "J&T Express", tracking, newStatus)
-            End If
-            If newStatus = "CANCELLED" Then
-                _orders.UpdatePaymentStatus(orderId, "REFUNDED")
-                If Not wasCancelled Then _orders.RestoreOrderStock(orderId)
-            End If
+            ' One transaction: the status change, the payment reconciliation and the
+            ' stock restore either all land or none do. A cancelled order left with a
+            ' PENDING payment (the old REFUNDED-vs-PENDING mismatch) is what this fixes.
+            Try
+                Db.InTransaction(Function() As Boolean
+                    _orders.UpdateStatus(orderId, newStatus)
+                    If newStatus = "SHIPPED" OrElse newStatus = "DELIVERED" Then
+                        _orders.UpdateShipping(orderId, "J&T Express", tracking, newStatus)
+                    End If
+                    If newStatus = "CANCELLED" Then
+                        ' CANCELLED, never REFUNDED: cancelling an order is not a refund.
+                        ' REFUNDED is reserved for an actual refund (none exist today).
+                        ' A PAID status is likewise never rewritten here: money was
+                        ' actually taken, so that record has to survive the cancellation.
+                        ' The store keeps its ability to cancel the order itself.
+                        If order.PaymentStatus <> "PAID" Then
+                            _orders.UpdatePaymentStatus(orderId, "CANCELLED")
+                        End If
+                        _orders.SetCancelReason(orderId, why)
+                        _orders.CancelPayments(orderId)
+                        If Not wasCancelled Then _orders.RestoreOrderStock(orderId)
+                    End If
+                    Return True
+                End Function)
+            Catch ex As Exception
+                Db.LogError("OrderService.UpdateOrderState", ex)
+                Return ServiceResult.Fail("Could not update the order. Please try again.")
+            End Try
 
             Dim shownTracking As String = If(String.IsNullOrWhiteSpace(tracking), order.TrackingNumber, tracking)
             Dim notif As New NotificationService()
-            notif.Notify(order.UserId, "Order " & newStatus.Replace("_", " ") & " – " & order.OrderNumber,
-                         "Your order is now: " & newStatus.Replace("_", " ") & ". " &
-                         If(shownTracking.Length > 0, "Tracking: " & shownTracking, ""), "ORDER", "my-orders")
+            If newStatus = "CANCELLED" Then
+                notif.Notify(order.UserId, "Order cancelled – " & order.OrderNumber,
+                             "Your order has been cancelled. Reason: " & why, "ORDER", "my-orders")
+            Else
+                notif.Notify(order.UserId, "Order " & newStatus.Replace("_", " ") & " – " & order.OrderNumber,
+                             "Your order is now: " & newStatus.Replace("_", " ") & ". " &
+                             If(shownTracking.Length > 0, "Tracking: " & shownTracking, ""), "ORDER", "my-orders")
+            End If
             Return ServiceResult.Ok("Order updated to " & newStatus & ".")
         End Function
 

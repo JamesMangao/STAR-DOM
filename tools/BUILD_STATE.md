@@ -3,6 +3,26 @@
 Workspace root: the repo folder, wherever it is cloned. No script or documented
 command hardcodes a drive or path any more, so this is not fixed to one location.
 
+> **Superseded - the local database is gone (2026-10-12).** Everything below
+> describing `start-db.bat`, `tools\pgdata`, `SD_LOCAL_DB` or a local
+> PostgreSQL server is **history**, not current behaviour. Today:
+>
+> - **One database: Supabase.** No local server, no data directory.
+> - `start-db.bat` **deleted**; `SD_LOCAL_DB` no longer exists.
+> - `tools\pgsql` is kept, but only as the PostgreSQL **client** (`psql`,
+>   `pg_dump`) - about 120 MB, still committed so `setup.bat`, `doctor.bat`
+>   and `reseed-supabase.bat` need zero downloads.
+> - `web.config` has **no connection string**, and `Code\Db.vb` no longer
+>   falls back to a hardcoded localhost. Unconfigured now means a clear error
+>   naming the missing setting, not "connection refused".
+> - Why: the local copy was quietly broken (the vendored runtime was missing
+>   its Kerberos DLLs, so a backend died with `0xC0000142` and took the whole
+>   cluster down), and it is the classic source of "works on my machine" -
+>   two machines, two sets of rows. One shared database removes that class of
+>   bug entirely.
+> - The cost is honest: a new machine types the database password once. That
+>   is unavoidable, because a password cannot live in git.
+
 ## What this is now
 VB.NET **ASP.NET Web Forms** website + **Supabase (PostgreSQL 15+) via Npgsql**.
 The WinForms desktop app and its project folder were deleted (user request); the

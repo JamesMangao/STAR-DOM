@@ -27,14 +27,16 @@ Namespace STAR_DOM.Models
         Public Property ShippingAddress As String
         Public Property ContactPhone As String
 
-        ' The GCash/GOtyme transaction number the customer paid against, and the
-        ' moment the studio verified it. Production does not start until the latter
-        ' is set.
+        ' The GCash/GOtyme transaction number the customer paid against, the
+        ' e-wallet channel it was sent to, and the moment the studio verified it.
+        ' Production does not start until the latter is set.
         Public Property PaymentReference As String
+        Public Property PaymentMethod As String
         Public Property PaymentConfirmedAt As Date?
 
-        ' Courier hand-off. Tracking is optional: a commission is often delivered in
-        ' person or picked up, so a number is only recorded when one exists.
+        ' Courier hand-off. Tracking is mandatory at delivery: the studio must
+        ' record the J&T number before the piece can be marked DELIVERED, so a
+        ' completed commission always carries proof of the hand-off.
         Public Property TrackingNumber As String
         Public Property DeliveredAt As Date?
 

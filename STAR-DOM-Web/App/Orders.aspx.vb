@@ -12,6 +12,7 @@ Namespace STAR_DOM.Web
 
         Protected Out As Literal
         Private ReadOnly _orders As New OrderService()
+        Private ReadOnly _cart As New CartService()
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
@@ -30,7 +31,7 @@ Namespace STAR_DOM.Web
                             Session("flash_msg") = "You can only cancel your own orders."
                             Session("flash_ok") = False
                         Else
-                            Dim r As ServiceResult = _orders.UpdateOrderState(id, "CANCELLED")
+                            Dim r As ServiceResult = _orders.UpdateOrderState(id, "CANCELLED", "", Convert.ToString(Request.Form("reason")))
                             Session("flash_msg") = r.Message
                             Session("flash_ok") = r.Success
                         End If
@@ -84,10 +85,12 @@ Namespace STAR_DOM.Web
                     sb.Append("<td>" & WebUi.Badge(o.PaymentStatus) & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.Status) & "</td>")
                     sb.Append("<td class=""rowact""><a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View / Track</a>")
-                    If o.Status = "PENDING" Then
+                    If o.Status = "PENDING" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso o.PaymentStatus <> "PAID" Then
                         sb.Append("<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
                                   "<button type=""submit"" name=""cancelOrder"" value=""" & o.Id.ToString() &
-                                  """ data-confirm=""Cancel this order?"" data-confirm-danger style=""background:none;border:0;padding:0;font:inherit;color:var(--primary);cursor:pointer;text-decoration:underline"">Cancel</button></form>")
+                                  """ data-confirm=""Cancel this order?"" data-confirm-reason=""reason"" " &
+                                  "data-confirm-reason-label=""Reason for cancelling *"" data-confirm-danger " &
+                                  "style=""background:none;border:0;padding:0;font:inherit;color:var(--primary);cursor:pointer;text-decoration:underline"">Cancel</button></form>")
                     End If
                     ' Reviews open once the customer confirms the parcel landed, so a
                     ' RECEIVED row is where the store offers to write one.
@@ -98,6 +101,37 @@ Namespace STAR_DOM.Web
                 Next
                 sb.Append("</tbody></table></div>")
             End If
+
+            ' Wishlist lives alongside orders so saved products are not hidden on a
+            ' separate page. Move/remove reuse the same Cart.aspx actions.
+            Dim wish As List(Of WishlistItem) = _cart.ListWishlist()
+            sb.Append("<div class=""sec-head"" style=""margin-top:30px""><div>")
+            sb.Append("<div class=""eyebrow"">SAVED FOR LATER</div>")
+            sb.Append("<h2>Wishlist</h2></div>")
+            sb.Append("<div class=""sub"">" & wish.Count.ToString() & " item(s) saved</div></div>")
+            If wish.Count > 0 Then
+                sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
+                For Each h As String In {"PRODUCT", "PRICE", "AVAILABILITY", ""}
+                    sb.Append("<th>" & h & "</th>")
+                Next
+                sb.Append("</tr></thead><tbody>")
+                For Each w As WishlistItem In wish
+                    sb.Append("<tr>")
+                    sb.Append("<td><div style=""display:flex;gap:10px;align-items:center"">" &
+                              WebUi.ProductImg(w.ImageFile, w.ProductId, w.ProductName, "width:44px;height:44px;border-radius:9px;flex-shrink:0") &
+                              "<a href=""/App/Product.aspx?id=" & w.ProductId.ToString() & """ style=""font-weight:700"">" &
+                              WebUi.Esc(w.ProductName) & "</a></div></td>")
+                    sb.Append("<td>" & WebUi.Money(w.UnitPrice) & "</td>")
+                    sb.Append("<td>" & If(w.InStock, "<span class=""badge live"">In stock</span>", "<span class=""badge muted"">Out of stock</span>") & "</td>")
+                    sb.Append("<td class=""rowact""><a href=""/App/Cart.aspx?move=" & w.ProductId.ToString() & """>Move to cart</a>" &
+                              "<a href=""/App/Cart.aspx?rw=" & w.ProductId.ToString() & """>Remove</a></td>")
+                    sb.Append("</tr>")
+                Next
+                sb.Append("</tbody></table></div>")
+            Else
+                sb.Append("<div class=""empty"">Nothing saved yet. Tap <span class=""ms sm"" style=""color:var(--primary)"">favorite</span> on any product to keep it here.</div>")
+            End If
+
             Out.Text = sb.ToString()
         End Sub
 

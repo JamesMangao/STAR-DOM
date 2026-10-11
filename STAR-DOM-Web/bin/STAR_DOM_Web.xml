@@ -442,6 +442,13 @@ STAR_DOM_Web
  than linking straight to the request form.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.CommissionHubPage.HighlightScript(System.Int32)">
+ <summary>
+ Scrolls the deep-linked row (?hl=) into view and lets it flash for a few
+ seconds so the customer spots which commission the notification was about.
+ No-op when that id is not on the page.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.CommissionHubPage.HubHeader(System.Int32)">
  <summary>Page-level "Request a Commission" CTA so the action is always reachable, even with zero open slots.</summary>
 </member>
@@ -481,6 +488,14 @@ STAR_DOM_Web
  the studio still has to verify it, and production stays shut until then.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.CommissionDetailPage.PayPanel(STAR_DOM.Models.Commission,System.Decimal)">
+ <summary>
+ Customer payment panel for a commission: pick GCash or GOtyme, scan the
+ official QR (streamed from PaymentSettings), then submit the reference.
+ The chosen channel travels with the POST so the studio verifies the
+ reference against the right account, exactly like an order.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.CommissionDetailPage.HandleRevisionUpload(STAR_DOM.Models.Commission)">
  <summary>
  The studio's "Request Revision": upload a photo of the current work and send
@@ -511,11 +526,20 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
 </member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.BoothTakingsKpi">
+ <summary>
+ Booth/QR/pre-order takings, live from EventSales. Sits beside the digital
+ marketplace tile because the two are the two halves of TOTAL REVENUE:
+ showing only the online one made the dashboard open on ₱0.00 while the
+ reports page next door showed real money, which read as broken numbers
+ rather than an empty sales channel.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.RecentOrdersPanel">
  <summary>
- The last five paid web orders, newest first. Kept web-only now that the
- dashboard no longer mixes in booth takings, so the tile below never
- contradicts the numbers above it.
+ The last five sales from BOTH channels, newest first: web orders and booth
+ takings. Panels fed by Orders alone read "No orders yet" while the tile
+ above showed money, so the dashboard contradicted itself on first load.
  </summary>
 </member>
 <member name="P:STAR_DOM.Web.MerchantProductsPage.Search">
@@ -535,6 +559,13 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Web.ProductEditPage.ReadPostedFile(System.Web.HttpPostedFile)">
  <summary>Reads an uploaded file fully into memory so it can be written to the database.</summary>
+</member>
+<member name="M:STAR_DOM.Web.PipelinePage.HighlightScript(System.Int32)">
+ <summary>
+ Scrolls the deep-linked row (?hl=) into view and lets it flash for a few
+ seconds so the merchant spots which request the notification was about.
+ No-op when that id is not on the page.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderActions(System.Text.StringBuilder,STAR_DOM.Models.Order)">
  <summary>Per-row actions: one panel for the row's step, then the View link.</summary>
@@ -563,7 +594,7 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.ActNotePanel">
  <summary>Opens a hint-only panel: the row has no form of its own.</summary>
 </member>
-<member name="M:STAR_DOM.Web.MerchantOrdersPage.ActButton(System.String,System.String,System.String,System.String,System.Boolean,System.Boolean)">
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.ActButton(System.String,System.String,System.String,System.String,System.Boolean,System.Boolean,System.Boolean)">
  <summary>
  A panel-sized POST button. Inside a row form it is emitted bare - that form
  already carries the CSRF token; outside one (a hint-only or state panel) it
@@ -690,7 +721,9 @@ STAR_DOM_Web
  Builds an Npgsql connection string from Supabase's environment variables.
  Supabase hands out the database host as a sibling of the project URL
  (project-ref.supabase.co becomes db.project-ref.supabase.co), so both
- spellings are accepted.
+ spellings are accepted. There is no built-in default: a machine with no
+ configuration raises a message that says so, rather than silently
+ attempting some other database.
  </summary>
 </member>
 <member name="M:STAR_DOM.Database.Db.UriToConnString(System.String)">
@@ -1085,11 +1118,12 @@ STAR_DOM_Web
  empty categories in order to put products into them.
  </remarks>
 </member>
-<member name="M:STAR_DOM.Repositories.CommissionRepository.SetPaymentReference(System.Int32,System.String)">
+<member name="M:STAR_DOM.Repositories.CommissionRepository.SetPaymentReference(System.Int32,System.String,System.String)">
  <summary>
- Stores the e-wallet transaction number the customer paid against and parks
- the commission in PAYMENT PENDING. Nothing about the payment is confirmed
- here — the studio still has to verify it, exactly as with an order.
+ Stores the e-wallet channel and transaction number the customer paid
+ against and parks the commission in PAYMENT PENDING. Nothing about the
+ payment is confirmed here — the studio still has to verify it, exactly as
+ with an order.
  </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.CommissionRepository.MarkPaymentConfirmed(System.Int32)">
@@ -1097,9 +1131,9 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Repositories.CommissionRepository.SetDelivery(System.Int32,System.String)">
  <summary>
- Courier hand-off. Blank tracking is allowed and kept as blank: a personal
- handover or a pickup has no waybill, and inventing one would put a dead
- tracking link in front of the customer.
+ Courier hand-off. Tracking is mandatory: the service layer refuses to
+ deliver without a J&amp;T number, so a stored DELIVERED commission always
+ carries the waybill the customer can trace.
  </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.CommissionRepository.MarkReceived(System.Int32)">
@@ -1177,6 +1211,17 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.RestoreOrderStock(System.Int32)">
  <summary>Put sold units back on the shelf when an order is cancelled.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.SetCancelReason(System.Int32,System.String)">
+ <summary>Records why an order was cancelled (customer or studio).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.CancelPayments(System.Int32)">
+ <summary>
+ Cancels this order's still-open Payment rows. When an order is cancelled
+ the payment that was never completed must not stay PENDING, or the order
+ reads as both cancelled and awaiting payment. Paid/refunded rows are left
+ alone because real money movement is not ours to rewrite here.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.SetPaymentMethod(System.Int32,System.String)">
  <summary>
@@ -1350,32 +1395,17 @@ STAR_DOM_Web
  count for anywhere that really means "registered accounts".
  </summary>
 </member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebRevenueLastNDays(System.Int32)">
- <summary>Daily paid web orders for the last N days (web only now that booth tracking is gone).</summary>
+<member name="M:STAR_DOM.Repositories.ReportRepository.RevenueLastNDays(System.Int32)">
+ <summary>Daily revenue for the last N days, paid orders and event takings together.</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebRevenueForMonth(System.String)">
- <summary>Web revenue for a specific calendar month (paid orders only).</summary>
+<member name="M:STAR_DOM.Repositories.ReportRepository.MonthlySales(System.Int32)">
+ <summary>Monthly revenue for the last N months, paid orders and event takings together.</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebDailySales(System.Int32)">
- <summary>Daily paid web orders for the last N days (web only).</summary>
+<member name="M:STAR_DOM.Repositories.ReportRepository.ProductSales(System.Int32)">
+ <summary>Best-selling products across both channels: order lines and booth sales.</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebMonthlySales(System.Int32)">
- <summary>Monthly paid web orders for the last N months (web only).</summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebProductSales(System.Int32)">
- <summary>Best-selling products from paid web orders only.</summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebCategorySales">
- <summary>Sales by category from paid web orders only.</summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebPaymentMethodBreakdown">
- <summary>Payment method mix from paid web orders only (no booth sales).</summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebHourlyTraffic">
- <summary>Web-only hourly traffic (paid web orders, last 72h).</summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.WebRevenueTotal">
- <summary>Total paid web orders only — the web revenue stream now that booth sales are gone.</summary>
+<member name="M:STAR_DOM.Repositories.ReportRepository.CategorySales">
+ <summary>Sales by category across both channels: order lines and booth sales.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.UserAddressRepository.CreateIfNew(System.Int32,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
  <summary>Save the detailed address from a checkout/commission form, unless
@@ -1391,6 +1421,14 @@ STAR_DOM_Web
  ListMerchants filters on capacity > 0, so setting 0 quietly takes the
  artist out of the Commission Hub without suspending the account or
  touching the commissions already in flight.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.AuthService.RefreshSession">
+ <summary>
+ Re-reads the signed-in user and returns whether the session is still valid.
+ A cached User can outlive a role change, a suspension, or a deleted account;
+ the caller (Site.master) uses False to sign the request out. Returns True
+ when nobody is signed in, since that is not an invalid session.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CartService.BundleDiscount(System.Collections.Generic.List{STAR_DOM.Models.CartItem})">
@@ -1459,7 +1497,7 @@ STAR_DOM_Web
  full once they confirm the offer.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.CommissionService.SubmitPayment(System.Int32,System.String)">
+<member name="M:STAR_DOM.Services.CommissionService.SubmitPayment(System.Int32,System.String,System.String)">
  <summary>
  The customer says they have paid the quoted price in full. The reference
  number from their e-wallet receipt is mandatory: without it there is nothing
@@ -1492,6 +1530,14 @@ STAR_DOM_Web
  on the e-wallet receipt does not match, or the transfer cannot be traced.
  The commission moves to PAYMENT DECLINED and the customer is handed the
  support contact immediately. Password-gated, same as confirming.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionService.Cancel(System.Int32,System.String)">
+ <summary>
+ Cancel a commission. A customer may only cancel while nothing has been
+ paid and work has not started; once payment is confirmed or production is
+ under way only the studio side can stop it. A reason is mandatory — an
+ order/commission that silently disappears gives the other side nothing.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CommissionService.SendWorkForReview(System.Int32)">
@@ -1530,10 +1576,11 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Services.CommissionService.MarkDelivered(System.Int32,System.String)">
  <summary>
- Hand the finished piece over. A commission is delivered the same way an
- order is: booking a courier is optional (most are collected in person, so
- the tracking number may stay blank), but the customer is the one who
- confirms receipt — the studio cannot mark its own parcel as received.
+ Hand the finished piece over. Tracking is mandatory: the studio must
+ record the J&amp;T waybill before the commission can be marked DELIVERED,
+ so a delivered commission always carries a number the customer can trace.
+ The customer is still the one who confirms receipt — the studio cannot
+ mark its own parcel as received.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CommissionService.MarkReceived(System.Int32)">
@@ -1652,8 +1699,13 @@ STAR_DOM_Web
  CONFIRMED while showing a total that still has no shipping on it.
  </summary>
 </member>
-<member name="M:STAR_DOM.Services.OrderService.UpdateOrderState(System.Int32,System.String,System.String)">
- <summary>Merchant updates fulfilment state, keeping the payment status consistent.</summary>
+<member name="M:STAR_DOM.Services.OrderService.UpdateOrderState(System.Int32,System.String,System.String,System.String)">
+ <summary>
+ Merchant updates fulfilment state, keeping the payment status consistent.
+ A customer may also call this to cancel their own order, but only while it
+ is still PENDING and nothing has been paid. A reason is mandatory for any
+ cancellation, from either side.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.SubmitReview(System.Int32,System.Nullable{System.Int32},System.Int32,System.String)">
  <summary>
@@ -1692,7 +1744,7 @@ STAR_DOM_Web
  <summary>Paid web orders not tied to a pop-up event — the digital marketplace KPI.</summary>
 </member>
 <member name="M:STAR_DOM.Services.ReportService.PaidOrdersCount">
- <summary>Online orders whose payment has landed (the count behind WEB GROSS, web only now).</summary>
+ <summary>Online orders whose payment has landed (the count behind WEB GROSS).</summary>
 </member>
 <member name="M:STAR_DOM.Services.ReportService.BoothSalesCount">
  <summary>Booth/QR/pre-order sales recorded at pop-up events (count behind EVENT GROSS).</summary>

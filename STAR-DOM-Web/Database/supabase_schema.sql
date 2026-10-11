@@ -247,10 +247,14 @@ CREATE TABLE IF NOT EXISTS Orders (
     ShippingFee DECIMAL(12,2) NOT NULL DEFAULT 0,
     TotalAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
     PaymentMethod VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- GCASH/GOTYME/PENDING (channel picked after the quote)
-    PaymentStatus VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/SUBMITTED/PAID/REFUNDED/FAILED
+    PaymentStatus VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/SUBMITTED/PAID/REFUNDED/FAILED/CANCELLED
     ShippingAddress VARCHAR(255) NOT NULL DEFAULT '',
     ContactPhone VARCHAR(30) NOT NULL DEFAULT '',
     Notes VARCHAR(500) NOT NULL DEFAULT '',
+    -- Why an order was cancelled, captured from the customer or the store at the
+    -- moment of cancellation. CANCELLED replaced the old REFUNDED-as-cancel
+    -- convention; the reason is what explains a terminated order.
+    CancelReason VARCHAR(500) NOT NULL DEFAULT '',
     -- Shipping is quoted by the merchant, not computed: the courier fee is
     -- only known once J&T weighs the parcel, so the order cannot reach CONFIRMED
     -- until someone enters it. ShippingFee stays 0 and ShippingFeeConfirmed FALSE
@@ -304,7 +308,7 @@ CREATE TABLE IF NOT EXISTS Payments (
     PaymentMethod VARCHAR(20) NOT NULL,
     Amount DECIMAL(12,2) NOT NULL,
     ReferenceNumber VARCHAR(80) NOT NULL DEFAULT '',
-    Status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/SUBMITTED/PAID/FAILED/REFUNDED
+    Status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/SUBMITTED/PAID/FAILED/REFUNDED/CANCELLED
     PaidAt TIMESTAMPTZ NULL,
     GatewayResponse VARCHAR(255) NOT NULL DEFAULT '',
     CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -389,9 +393,14 @@ CREATE TABLE IF NOT EXISTS Commissions (
     -- GCash/GOtyme transaction number the customer paid against. Required when
     -- they submit; the studio confirms it before production starts.
     PaymentReference VARCHAR(80) NOT NULL DEFAULT '',
+    -- E-wallet channel the customer paid through (GCASH/GOTYME). Chosen from the
+    -- configured PaymentSettings channels at payment time so the studio can
+    -- match the reference against the right account.
+    PaymentMethod VARCHAR(20) NOT NULL DEFAULT '',
     PaymentConfirmedAt TIMESTAMPTZ NULL,
-    -- J&T is optional on a commission: most are collected or handed over in
-    -- person, so a tracking number is only recorded when a parcel is booked.
+    -- J&T tracking for a shipped commission. Mandatory whenever the studio
+    -- marks the piece delivered, so a completed commission always carries proof
+    -- of the hand-off; it is captured at the moment delivery is recorded.
     TrackingNumber VARCHAR(80) NOT NULL DEFAULT '',
     DeliveredAt TIMESTAMPTZ NULL,
     -- Written by the customer once the finished piece reached them, never by
@@ -506,6 +515,7 @@ ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS ContactPhone VARCHAR(30) NOT NU
 ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS PaymentReference VARCHAR(80) NOT NULL DEFAULT '';
 ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS PaymentConfirmedAt TIMESTAMPTZ NULL;
 ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS TrackingNumber VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS PaymentMethod VARCHAR(20) NOT NULL DEFAULT '';
 ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS DeliveredAt TIMESTAMPTZ NULL;
 ALTER TABLE Commissions ADD COLUMN IF NOT EXISTS ReceivedAt TIMESTAMPTZ NULL;
 ALTER TABLE PaymentSettings ADD COLUMN IF NOT EXISTS AccountName VARCHAR(120) NOT NULL DEFAULT '';
@@ -651,6 +661,16 @@ DROP TABLE IF EXISTS CommissionMessages;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedBy INT NULL;
 ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ShippingFeeConfirmedAt TIMESTAMPTZ NULL;
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS CancelReason VARCHAR(500) NOT NULL DEFAULT '';
+
+-- Cancelling an order used to write PaymentStatus='REFUNDED', which was wrong:
+-- nothing was ever refunded, the order was simply cancelled, and the customer's
+-- Payment row was left at PENDING, so an order could read PENDING + REFUNDED at
+-- once. CANCELLED is now the status for every terminated order; REFUNDED is
+-- reserved for an actual refund (none exist today). This sweeps up any order
+-- that was cancelled under the old rule and re-aligns its Payment row too.
+UPDATE Orders SET PaymentStatus = 'CANCELLED' WHERE PaymentStatus = 'REFUNDED' AND Status = 'CANCELLED';
+UPDATE Payments SET Status = 'CANCELLED' WHERE OrderId IN (SELECT Id FROM Orders WHERE Status = 'CANCELLED') AND Status IN ('PENDING', 'REFUNDED');
 
 -- Cash on Delivery is gone: every parcel is paid for up front (GCash/GOtyme),
 -- so a default of 'COD' on a column nobody writes would label orders as cash

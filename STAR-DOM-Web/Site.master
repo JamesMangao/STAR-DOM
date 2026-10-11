@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500..700,0..1,-50..200&amp;display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/site.css?v=20261005ab" />
+    <link rel="stylesheet" href="/css/site.css?v=20261010hl" />
     <link rel="icon" type="image/webp" href="/Assets/stardom-logo.webp" />
     <link rel="apple-touch-icon" href="/Assets/stardom-logo.webp" />
 </head>
@@ -113,6 +113,10 @@
             <span class="modal-ic ms" id="appModalIcon">help</span>
             <h3 id="appModalTitle">Are you sure?</h3>
             <p class="modal-msg" id="appModalMsg"></p>
+            <div class="field" id="appModalReasonWrap" style="display:none;text-align:left;margin:0 0 12px">
+                <label for="appModalReason" id="appModalReasonLabel">Reason *</label>
+                <textarea id="appModalReason" maxlength="500" placeholder="Tell us why..." style="min-height:80px"></textarea>
+            </div>
             <div class="modal-actions">
                 <button type="button" class="btn ghost" id="appModalCancel">Cancel</button>
                 <button type="button" class="btn primary" id="appModalOK">Confirm</button>
@@ -495,6 +499,10 @@
         var icon = document.getElementById('appModalIcon');
         var lastFocus = null;
         var pending = null;
+        var reasonRequired = false;
+        var reasonWrap = document.getElementById('appModalReasonWrap');
+        var reasonLabel = document.getElementById('appModalReasonLabel');
+        var reasonInput = document.getElementById('appModalReason');
 
         function open(text, opts) {
             opts = opts || {};
@@ -504,23 +512,42 @@
             icon.textContent = opts.danger ? 'warning' : 'help';
             okBtn.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
             card.className = 'modal-card' + (opts.danger ? ' danger' : '');
+            // A reason field is shown when the callback asked for one
+            // (data-confirm-reason). It resets every time so a previous entry
+            // never leaks into the next confirm.
+            reasonRequired = !!opts.reason;
+            if (reasonWrap) reasonWrap.style.display = reasonRequired ? 'block' : 'none';
+            if (reasonLabel) reasonLabel.textContent = opts.reasonLabel || 'Reason *';
+            if (reasonInput) { reasonInput.value = ''; reasonInput.style.borderColor = ''; }
             backdrop.classList.add('open');
             backdrop.setAttribute('aria-hidden', 'false');
-            cancelBtn.focus();
+            if (reasonRequired && reasonInput) { reasonInput.focus(); }
+            else { cancelBtn.focus(); }
         }
 
         function close() {
             if (!backdrop.classList.contains('open')) return;
             backdrop.classList.remove('open');
             backdrop.setAttribute('aria-hidden', 'true');
+            reasonRequired = false;
             if (lastFocus) lastFocus.focus();
         }
 
         function confirm() {
+            var reason = '';
+            if (reasonRequired) {
+                reason = (reasonInput && reasonInput.value ? reasonInput.value : '').trim();
+                // The reason is mandatory: never let the action through without
+                // it, and keep the dialog open so the customer sees it is required.
+                if (!reason) {
+                    if (reasonInput) { reasonInput.style.borderColor = 'crimson'; reasonInput.focus(); }
+                    return;
+                }
+            }
             var go = pending;
             pending = null;
             close();
-            if (go) go();
+            if (go) go(reason);
         }
 
         cancelBtn.addEventListener('click', close);
@@ -540,19 +567,39 @@
             e.preventDefault();
             lastFocus = el;
             var msg = el.getAttribute('data-confirm');
-            pending = function () {
+            var wantReason = el.hasAttribute('data-confirm-reason');
+            var reasonField = el.getAttribute('data-confirm-reason');
+            pending = function (reason) {
                 var tag = el.tagName.toLowerCase();
                 if (tag === 'a') {
+                    var href = el.href;
+                    if (wantReason && reason) {
+                        href += (href.indexOf('?') >= 0 ? '&' : '?') + 'reason=' + encodeURIComponent(reason);
+                    }
                     if (bar) bar.className = 'loading';
                     document.body.classList.add('page-leaving');
-                    setTimeout(function() { window.location.href = el.href; }, 140);
+                    setTimeout(function() { window.location.href = href; }, 140);
                     return;
                 }
                 var saved = msg;
                 el.removeAttribute('data-confirm');
+                // Ride the reason along on the form the button belongs to. The
+                // page reads it from Request.Form("reason") exactly like any
+                // other field, so no page needs reason-specific JS.
+                if (wantReason) {
+                    var frm = el.form || (el.closest ? el.closest('form') : null);
+                    if (frm) {
+                        var hid = document.createElement('input');
+                        hid.type = 'hidden';
+                        hid.name = reasonField || 'reason';
+                        hid.value = reason || '';
+                        frm.appendChild(hid);
+                    }
+                }
                 try { el.click(); } finally { if (saved) el.setAttribute('data-confirm', saved); }
             };
-            open(msg, { danger: el.hasAttribute('data-confirm-danger'), okText: el.getAttribute('data-confirm-ok') });
+            open(msg, { danger: el.hasAttribute('data-confirm-danger'), okText: el.getAttribute('data-confirm-ok'),
+                        reason: wantReason, reasonLabel: el.getAttribute('data-confirm-reason-label') });
         });
     })();
 

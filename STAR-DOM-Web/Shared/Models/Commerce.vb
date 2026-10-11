@@ -66,10 +66,11 @@ Namespace STAR_DOM.Models
         Public Property ShippingFee As Decimal
         Public Property TotalAmount As Decimal
         Public Property PaymentMethod As String
-        Public Property PaymentStatus As String
+        Public Property PaymentStatus As String   ' PENDING / SUBMITTED / PAID / FAILED / REFUNDED / CANCELLED
         Public Property ShippingAddress As String
         Public Property ContactPhone As String
         Public Property Notes As String
+        Public Property CancelReason As String
         Public Property CreatedAt As Date
         Public Property UpdatedAt As Date
 
@@ -188,7 +189,7 @@ Namespace STAR_DOM.Models
         Public Property PaymentMethod As String    ' GCASH / GOTYME / CARD / COD
         Public Property Amount As Decimal
         Public Property ReferenceNumber As String
-        Public Property Status As String          ' PENDING / PAID / FAILED / REFUNDED
+        Public Property Status As String          ' PENDING / SUBMITTED / PAID / FAILED / REFUNDED / CANCELLED
         Public Property PaidAt As Date?
         Public Property GatewayResponse As String
         Public Property CreatedAt As Date
