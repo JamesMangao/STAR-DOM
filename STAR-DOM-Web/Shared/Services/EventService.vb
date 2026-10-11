@@ -115,39 +115,9 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Product removed from event inventory.")
         End Function
 
-        ' ----- In-person event sale (booth takings) ---------------------------------
-        ' This is the write path behind Event Sales Reports, not a POS terminal.
-
-        Public Function RecordInPersonSale(eventId As Integer, productId As Integer, quantity As Integer,
-                                           paymentMethod As String, saleType As String, notes As String) As ServiceResult
-            Dim products As New ProductRepository()
-            Dim p As Product = products.GetById(productId)
-            If p Is Nothing Then Return ServiceResult.Fail("Product not found.")
-            If quantity < 1 Then Return ServiceResult.Fail("Quantity must be at least 1.")
-
-            Dim sale As New EventSale() With {
-                .EventId = eventId,
-                .ProductId = productId,
-                .Quantity = quantity,
-                .UnitPrice = p.EffectivePrice,
-                .TotalAmount = p.EffectivePrice * quantity,
-                .SaleType = If(saleType.Length = 0, "IN_PERSON", saleType),
-                .PaymentMethod = paymentMethod,
-                .Notes = notes
-            }
-            Dim err As String = _repo.RecordSale(sale)
-            If err IsNot Nothing Then Return ServiceResult.Fail(err)
-            products.BumpSold(productId, quantity)
-            Return ServiceResult.Ok("Sale recorded: " & p.Name & " × " & quantity.ToString() & " = " & Fmt.PHP(sale.TotalAmount))
-        End Function
-
-        Public Function ListSales(eventId As Integer) As List(Of EventSale)
-            Return _repo.ListSales(eventId)
-        End Function
-
-        Public Function ListAllSales() As List(Of EventSale)
-            Return _repo.ListAllSales()
-        End Function
+        ' ----- Event sales ------------------------------------------------------
+        ' Removed with the booth write path. STAR:DOM takes money online through
+        ' Orders only; a pop-up booth is a marketing presence, not a till.
 
     End Class
 

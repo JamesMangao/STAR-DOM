@@ -323,7 +323,7 @@ Namespace STAR_DOM.Web
                     New NavItem("Event & Booth Manager", "/App/Merchant/Events.aspx", "", "", "event"),
                     New NavItem("Products & Stock", "/App/Merchant/Products.aspx", "", "", "inventory_2"),
                     New NavItem("Commission Pipeline", "/App/Merchant/Pipeline.aspx", "", "", "account_tree"),
-                    New NavItem("Event Sales Reports", "/App/Merchant/Reports.aspx", "", "", "bar_chart"),
+                    New NavItem("Sales Reports", "/App/Merchant/Reports.aspx", "", "", "bar_chart"),
                     New NavItem("Orders & Payments", "/App/Merchant/Orders.aspx", "", "", "payments"),
                     New NavItem("Reviews", "/App/Merchant/Reviews.aspx", "", "", "reviews")
                 }

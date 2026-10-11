@@ -10,51 +10,12 @@ Namespace STAR_DOM.Repositories
         ' ----- Merchant dashboard KPIs ------------------------------------------
 
         ''' <summary>
-        ''' TOTAL REVENUE: every peso the studio actually took — paid web orders plus
-        ''' in-person event takings. EventSales rows carrying an OrderId belong to an
-        ''' online order that is already counted on the Orders side, so they are left
-        ''' out rather than counted twice. Orders alone read ₱0 on a demo whose sales
-        ''' all live in EventSales, which is why the KPI contradicted EVENT GROSS
-        ''' directly underneath it.
+        ''' TOTAL REVENUE: every peso the studio actually took. STAR:DOM sells through the
+        ''' web marketplace only, so paid Orders is the entire revenue base — a pop-up
+        ''' booth is a marketing presence, not a till, and its takings are not recorded.
         ''' </summary>
         Public Function RevenueTotal() As Decimal
-            Return Db.ScalarDec(
-                "SELECT COALESCE((SELECT SUM(TotalAmount) FROM Orders WHERE PaymentStatus = 'PAID'),0) + " &
-                "COALESCE((SELECT SUM(TotalAmount) FROM EventSales WHERE OrderId IS NULL),0)")
-        End Function
-
-        ''' <summary>
-        ''' Online marketplace revenue: paid web orders that are not tied to a pop-up
-        ''' event. Event takings live in EventSales (in-person sales recorded at the
-        ''' booth), so subtracting them from RevenueTotal double-counted channels —
-        ''' the two tables hold different sales, and the difference could even go
-        ''' negative on a fresh database. Same definition as OmnichannelMix.onlineTotal.
-        ''' </summary>
-        Public Function MarketplaceRevenue() As Decimal
-            Return Db.ScalarDec(
-                "SELECT COALESCE(SUM(TotalAmount),0) FROM Orders WHERE PaymentStatus = 'PAID' AND EventId IS NULL")
-        End Function
-
-        Public Function RevenueForEvent(eventId As Integer) As Decimal
-            Return Db.ScalarDec(
-                "SELECT COALESCE(SUM(TotalAmount),0) FROM EventSales WHERE EventId = @e", Db.P("@e", eventId))
-        End Function
-
-        ''' <summary>Sum of all in-person event sales (single query, replaces per-event loops).</summary>
-        Public Function EventRevenueTotal() As Decimal
-            Return Db.ScalarDec("SELECT COALESCE(SUM(TotalAmount),0) FROM EventSales")
-        End Function
-
-        ''' <summary>Revenue + sales-count per event in one grouped query (kills dashboard N+1).</summary>
-        Public Function EventStats() As Dictionary(Of Integer, (Revenue As Decimal, SalesCount As Integer))
-            Dim stats As New Dictionary(Of Integer, (Revenue As Decimal, SalesCount As Integer))()
-            Dim rows As List(Of DataRow) = Db.Rows(
-                "SELECT EventId, COALESCE(SUM(TotalAmount),0) AS Rev, COUNT(*) AS Cnt FROM EventSales GROUP BY EventId")
-            For Each r As DataRow In rows
-                Dim id As Integer = RowReader.AsInt(r, "EventId")
-                stats(id) = (RowReader.AsDec(r, "Rev"), RowReader.AsInt(r, "Cnt"))
-            Next
-            Return stats
+            Return Db.ScalarDec("SELECT COALESCE(SUM(TotalAmount),0) FROM Orders WHERE PaymentStatus = 'PAID'")
         End Function
 
         Public Function OrdersCount(Optional status As String = "") As Integer
@@ -65,19 +26,6 @@ Namespace STAR_DOM.Repositories
         ''' <summary>Online orders whose payment has actually landed — the count behind WEB GROSS.</summary>
         Public Function PaidOrdersCount() As Integer
             Return Db.ScalarInt("SELECT COUNT(*) FROM Orders WHERE PaymentStatus = 'PAID'")
-        End Function
-
-        Public Function OrdersForEvent(eventId As Integer) As Integer
-            Return Db.ScalarInt("SELECT COUNT(*) FROM Orders WHERE EventId = @e", Db.P("@e", eventId))
-        End Function
-
-        ''' <summary>Booth/QR/pre-order rows recorded at pop-up events — the count behind EVENT GROSS.</summary>
-        Public Function BoothSalesCount() As Integer
-            Return Db.ScalarInt("SELECT COUNT(*) FROM EventSales")
-        End Function
-
-        Public Function EventSalesCount(eventId As Integer) As Integer
-            Return Db.ScalarInt("SELECT COUNT(*) FROM EventSales WHERE EventId = @e", Db.P("@e", eventId))
         End Function
 
         Public Function TotalProducts() As Integer
@@ -147,16 +95,12 @@ Namespace STAR_DOM.Repositories
             Return (RowReader.AsStr(r, "Name"), RowReader.AsInt(r, "SoldCount"), price, RowReader.AsInt(r, "StockQuantity"))
         End Function
 
-        ''' <summary>Daily revenue for the last N days, paid orders and event takings together.</summary>
+        ''' <summary>Daily revenue for the last N days, paid online orders only.</summary>
         Public Function RevenueLastNDays(days As Integer) As List(Of (day As Date, total As Decimal))
             Dim dt As DataTable = Db.Query(
-                "SELECT Day, SUM(Total) AS Total FROM (" &
-                "  SELECT DATE_TRUNC('day', CreatedAt) AS Day, TotalAmount AS Total FROM Orders " &
-                "   WHERE PaymentStatus = 'PAID' AND CreatedAt >= DATE_TRUNC('day', NOW()) - make_interval(days => @d1) " &
-                "  UNION ALL " &
-                "  SELECT DATE_TRUNC('day', SaleDate) AS Day, TotalAmount FROM EventSales " &
-                "   WHERE OrderId IS NULL AND SaleDate >= DATE_TRUNC('day', NOW()) - make_interval(days => @d2)" &
-                ") u GROUP BY Day ORDER BY Day", Db.P("@d1", days), Db.P("@d2", days))
+                "SELECT DATE_TRUNC('day', CreatedAt) AS Day, SUM(TotalAmount) AS Total FROM Orders " &
+                " WHERE PaymentStatus = 'PAID' AND CreatedAt >= DATE_TRUNC('day', NOW()) - make_interval(days => @d) " &
+                "GROUP BY Day ORDER BY Day", Db.P("@d", days))
             Dim result As New List(Of (d As Date, total As Decimal))()
             For i As Integer = days - 1 To 0 Step -1
                 Dim d As Date = Date.Today.AddDays(-i)
@@ -180,16 +124,12 @@ Namespace STAR_DOM.Repositories
             End Function).ToList()
         End Function
 
-        ''' <summary>Monthly revenue for the last N months, paid orders and event takings together.</summary>
+        ''' <summary>Monthly revenue for the last N months, paid online orders only.</summary>
         Public Function MonthlySales(months As Integer) As List(Of ChartSeries)
             Dim dt As DataTable = Db.Query(
-                "SELECT Ym, SUM(Total) AS Total FROM (" &
-                "  SELECT TO_CHAR(CreatedAt, 'YYYY-MM') AS Ym, TotalAmount AS Total FROM Orders " &
-                "   WHERE PaymentStatus = 'PAID' AND CreatedAt >= DATE_TRUNC('day', NOW()) - make_interval(months => @m1) " &
-                "  UNION ALL " &
-                "  SELECT TO_CHAR(SaleDate, 'YYYY-MM') AS Ym, TotalAmount FROM EventSales " &
-                "   WHERE OrderId IS NULL AND SaleDate >= DATE_TRUNC('day', NOW()) - make_interval(months => @m2)" &
-                ") u GROUP BY Ym ORDER BY Ym", Db.P("@m1", months), Db.P("@m2", months))
+                "SELECT TO_CHAR(CreatedAt, 'YYYY-MM') AS Ym, SUM(TotalAmount) AS Total FROM Orders " &
+                " WHERE PaymentStatus = 'PAID' AND CreatedAt >= DATE_TRUNC('day', NOW()) - make_interval(months => @m) " &
+                "GROUP BY Ym ORDER BY Ym", Db.P("@m", months))
             Dim result As New List(Of ChartSeries)()
             For i As Integer = months - 1 To 0 Step -1
                 Dim ym As String = Date.Today.AddMonths(-i).ToString("yyyy-MM")
@@ -206,20 +146,17 @@ Namespace STAR_DOM.Repositories
             Return result
         End Function
 
-        ''' <summary>Best-selling products across both channels: order lines and booth sales.</summary>
+        ''' <summary>Best-selling products by revenue across online order lines.</summary>
         Public Function ProductSales(limit As Integer) As List(Of ChartSeries)
             Return Db.Rows(
-                "SELECT p.Name AS Name, SUM(u.Qty) AS Qty, SUM(u.Total) AS Total FROM (" &
-                "  SELECT ProductId, Quantity AS Qty, LineTotal AS Total FROM OrderItems " &
-                "  UNION ALL " &
-                "  SELECT ProductId, Quantity, TotalAmount FROM EventSales" &
-                ") u JOIN Products p ON p.Id = u.ProductId " &
+                "SELECT p.Name AS Name, SUM(oi.LineTotal) AS Total FROM OrderItems oi " &
+                "JOIN Products p ON p.Id = oi.ProductId " &
                 "GROUP BY p.Id, p.Name ORDER BY Total DESC LIMIT @l", Db.P("@l", limit)).Select(Function(r)
                 Return New ChartSeries(RowReader.AsStr(r, "Name"), RowReader.AsDec(r, "Total"), Helpers.AppColors.Primary)
             End Function).ToList()
         End Function
 
-        ''' <summary>Sales by category across both channels: order lines and booth sales.</summary>
+        ''' <summary>Sales by category across online order lines.</summary>
         Public Function CategorySales() As List(Of ChartSeries)
             Dim colors As Color() = {
                 Helpers.AppColors.Primary, Helpers.AppColors.SecondaryContainer,
@@ -228,28 +165,10 @@ Namespace STAR_DOM.Repositories
                 Helpers.AppColors.Outline, Helpers.AppColors.PrimaryContainer
             }
             Dim rows As List(Of DataRow) = Db.Rows(
-                "SELECT c.Name, COALESCE(SUM(u.Total),0) AS Total FROM (" &
-                "  SELECT ProductId, LineTotal AS Total FROM OrderItems " &
-                "  UNION ALL " &
-                "  SELECT ProductId, TotalAmount FROM EventSales" &
-                ") u JOIN Products p ON p.Id = u.ProductId " &
+                "SELECT c.Name, COALESCE(SUM(oi.LineTotal),0) AS Total FROM OrderItems oi " &
+                "JOIN Products p ON p.Id = oi.ProductId " &
                 "LEFT JOIN Categories c ON c.Id = p.CategoryId " &
                 "GROUP BY c.Id, c.Name ORDER BY Total DESC")
-            Dim result As New List(Of ChartSeries)()
-            Dim i As Integer = 0
-            For Each r As DataRow In rows
-                result.Add(New ChartSeries(RowReader.AsStr(r, "Name"), RowReader.AsDec(r, "Total"), colors(i Mod colors.Length)))
-                i += 1
-            Next
-            Return result
-        End Function
-
-        Public Function EventRevenue() As List(Of ChartSeries)
-            Dim colors As Color() = {Helpers.AppColors.Primary, Helpers.AppColors.SecondaryContainer,
-                                     Helpers.AppColors.TertiaryContainer, Helpers.AppColors.Outline}
-            Dim rows As List(Of DataRow) = Db.Rows(
-                "SELECT e.Name, COALESCE(SUM(s.TotalAmount),0) AS Total FROM PopUpEvents e " &
-                "LEFT JOIN EventSales s ON s.EventId = e.Id GROUP BY e.Id, e.Name ORDER BY Total DESC")
             Dim result As New List(Of ChartSeries)()
             Dim i As Integer = 0
             For Each r As DataRow In rows
@@ -271,27 +190,15 @@ Namespace STAR_DOM.Repositories
                 {"CARD", Helpers.AppColors.TertiaryContainer},
                 {"COD", Helpers.AppColors.SecondaryContainer}
             }
-            ' Both channels: PAID payment rows for online orders, plus the method the
-            ' booth recorded on each event sale — otherwise the mix chart is empty
-            ' while every revenue KPI beside it shows money.
+            ' Paid online payments only. Booth takings used to be UNION'd in here, but
+            ' pop-up booths no longer record sales, so this is the whole mix.
             Return Db.Rows(
-                "SELECT PaymentMethod, SUM(Total) AS Total FROM (" &
-                "  SELECT PaymentMethod, Amount AS Total FROM Payments WHERE Status = 'PAID' " &
-                "  UNION ALL " &
-                "  SELECT PaymentMethod, TotalAmount FROM EventSales WHERE OrderId IS NULL" &
-                ") u GROUP BY PaymentMethod ORDER BY Total DESC").Select(Function(r)
+                "SELECT PaymentMethod, SUM(Amount) AS Total FROM Payments WHERE Status = 'PAID' " &
+                "GROUP BY PaymentMethod ORDER BY Total DESC").Select(Function(r)
                 Dim m As String = RowReader.AsStr(r, "PaymentMethod").ToUpperInvariant()
                 Dim c As Color = If(colors.ContainsKey(m), colors(m), Helpers.AppColors.Outline)
                 Return New ChartSeries(m, RowReader.AsDec(r, "Total"), c)
             End Function).ToList()
-        End Function
-
-        Public Function OmnichannelMix() As (eventTotal As Decimal, onlineTotal As Decimal)
-            Dim evt As Decimal = Db.ScalarDec("SELECT COALESCE(SUM(TotalAmount),0) FROM EventSales")
-            Dim online As Decimal = Db.ScalarDec(
-                "SELECT COALESCE(SUM(TotalAmount),0) FROM Orders WHERE PaymentStatus = 'PAID' " &
-                "AND EventId IS NULL")
-            Return (evt, online)
         End Function
 
         Public Function HourlyTraffic() As List(Of Decimal)
@@ -310,11 +217,6 @@ Namespace STAR_DOM.Repositories
                 result.Add(cnt)
             Next
             Return result
-        End Function
-
-        Public Function EventInventorySnapshot(eventId As Integer) As List(Of EventInventory)
-            Dim repo As New EventRepository()
-            Return repo.ListInventory(eventId)
         End Function
 
         Public Function RecentOrders(Optional limit As Integer = 6) As List(Of Order)

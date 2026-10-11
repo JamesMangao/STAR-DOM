@@ -177,6 +177,15 @@ Namespace STAR_DOM.Repositories
             Db.Exec("DELETE FROM EventInventory WHERE Id = @id", Db.P("@id", id))
         End Sub
 
+        ' ----- Event sales ------------------------------------------------------
+        ' Removed: pop-up booths are a marketing presence, not a till. STAR:DOM takes
+        ' money online through Orders only, so EventSales is never written and the
+        ' read path (RecordSale / ListSales / ListAllSales / MapSale) went with it.
+        ' The legacy table and its seed rows are left in place for history; it holds
+        ' no rows that any report or dashboard reads any more. EventInventory is
+        ' still edited, but as a planned-stock list, so SoldQuantity / RemainingStock
+        ' no longer move.
+
         Public Function StockForEvent(eventId As Integer, productId As Integer) As EventInventory
             Dim rows As List(Of DataRow) = Db.Rows(
                 "SELECT * FROM EventInventory WHERE EventId = @e AND ProductId = @p LIMIT 1",
@@ -193,101 +202,7 @@ Namespace STAR_DOM.Repositories
 
         ' ----- Event sales ------------------------------------------------------
 
-        ''' <summary>
-        ''' Raised inside the RecordSale transaction for a business-rule failure, so the
-        ''' transaction rolls back instead of committing a partial sale.
-        ''' </summary>
-        Private Class SaleRejectedException
-            Inherits Exception
-            Public Sub New(message As String)
-                MyBase.New(message)
-            End Sub
-        End Class
-
-        Public Function RecordSale(sale As EventSale) As String
-            If sale.Quantity < 1 Then Return "Quantity must be at least 1."
-
-            Try
-                Db.InTransaction(Of Boolean)(Function() As Boolean
-                    ' FOR UPDATE takes an InnoDB row lock that is held until commit, so a
-                    ' second sale for the same product cannot read the same RemainingStock
-                    ' and both pass the check. Reading without the lock (as this used to)
-                    ' left a window where two concurrent booths oversell the same unit.
-                    Dim rows As List(Of DataRow) = Db.Rows(
-                        "SELECT * FROM EventInventory WHERE EventId = @e AND ProductId = @p LIMIT 1 FOR UPDATE",
-                        Db.P("@e", sale.EventId), Db.P("@p", sale.ProductId))
-                    If rows.Count = 0 Then
-                        Throw New SaleRejectedException("Product is not assigned to this event's inventory.")
-                    End If
-
-                    Dim r As DataRow = rows(0)
-                    Dim remaining As Integer = RowReader.AsInt(r, "RemainingStock")
-                    If sale.Quantity > remaining Then
-                        Throw New SaleRejectedException("Only " & remaining.ToString() & " remaining in event stock.")
-                    End If
-
-                    Db.Exec(
-                        "INSERT INTO EventSales (EventId, OrderId, ProductId, Quantity, UnitPrice, TotalAmount, SaleType, PaymentMethod, SaleDate, Notes) " &
-                        "VALUES (@e, @o, @p, @q, @up, @t, @st, @pm, NOW(), @n)",
-                        Db.P("@e", sale.EventId),
-                        Db.P("@o", If(sale.OrderId.HasValue, CObj(sale.OrderId.Value), DBNull.Value)),
-                        Db.P("@p", sale.ProductId), Db.P("@q", sale.Quantity),
-                        Db.P("@up", sale.UnitPrice), Db.P("@t", sale.TotalAmount),
-                        Db.P("@st", sale.SaleType), Db.P("@pm", sale.PaymentMethod), Db.P("@n", sale.Notes))
-
-                    ' Defence in depth: the row is already locked above, but the guard makes
-                    ' the decrement safe even if the FOR UPDATE clause is ever removed.
-                    Dim moved As Integer = Db.Exec(
-                        "UPDATE EventInventory SET SoldQuantity = SoldQuantity + @q, " &
-                        "RemainingStock = GREATEST(RemainingStock - @q, 0) " &
-                        "WHERE EventId = @e AND ProductId = @p AND RemainingStock >= @q",
-                        Db.P("@q", sale.Quantity), Db.P("@e", sale.EventId), Db.P("@p", sale.ProductId))
-                    If moved = 0 Then
-                        Throw New SaleRejectedException("Only " & remaining.ToString() & " remaining in event stock.")
-                    End If
-                    Return True
-                End Function)
-                Return Nothing
-            Catch rejected As SaleRejectedException
-                Return rejected.Message
-            Catch ex As Exception
-                Return ex.Message
-            End Try
-        End Function
-
-        Public Function ListSales(eventId As Integer) As List(Of EventSale)
-            Return Db.Rows(
-                "SELECT s.*, p.Name AS ProductName FROM EventSales s " &
-                "LEFT JOIN Products p ON p.Id = s.ProductId WHERE s.EventId = @e ORDER BY s.SaleDate DESC",
-                Db.P("@e", eventId)).Select(Function(r) MapSale(r)).ToList()
-        End Function
-
-        Public Function ListAllSales(Optional search As String = "") As List(Of EventSale)
-            Dim sql As String =
-                "SELECT s.*, p.Name AS ProductName, e.Name AS EventName FROM EventSales s " &
-                "LEFT JOIN Products p ON p.Id = s.ProductId LEFT JOIN PopUpEvents e ON e.Id = s.EventId "
-            Dim ps As New List(Of NpgsqlParameter)()
-            If Not String.IsNullOrEmpty(search) Then
-                sql &= "WHERE p.Name LIKE @q OR e.Name LIKE @q "
-                ps.Add(Db.P("@q", "%" & search & "%"))
-            End If
-            sql &= "ORDER BY s.SaleDate DESC"
-            Return Db.Rows(sql, ps.ToArray()).Select(Function(r) MapSale(r)).ToList()
-        End Function
-
-        Private Function MapSale(r As DataRow) As EventSale
-            Return New EventSale With {
-                .Id = RowReader.AsInt(r, "Id"), .EventId = RowReader.AsInt(r, "EventId"),
-                .OrderId = RowReader.AsNullableInt(r, "OrderId"), .ProductId = RowReader.AsInt(r, "ProductId"),
-                .Quantity = RowReader.AsInt(r, "Quantity"), .UnitPrice = RowReader.AsDec(r, "UnitPrice"),
-                .TotalAmount = RowReader.AsDec(r, "TotalAmount"), .SaleType = RowReader.AsStr(r, "SaleType"),
-                .PaymentMethod = RowReader.AsStr(r, "PaymentMethod"), .SaleDate = RowReader.AsDate(r, "SaleDate"),
-                .Notes = RowReader.AsStr(r, "Notes"), .ProductName = RowReader.AsStr(r, "ProductName"),
-                .EventName = RowReader.AsStr(r, "EventName")
-            }
-        End Function
-
-        Private Function MapLocation(r As DataRow) As StoreLocation
+        Public Function MapLocation(r As DataRow) As StoreLocation
             Return New StoreLocation With {
                 .Id = RowReader.AsInt(r, "Id"), .Name = RowReader.AsStr(r, "Name"), .Venue = RowReader.AsStr(r, "Venue"),
                 .Address = RowReader.AsStr(r, "Address"), .City = RowReader.AsStr(r, "City"), .Region = RowReader.AsStr(r, "Region"),

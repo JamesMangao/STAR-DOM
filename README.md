@@ -13,6 +13,49 @@ everything from a merchant studio.
 
 ---
 
+## Screenshots
+
+Live captures from the running site — every frame is a real page rendered against
+the shared Supabase data, not a mockup. Full-resolution PNGs (2880×1800) are in
+[`docs/screenshots/`](docs/screenshots/).
+
+### Storefront
+
+| Home | Marketplace |
+|---|---|
+| ![Home](docs/screenshots/01-home.png) | ![Marketplace](docs/screenshots/02-marketplace.png) |
+| Landing page — hero, live pop-up status, featured pieces, open commission slots | The browsable shop grid, commission slots and pop-up banner |
+| **Products catalog** | **Product detail** |
+| ![Catalog](docs/screenshots/03-catalog.png) | ![Product](docs/screenshots/04-product.png) |
+| Full catalog with category filtering and search | One product — photos, description, stock, bundle deal |
+| **Pop-up locations** | **Sign in** |
+| ![Pop-up Locations](docs/screenshots/05-popup-locations.png) | ![Sign in](docs/screenshots/06-signin.png) |
+| Current pop-up hero, upcoming schedule, venue photos streamed from the database | Sign-in gate; demo accounts are printed on the page |
+
+### Merchant Studio
+
+| Dashboard | Sales reports |
+|---|---|
+| ![Merchant Dashboard](docs/screenshots/07-dashboard.png) | ![Sales Reports](docs/screenshots/08-sales-reports.png) |
+| KPIs, current event, scheduled pop-up tour, low-stock alerts, recent sales | Revenue, order counts and product/category/payment analytics |
+
+**The zeroes above are real, not a rendering fault.** The revenue KPIs read
+`₱0.00` because no order has been placed against this database yet — orders and
+payments are never seeded (see [What is real and what is seeded](#what-is-real-and-what-is-seeded)).
+`COMMISSION REVENUE` shows `₱9,800` because commissions *are* seeded, and they
+are a separate revenue stream that is deliberately excluded from
+`TOTAL REVENUE`. The same is true of the empty charts.
+
+| Products & stock | Event & booth manager |
+|---|---|
+| ![Products & Stock](docs/screenshots/09-products.png) | ![Event & Booth Manager](docs/screenshots/10-events.png) |
+| Add, edit, retire products; hand-adjusted stock | Pop-up schedule, booth numbers, venue photos |
+
+> Pages are captured at 1440×900 and rendered at 2×. Regenerate with any
+> screenshot tool after a visual change — the images are static files.
+
+---
+
 ## The Website
 
 This section describes the site as a **product** — what it looks like, what is on
@@ -93,7 +136,7 @@ for the studio navigation.
 | Commission Pipeline | `/App/Merchant/Pipeline.aspx` | Every request: accept and quote, decline, production, send for review, deliver |
 | Products & Stock | `/App/Merchant/Products.aspx` | Add, edit, retire. Stock is adjusted by hand after physical booth sales |
 | Event & Booth Manager | `/App/Merchant/Events.aspx`, `EventEdit.aspx` | Pop-up schedule, booth numbers, venue photos |
-| Event Sales Reports | `/App/Merchant/Reports.aspx` | Booth takings and web takings side by side |
+| Sales Reports | `/App/Merchant/Reports.aspx` | Online revenue: daily/monthly trend, top products, category and payment-method mix, hourly flow |
 | Reviews | `/App/Merchant/Reviews.aspx` | Moderate what customers wrote |
 | Admin Console | `/App/Admin/Users.aspx` | Users and roles |
 | Pop-up Locations (admin) | `/App/Admin/AdminPopupLocations.aspx` | The same schedule as the storefront, with editing |
@@ -192,15 +235,15 @@ That one rule is what stops a change rippling across the whole site.
   same page as the orders, and an order can be cancelled **only while it is
   still `PENDING` and unpaid** — and never without saying why.
 - **Store owner (`admin`, or the legacy `mika`/`renzo`/`puffu` owner
-  accounts):** dashboard KPIs, products & stock (online stock is
-  adjusted manually after physical booth sales — the site sells online only),
-  event & booth manager, commission pipeline
+  accounts):** dashboard KPIs, products & stock (stock is adjusted by hand —
+  the site sells online only), event & booth manager, commission pipeline
   (accept + quote / decline / production), orders & payments:
   **confirm & quote** an order (entering the J&T fee IS the confirmation),
   book J&T with the tracking number, and **verify submitted payments** behind
   a **password re-entry** (confirm → PAID + official receipt, or decline →
-  customer is handed the support line), sales reports showing **booth takings
-  and web takings side by side**, review moderation,
+  customer is handed the support line), sales reports showing **online
+  revenue only — booth takings are no longer recorded, because a pop-up is a
+  marketing presence rather than a till**, review moderation,
   Admin Console (users & roles), admin **Pop-up Locations**, and
   **Payment Settings**. A commission is only marked delivered once a **J&T
   tracking number** is recorded, so a finished piece always carries proof of
@@ -233,8 +276,10 @@ clear about what is live and what is demonstration data:
 | Some dashboard KPI captions | **hardcoded sample text** — e.g. `All venues pre-cleared for mall merchant badges` |
 | Orders & payments | **never seeded** — every order/payment row is written live. The shared Supabase currently holds a handful of demo rows from end-to-end verification (3 orders, 3 payments, 2 receipts at the time of writing) |
 
-The revenue figures themselves *are* computed from `EventSales` and `Orders` —
-it is the surrounding flavour text that is illustrative.
+The revenue figures themselves *are* computed from `Orders` — every KPI on the
+Sales Reports screen is a live aggregate over paid online orders, and
+`EventSales` plays no part in it. It is the surrounding flavour text that is
+illustrative.
 
 
 ## How the code is organised
@@ -247,6 +292,7 @@ it is the surrounding flavour text that is illustrative.
 ├── build.bat                     <- run after any code change
 ├── share-website.bat             <- share the site publicly via a Cloudflare tunnel
 │                                    (cloudflared ships in tools\cloudflared\)
+├── docs\screenshots\             <- README gallery: 2880x1800 PNG captures of the live site
 ├── STAR-DOM-Web.sln              <- open this in Visual Studio (optional)
 ├── Dockerfile / render.yaml      <- Render deploy (Mono + XSP4)
 ├── tools\                        <- PostgreSQL runtime (committed) + Supabase scripts

@@ -10,47 +10,18 @@ Namespace STAR_DOM.Services
 
         ' ----- Merchant dashboard aggregates ------------------------------------
 
+        ''' <summary>Every peso the studio took online. The web marketplace is the only channel.</summary>
         Public Function RevenueTotal() As Decimal
             Return _repo.RevenueTotal()
-        End Function
-
-        ''' <summary>Paid web orders not tied to a pop-up event — the digital marketplace KPI.</summary>
-        Public Function MarketplaceRevenue() As Decimal
-            Return _repo.MarketplaceRevenue()
-        End Function
-
-        Public Function RevenueForEvent(eventId As Integer) As Decimal
-            Return _repo.RevenueForEvent(eventId)
-        End Function
-
-        Public Function EventRevenueTotal() As Decimal
-            Return _repo.EventRevenueTotal()
-        End Function
-
-        Public Function EventStats() As Dictionary(Of Integer, (Revenue As Decimal, SalesCount As Integer))
-            Return _repo.EventStats()
         End Function
 
         Public Function OrdersCount(Optional status As String = "") As Integer
             Return _repo.OrdersCount(status)
         End Function
 
-        ''' <summary>Online orders whose payment has landed (the count behind WEB GROSS).</summary>
+        ''' <summary>Online orders whose payment has landed — the count behind ONLINE GROSS.</summary>
         Public Function PaidOrdersCount() As Integer
             Return _repo.PaidOrdersCount()
-        End Function
-
-        Public Function OrdersForEvent(eventId As Integer) As Integer
-            Return _repo.OrdersForEvent(eventId)
-        End Function
-
-        ''' <summary>Booth/QR/pre-order sales recorded at pop-up events (count behind EVENT GROSS).</summary>
-        Public Function BoothSalesCount() As Integer
-            Return _repo.BoothSalesCount()
-        End Function
-
-        Public Function EventSalesCount(eventId As Integer) As Integer
-            Return _repo.EventSalesCount(eventId)
         End Function
 
         Public Function PendingCommissions() As Integer
@@ -119,16 +90,8 @@ Namespace STAR_DOM.Services
             Return _repo.CategorySales()
         End Function
 
-        Public Function EventRevenue() As List(Of ChartSeries)
-            Return _repo.EventRevenue()
-        End Function
-
         Public Function PaymentMethodBreakdown() As List(Of ChartSeries)
             Return _repo.PaymentMethodBreakdown()
-        End Function
-
-        Public Function OmnichannelMix() As (eventTotal As Decimal, onlineTotal As Decimal)
-            Return _repo.OmnichannelMix()
         End Function
 
         Public Function HourlyTraffic() As List(Of Decimal)

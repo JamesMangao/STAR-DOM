@@ -24,28 +24,27 @@ Namespace STAR_DOM.Web
 
         Private Sub Render()
             Dim sb As New StringBuilder()
-            sb.Append(WebUi.Section("Event Sales Reports", "MERCHANT STUDIO / ANALYTICS",
-                                    "Daily, monthly, product, category, event and payment-method analytics."))
+            sb.Append(WebUi.Section("Sales Reports", "MERCHANT STUDIO / ANALYTICS",
+                                    "Daily, monthly, product, category and payment-method analytics."))
 
             ' KPIs
-            Dim mix = _reports.OmnichannelMix()
             sb.Append("<div class=""grid kpis"">")
-            ' Every figure below is a live aggregate — nothing is cached or seeded —
-            ' but each one reads a different sales channel, so the captions now name
-            ' that channel. "ORDERS 0" next to a non-zero revenue used to look like
-            ' stale data when it simply meant no web order had ever been placed.
+            ' STAR:DOM sells through the web marketplace only — a pop-up booth is a
+            ' marketing presence, not a till, and records no takings. Every figure
+            ' below is therefore a live aggregate over paid online Orders, and each
+            ' caption names the channel so a zero reads as "no orders yet" rather
+            ' than stale data. TOTAL REVENUE and ONLINE GROSS used to be two halves
+            ' of an omnichannel split; with one channel they are the same number
+            ' under two labels, so ONLINE GROSS became AVG ORDER VALUE instead.
             Dim onlineOrders As Integer = _reports.OrdersCount()
             Dim paidOrders As Integer = _reports.PaidOrdersCount()
-            Dim boothSales As Integer = _reports.BoothSalesCount()
-            sb.Append(Kpi("TOTAL REVENUE", "₱" & _reports.RevenueTotal().ToString("N2"), "paid web orders + booth takings"))
-            sb.Append(Kpi("ORDERS", (onlineOrders + boothSales).ToString(),
-                          onlineOrders.ToString() & " online · " & boothSales.ToString() & " booth · " &
-                          _reports.OrdersCount("PENDING").ToString() & " pending"))
+            Dim revenue As Decimal = _reports.RevenueTotal()
+            Dim avgOrder As Decimal = If(paidOrders > 0, revenue / paidOrders, 0D)
+            sb.Append(Kpi("TOTAL REVENUE", "₱" & revenue.ToString("N2"), "paid online orders"))
+            sb.Append(Kpi("ORDERS", onlineOrders.ToString(),
+                          paidOrders.ToString() & " paid · " & _reports.OrdersCount("PENDING").ToString() & " pending"))
+            sb.Append(Kpi("AVG ORDER VALUE", "₱" & avgOrder.ToString("N2"), "per paid online order"))
             sb.Append(Kpi("COMMISSION REVENUE", "₱" & _reports.CommissionRevenue().ToString("N2"), _reports.TotalCommissions().ToString() & " commissions"))
-            sb.Append(Kpi("EVENT GROSS", "₱" & mix.eventTotal.ToString("N2"), boothSales.ToString() & " booth sales · in-person + QR + preorders"))
-            sb.Append(Kpi("WEB GROSS", "₱" & mix.onlineTotal.ToString("N2"),
-                          If(mix.onlineTotal > 0D, paidOrders.ToString() & " paid web orders · online marketplace",
-                             "no paid online orders yet · online marketplace")))
             sb.Append("</div>")
 
             sb.Append("<div class=""grid"" style=""grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"">")
@@ -72,12 +71,6 @@ Namespace STAR_DOM.Web
             Dim cats As List(Of ChartSeries) = _reports.CategorySales()
             sb.Append("<div class=""card""><h3 style=""margin-bottom:4px"">Sales by category</h3>")
             sb.Append(BarList(cats, 120, True))
-            sb.Append("</div>")
-
-            ' event revenue
-            Dim evrev As List(Of ChartSeries) = _reports.EventRevenue()
-            sb.Append("<div class=""card""><h3 style=""margin-bottom:4px"">Revenue by event</h3>")
-            sb.Append(BarList(evrev, 120, True))
             sb.Append("</div>")
 
             ' payment method breakdown
@@ -108,9 +101,8 @@ Namespace STAR_DOM.Web
             Select Case label
                 Case "TOTAL REVENUE" : icon = "payments"
                 Case "ORDERS" : icon = "receipt_long"
+                Case "AVG ORDER VALUE" : icon = "trending_up"
                 Case "COMMISSION REVENUE" : icon = "account_balance"
-                Case "EVENT GROSS" : icon = "storefront"
-                Case "WEB GROSS" : icon = "language"
             End Select
             Return "<div class=""kpi k-icon""><span class=""k-ic"">" & WebUi.Ic(icon) & "</span><div class=""k-label"">" & WebUi.Esc(label) & "</div>" &
                    "<div class=""k-value"">" & WebUi.Esc(value) & "</div><div class=""k-sub"">" & WebUi.Esc(subText) & "</div></div>"

@@ -526,20 +526,11 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
 </member>
-<member name="M:STAR_DOM.Web.MerchantDashboardPage.BoothTakingsKpi">
- <summary>
- Booth/QR/pre-order takings, live from EventSales. Sits beside the digital
- marketplace tile because the two are the two halves of TOTAL REVENUE:
- showing only the online one made the dashboard open on ₱0.00 while the
- reports page next door showed real money, which read as broken numbers
- rather than an empty sales channel.
- </summary>
-</member>
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.RecentOrdersPanel">
  <summary>
- The last five sales from BOTH channels, newest first: web orders and booth
- takings. Panels fed by Orders alone read "No orders yet" while the tile
- above showed money, so the dashboard contradicted itself on first load.
+ The last five paid online orders, newest first. Booth takings used to be
+ merged into this list from EventSales; that table no longer records sales,
+ so orders alone are the list.
  </summary>
 </member>
 <member name="P:STAR_DOM.Web.MerchantProductsPage.Search">
@@ -1168,12 +1159,6 @@ STAR_DOM_Web
  touches IsCurrent — the column stays at its schema default.
  </summary>
 </member>
-<member name="T:STAR_DOM.Repositories.EventRepository.SaleRejectedException">
- <summary>
- Raised inside the RecordSale transaction for a business-rule failure, so the
- transaction rolls back instead of committing a partial sale.
- </summary>
-</member>
 <member name="M:STAR_DOM.Repositories.EventRepository.DeriveStatus(STAR_DOM.Models.PopUpEvent)">
  <summary>
  Effective event status computed from the Asia/Manila clock on every read.
@@ -1355,34 +1340,13 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.RevenueTotal">
  <summary>
- TOTAL REVENUE: every peso the studio actually took — paid web orders plus
- in-person event takings. EventSales rows carrying an OrderId belong to an
- online order that is already counted on the Orders side, so they are left
- out rather than counted twice. Orders alone read ₱0 on a demo whose sales
- all live in EventSales, which is why the KPI contradicted EVENT GROSS
- directly underneath it.
+ TOTAL REVENUE: every peso the studio actually took. STAR:DOM sells through the
+ web marketplace only, so paid Orders is the entire revenue base — a pop-up
+ booth is a marketing presence, not a till, and its takings are not recorded.
  </summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.MarketplaceRevenue">
- <summary>
- Online marketplace revenue: paid web orders that are not tied to a pop-up
- event. Event takings live in EventSales (in-person sales recorded at the
- booth), so subtracting them from RevenueTotal double-counted channels —
- the two tables hold different sales, and the difference could even go
- negative on a fresh database. Same definition as OmnichannelMix.onlineTotal.
- </summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.EventRevenueTotal">
- <summary>Sum of all in-person event sales (single query, replaces per-event loops).</summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.EventStats">
- <summary>Revenue + sales-count per event in one grouped query (kills dashboard N+1).</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.PaidOrdersCount">
  <summary>Online orders whose payment has actually landed — the count behind WEB GROSS.</summary>
-</member>
-<member name="M:STAR_DOM.Repositories.ReportRepository.BoothSalesCount">
- <summary>Booth/QR/pre-order rows recorded at pop-up events — the count behind EVENT GROSS.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.ReviewingCustomers">
  <summary>
@@ -1396,16 +1360,16 @@ STAR_DOM_Web
  </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.RevenueLastNDays(System.Int32)">
- <summary>Daily revenue for the last N days, paid orders and event takings together.</summary>
+ <summary>Daily revenue for the last N days, paid online orders only.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.MonthlySales(System.Int32)">
- <summary>Monthly revenue for the last N months, paid orders and event takings together.</summary>
+ <summary>Monthly revenue for the last N months, paid online orders only.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.ProductSales(System.Int32)">
- <summary>Best-selling products across both channels: order lines and booth sales.</summary>
+ <summary>Best-selling products by revenue across online order lines.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ReportRepository.CategorySales">
- <summary>Sales by category across both channels: order lines and booth sales.</summary>
+ <summary>Sales by category across online order lines.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.UserAddressRepository.CreateIfNew(System.Int32,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
  <summary>Save the detailed address from a checkout/commission form, unless
@@ -1740,14 +1704,11 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Services.OrderService.IssueReceiptFor(STAR_DOM.Models.Order)">
  <summary>Issue an official receipt whenever a payment becomes PAID.</summary>
 </member>
-<member name="M:STAR_DOM.Services.ReportService.MarketplaceRevenue">
- <summary>Paid web orders not tied to a pop-up event — the digital marketplace KPI.</summary>
+<member name="M:STAR_DOM.Services.ReportService.RevenueTotal">
+ <summary>Every peso the studio took online. The web marketplace is the only channel.</summary>
 </member>
 <member name="M:STAR_DOM.Services.ReportService.PaidOrdersCount">
- <summary>Online orders whose payment has landed (the count behind WEB GROSS).</summary>
-</member>
-<member name="M:STAR_DOM.Services.ReportService.BoothSalesCount">
- <summary>Booth/QR/pre-order sales recorded at pop-up events (count behind EVENT GROSS).</summary>
+ <summary>Online orders whose payment has landed — the count behind ONLINE GROSS.</summary>
 </member>
 </members>
 </doc>

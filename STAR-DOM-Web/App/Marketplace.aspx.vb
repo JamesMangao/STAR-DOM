@@ -45,8 +45,8 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request Custom Commission", "ghost", "draw"))
             sb.Append("</div>")
             Dim rep As New ReportService()
-            ' RevenueTotal already spans paid orders and event takings, so adding
-            ' EventRevenueTotal here would count every booth sale twice.
+            ' Paid online orders. Booths are marketing presence, not tills — the old
+            ' two-channel figure is why this strip never matched the reports page.
             Dim totalSalesVol As Decimal = rep.RevenueTotal()
             Dim formattedVol As String = If(totalSalesVol >= 1000D, "₱" & (totalSalesVol / 1000D).ToString("0.#") & "K+", "₱" & totalSalesVol.ToString("N0"))
 

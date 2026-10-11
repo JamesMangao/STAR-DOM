@@ -117,10 +117,10 @@ Return Db.ExecIdentity(
                     Db.P("@q", quantity), Db.P("@id", productId))
         End Sub
 
-        Public Sub BumpSold(productId As Integer, quantity As Integer)
-            Db.Exec("UPDATE Products SET SoldCount = SoldCount + @q, UpdatedAt = NOW() WHERE Id = @id",
-                    Db.P("@q", quantity), Db.P("@id", productId))
-        End Sub
+        ' SoldCount is maintained by OrderService when an order is placed (and
+        ' reversed in OrderRepository when one is cancelled). BumpSold used to be
+        ' the booth-sale twin of that write; with booths no longer selling, it went
+        ' away so SoldCount has exactly one writer.
 
         ''' <summary>
         ''' Products at or below their low-stock threshold.

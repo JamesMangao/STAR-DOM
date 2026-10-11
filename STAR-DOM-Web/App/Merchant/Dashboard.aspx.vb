@@ -36,7 +36,7 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.Section("Merchant Dashboard", "MERCHANT STUDIO / OVERVIEW",
                                     "Your pop-up booths, marketplace sales and studio queue at a glance."))
             ' No POS terminal status strip and no X-Read button here: sales figures come
-            ' from Event Sales Reports, which is the one place in-person takings are read.
+            ' from Sales Reports, which is the one place online revenue is read.
 
             ' ---- Current location controller ----
             Dim current As PopUpEvent = _events.CurrentEvent()
@@ -45,19 +45,17 @@ Namespace STAR_DOM.Web
             End If
 
             ' ---- KPI row ----
-            ' Only the digital marketplace tile survives. The booth-sales, order-tally
-            ' and hot-seller tiles, the omnichannel donut and the Quick Node panel
-            ' duplicated Event Sales Reports and repeated values the merchant has no
-            ' way to act on, so they were removed.
-            Dim eventStats As Dictionary(Of Integer, (rev As Decimal, salesCnt As Integer)) = _reports.EventStats()
+            ' One sales channel only. The booth-takings tile and the Pop-up Historical
+            ' Performance Register read EventSales, which no longer records anything:
+            ' a pop-up is a marketing presence, not a till. Leaving them would have
+            ' put a permanently-zero "Event Booth Takings" card beside a reports page
+            ' that no longer knows booth money exists.
             sb.Append("<div class=""grid kpis"">")
             sb.Append(DigitalMarketplaceKpi())
-            sb.Append(BoothTakingsKpi())
             sb.Append("</div>")
 
             ' ---- Workbench ----
             sb.Append(ScheduledEventsPanel(current))
-            sb.Append(HistoricalPanel(eventStats))
             sb.Append(LowStockPanel())
             sb.Append(RecentOrdersPanel())
 
@@ -107,29 +105,11 @@ Namespace STAR_DOM.Web
             Return sb.ToString()
         End Function
 
-        ''' <summary>
-        ''' Booth/QR/pre-order takings, live from EventSales. Sits beside the digital
-        ''' marketplace tile because the two are the two halves of TOTAL REVENUE:
-        ''' showing only the online one made the dashboard open on ₱0.00 while the
-        ''' reports page next door showed real money, which read as broken numbers
-        ''' rather than an empty sales channel.
-        ''' </summary>
-        Private Function BoothTakingsKpi() As String
-            Dim takings As Decimal = _reports.EventRevenueTotal()
-            Dim sales As Integer = _reports.BoothSalesCount()
-            Return "<div class=""kpi k-icon"">" &
-                   "<span class=""k-ic"" style=""border-radius:9px;background:var(--yellow-soft);color:var(--primary)"">" & WebUi.Ic("storefront") & "</span>" &
-                   "<div class=""k-label"">Event Booth Takings</div>" &
-                   "<div class=""k-value"">" & Fmt_Php(takings) & "</div>" &
-                   "<div class=""k-sub""><b style=""color:var(--ink)"">" & sales.ToString() &
-                   If(sales = 1, " Booth Sale", " Booth Sales") & "</b> &nbsp;&bull;&nbsp; in-person, QR &amp; pre-orders</div></div>"
-        End Function
-
         Private Function DigitalMarketplaceKpi() As String
-            ' Paid web orders only. The old formula subtracted the event sales table
+            ' Paid online orders only. The old formula subtracted the event sales table
             ' (in-person booth takings) from PAID orders — two different populations —
             ' so the KPI read 0.00 or worse even when online orders were landing.
-            Dim digital As Decimal = _reports.MarketplaceRevenue()
+            Dim digital As Decimal = _reports.RevenueTotal()
             Return "<div class=""kpi k-icon"">" &
                    "<span class=""k-ic"" style=""border-radius:9px;background:var(--tertiary-fixed);color:var(--tertiary)"">" & WebUi.Ic("hub") & "</span>" &
                    "<div class=""k-label"">Digital Marketplace Revenue</div>" &
@@ -168,38 +148,6 @@ Namespace STAR_DOM.Web
             Return sb.ToString()
         End Function
 
-        Private Function HistoricalPanel(stats As Dictionary(Of Integer, (rev As Decimal, salesCnt As Integer))) As String
-            Dim sb As New StringBuilder()
-            Dim current As PopUpEvent = _events.CurrentEvent()
-            sb.Append("<div class=""panel""><div class=""panel-hd"">")
-            sb.Append("<h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--yellow)"">" & WebUi.Ic("history", "sm") & "</span> Pop-up Historical Performance Register <span class=""htag"">ARCHIVED AUDIT TRAILS</span></h3>")
-            sb.Append("</div><div class=""board""><table><thead><tr><th>Venue &amp; Run Name</th><th>Term Window</th><th>Gross Take</th><th>Completed Orders</th><th>Top Selling SKU</th></tr></thead><tbody>")
-            Dim evs As List(Of PopUpEvent) = _events.ListEvents()
-            Dim firstRow As Boolean = True
-            For Each ev As PopUpEvent In evs
-                Dim rev As Decimal = 0D
-                Dim orders As Integer = 0
-                If stats.ContainsKey(ev.Id) Then
-                    rev = stats(ev.Id).rev
-                    orders = stats(ev.Id).salesCnt
-                End If
-                Dim isCurrent As Boolean = (current IsNot Nothing AndAlso current.Id = ev.Id)
-                If isCurrent OrElse firstRow Then
-                    sb.Append("<tr style=""background:var(--yellow-soft)"">")
-                Else
-                    sb.Append("<tr>")
-                End If
-                sb.Append("<td><span class=""row-dot"" style=""background:var(--primary)""></span><span class=""rhead"">" & WebUi.Esc(ev.Name) & "</span></td>")
-                sb.Append("<td class=""mono"">" & WebUi.Esc(ev.WindowText) & "</td>")
-                sb.Append("<td class=""mono"" style=""color:var(--primary);font-weight:800"">" & Fmt_Php(rev) & "</td>")
-                sb.Append("<td style=""font-weight:700"">" & orders.ToString() & " Orders</td>")
-                sb.Append("<td>" & WebUi.Esc(LastOrEmpty(ev.BoothNumber)) & "</td></tr>")
-                firstRow = False
-            Next
-            sb.Append("</tbody></table></div></div>")
-            Return sb.ToString()
-        End Function
-
         Private Function LowStockPanel() As String
             Dim sb As New StringBuilder()
             ' Whole catalogue, not "mine": see ProductRepository.LowStock. Scoping this
@@ -227,9 +175,9 @@ Namespace STAR_DOM.Web
         End Function
 
         ''' <summary>
-        ''' The last five sales from BOTH channels, newest first: web orders and booth
-        ''' takings. Panels fed by Orders alone read "No orders yet" while the tile
-        ''' above showed money, so the dashboard contradicted itself on first load.
+        ''' The last five paid online orders, newest first. Booth takings used to be
+        ''' merged into this list from EventSales; that table no longer records sales,
+        ''' so orders alone are the list.
         ''' </summary>
         Private Function RecentOrdersPanel() As String
             Dim sb As New StringBuilder()
@@ -239,17 +187,11 @@ Namespace STAR_DOM.Web
                           "<span><a href=""/App/Merchant/Orders.aspx"" style=""font-weight:700"">" & WebUi.Esc(o.OrderNumber) & "</a> · " & WebUi.Esc(o.CustomerName) & "</span>" &
                           "<span>" & WebUi.Money(o.TotalAmount) & " " & WebUi.Badge(o.Status) & "</span>"))
             Next
-            For Each s As EventSale In _events.ListAllSales()
-                rows.Add((s.SaleDate,
-                          "<span><b>" & WebUi.Esc(s.ProductName) & "</b> · " & WebUi.Esc(If(s.EventName = "", "Booth sale", s.EventName)) &
-                          If(s.PaymentMethod = "", "", " · " & WebUi.Esc(s.PaymentMethod)) & "</span>" &
-                          "<span>" & WebUi.Money(s.TotalAmount) & " " & WebUi.Pill(If(s.SaleType = "", "SALE", s.SaleType.Replace("_", " ").ToUpperInvariant()), "yellow") & "</span>"))
-            Next
             rows.Sort(Function(x, y) y.sortDate.CompareTo(x.sortDate))
 
             sb.Append("<div class=""panel""><div class=""panel-hd""><h3><span class=""ph-ic"" style=""width:28px;height:28px;font-size:15px;background:var(--surface-mid);color:var(--primary)"">" & WebUi.Ic("package_2", "sm") & "</span> Recent Sales</h3></div><div class=""panel-bd"">")
             If rows.Count = 0 Then
-                sb.Append(WebUi.EmptyRow("No sales yet — web orders and booth takings both appear here."))
+                sb.Append(WebUi.EmptyRow("No sales yet — online orders appear here."))
             Else
                 For Each r As (sortDate As Date, html As String) In rows.Take(5)
                     sb.Append("<div class=""row space-between"" style=""padding:5px 0;border-bottom:1px solid #f3e9e6"">" & r.html & "</div>")
@@ -271,11 +213,6 @@ Namespace STAR_DOM.Web
             Else
                 Return "<span class=""status-chip gray""><span class=""dot""></span> " & WebUi.Esc(label) & "</span>"
             End If
-        End Function
-
-        Private Function LastOrEmpty(value As String) As String
-            If String.IsNullOrWhiteSpace(value) Then Return "—"
-            Return value
         End Function
 
         Private Function Fmt_Php(v As Decimal) As String
