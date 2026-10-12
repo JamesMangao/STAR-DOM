@@ -412,6 +412,13 @@ Namespace STAR_DOM.Web
             sb.Append("</div>")
             sb.Append("</div></div>")
 
+            ' Nothing is pending on the studio's side, so give the customer a way to
+            ' reach them about it -- a late parcel, a refund, a piece that arrived
+            ' damaged. Placed outside the two-column row above so it spans the page
+            ' like a closing note; inside the right column it read as belonging to
+            ' the Payments card, with dead space beside it.
+            If o.IsFinal Then sb.Append(WebUi.SupportNote())
+
             ' Scan to Pay popup for an e-wallet order. Shared with Checkout via
             ' WebUi so both look identical; the order already exists here, so the
             ' primary button only closes the popup and focuses the reference field.

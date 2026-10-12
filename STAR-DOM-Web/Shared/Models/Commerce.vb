@@ -93,6 +93,31 @@ Namespace STAR_DOM.Models
             End Get
         End Property
 
+        ''' <summary>
+        ''' True once the studio has nothing further to do on this order: it has
+        ''' landed, the customer confirmed it landed, or it was called off.
+        ''' </summary>
+        ''' <remarks>
+        ''' DELIVERED counts even though the customer has not confirmed receipt
+        ''' yet, because the parcel is already with the courier and nothing is
+        ''' pending on the studio's side. RECEIVED and CANCELLED are the two states
+        ''' after which the order can never change again.
+        '''
+        ''' This lives on the model rather than in the page. The order page and the
+        ''' receipt both need the same answer, and a status list duplicated into
+        ''' markup is how the two quietly drift apart when a state is added.
+        ''' </remarks>
+        Public ReadOnly Property IsFinal As Boolean
+            Get
+                Select Case If(Status, "").ToUpperInvariant()
+                    Case "DELIVERED", "RECEIVED", "CANCELLED"
+                        Return True
+                    Case Else
+                        Return False
+                End Select
+            End Get
+        End Property
+
         ' Joined display fields
         Public Property CustomerName As String
         Public Property CustomerEmail As String

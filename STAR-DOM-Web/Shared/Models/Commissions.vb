@@ -79,6 +79,30 @@ Namespace STAR_DOM.Models
             End Get
         End Property
 
+        ''' <summary>
+        ''' True once the commission can never change again: delivered, confirmed
+        ''' received, completed, or ended without one.
+        ''' </summary>
+        ''' <remarks>
+        ''' Every way a commission ends counts, not just the successful ones. A
+        ''' declined or cancelled request is precisely when a customer wants to ask
+        ''' what happened, and the studio is the only party who can answer that.
+        '''
+        ''' Named rather than literal on purpose: these constants already exist and
+        ''' the status strings contain a space ("PAYMENT DECLINED"), which is easy
+        ''' to mistype as an underscore.
+        ''' </remarks>
+        Public ReadOnly Property IsFinal As Boolean
+            Get
+                Select Case If(Status, "").ToUpperInvariant()
+                    Case Delivered, Received, Completed, Declined, Cancelled, PaymentDeclined
+                        Return True
+                    Case Else
+                        Return False
+                End Select
+            End Get
+        End Property
+
         Public ReadOnly Property TrackingUrl As String
             Get
                 If String.IsNullOrWhiteSpace(TrackingNumber) Then Return ""

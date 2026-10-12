@@ -267,6 +267,26 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.WebUi.IsGlyph(System.String)">
  <summary>True when the icon string is an emoji/unicode glyph rather than a Material Symbol name.</summary>
 </member>
+<member name="M:STAR_DOM.Web.WebUi.SupportNote">
+ <summary>
+ The closing support note, for an order or commission that has run its
+ course and has nothing left to show.
+ </summary>
+ <remarks>
+ Rendered for every final state, not only the successful ones. A cancelled
+ or declined request is exactly when a customer most wants to ask what
+ happened, and the studio is the only one who can answer.
+
+ Sits at the foot of the page on purpose. While work is in flight the page is
+ about progress and a support number sitting mid-flow reads as "something
+ is wrong with this"; at the end it reads as an ordinary way to reach the
+ studio.
+
+ Lives here, not in each page, because the handle and the number come from
+ PaymentSetting.SupportContact and two hand-copied versions would drift
+ apart the moment that string changes.
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Web.GlobalApp.Application_AcquireRequestState(System.Object,System.EventArgs)">
  <summary>
  Single choke point for CSRF protection: every POST in the site is checked
@@ -963,6 +983,22 @@ STAR_DOM_Web
 <member name="P:STAR_DOM.Models.Order.HasFinalTotal">
  <summary>True once the order has a final, customer-facing total.</summary>
 </member>
+<member name="P:STAR_DOM.Models.Order.IsFinal">
+ <summary>
+ True once the studio has nothing further to do on this order: it has
+ landed, the customer confirmed it landed, or it was called off.
+ </summary>
+ <remarks>
+ DELIVERED counts even though the customer has not confirmed receipt
+ yet, because the parcel is already with the courier and nothing is
+ pending on the studio's side. RECEIVED and CANCELLED are the two states
+ after which the order can never change again.
+
+ This lives on the model rather than in the page. The order page and the
+ receipt both need the same answer, and a status list duplicated into
+ markup is how the two quietly drift apart when a state is added.
+ </remarks>
+</member>
 <member name="P:STAR_DOM.Models.Order.TrackingNumber">
  <summary>
  Customer-facing courier sentence, J&amp;T only. Plain text: the page layer adds
@@ -982,6 +1018,21 @@ STAR_DOM_Web
 </member>
 <member name="P:STAR_DOM.Models.Commission.PaymentConfirmed">
  <summary>True once the studio has verified the payment reference.</summary>
+</member>
+<member name="P:STAR_DOM.Models.Commission.IsFinal">
+ <summary>
+ True once the commission can never change again: delivered, confirmed
+ received, completed, or ended without one.
+ </summary>
+ <remarks>
+ Every way a commission ends counts, not just the successful ones. A
+ declined or cancelled request is precisely when a customer wants to ask
+ what happened, and the studio is the only party who can answer that.
+
+ Named rather than literal on purpose: these constants already exist and
+ the status strings contain a space ("PAYMENT DECLINED"), which is easy
+ to mistype as an underscore.
+ </remarks>
 </member>
 <member name="P:STAR_DOM.Models.Commission.DeliveryStatusLine">
  <summary>
@@ -1063,6 +1114,27 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Models.PaymentSetting.ToTitleCase(System.String)">
  <summary>Title-case a string (e.g., "ONLINEBANK" -> "Onlinebank").</summary>
+</member>
+<member name="M:STAR_DOM.Models.PaymentSetting.IsEWallet(System.String)">
+ <summary>
+ True when the channel is paid by scanning a QR and quoting a reference
+ number from the customer's receipt -- the flow every live channel uses.
+ </summary>
+ <remarks>
+ Deny-list, deliberately, and deliberately NOT a repository call: this is a
+ model, and reaching into STAR_DOM.Repositories from here both breaks the
+ documented layering and made the project stop compiling.
+
+ An allow-list naming GCASH/GOTYME/MAYA was the original bug. Payment
+ Settings can create any channel, so an admin-added one (BPI, ONLINEBANK,
+ ...) passed the picker but then failed this test, and OrderDetail drew
+ neither the "Scan to Pay" button nor the QR popup: the customer picked
+ the channel and was shown no QR at all, with no error to explain it.
+
+ STAR:DOM is online-only and takes no COD and no card, so the only values
+ that are not QR-and-reference channels are the checkout placeholder and
+ those two retired methods. Anything else is a real configured channel.
+ </remarks>
 </member>
 <member name="P:STAR_DOM.Models.PaymentSetting.SupportContact">
  <summary>

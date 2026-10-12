@@ -723,6 +723,32 @@ Namespace STAR_DOM.Web
             Return "<div class=""empty"">" & Esc(text) & "</div>"
         End Function
 
+        ''' <summary>
+        ''' The closing support note, for an order or commission that has run its
+        ''' course and has nothing left to show.
+        ''' </summary>
+        ''' <remarks>
+        ''' Rendered for every final state, not only the successful ones. A cancelled
+        ''' or declined request is exactly when a customer most wants to ask what
+        ''' happened, and the studio is the only one who can answer.
+        '''
+        ''' Sits at the foot of the page on purpose. While work is in flight the page is
+        ''' about progress and a support number sitting mid-flow reads as "something
+        ''' is wrong with this"; at the end it reads as an ordinary way to reach the
+        ''' studio.
+        '''
+        ''' Lives here, not in each page, because the handle and the number come from
+        ''' PaymentSetting.SupportContact and two hand-copied versions would drift
+        ''' apart the moment that string changes.
+        ''' </remarks>
+        Public Function SupportNote() As String
+            Dim contact As String = Trim(PaymentSetting.SupportContact)
+            If contact.Length = 0 Then Return ""
+            Return "<div class=""card"" style=""margin-top:16px;border-style:dashed;background:var(--surface);text-align:center"">" &
+                   "<div style=""font-size:11px;letter-spacing:.1em;font-weight:800;color:var(--ink-soft);margin-bottom:8px"">STILL NEEDS HELP?</div>" &
+                   "<p class=""sub"" style=""margin:0"">" & Esc(contact) & "</p></div>"
+        End Function
+
     End Module
 
 End Namespace

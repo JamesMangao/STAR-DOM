@@ -75,6 +75,7 @@ Namespace STAR_DOM.Models
             Return Char.ToUpper(lower(0)) & lower.Substring(1)
         End Function
 
+        ''' <summary>
         ''' True when the channel is paid by scanning a QR and quoting a reference
         ''' number from the customer's receipt -- the flow every live channel uses.
         ''' </summary>

@@ -258,6 +258,11 @@ Namespace STAR_DOM.Web
             sb.Append("</div></div>")
             sb.Append("</div></div>")
 
+            ' The commission has run its course one way or another, so put the studio
+            ' within reach. A declined or cancelled request needs this at least as
+            ' much as a delivered one does.
+            If cm.IsFinal Then sb.Append(WebUi.SupportNote())
+
             Out.Text = sb.ToString()
         End Sub
 
