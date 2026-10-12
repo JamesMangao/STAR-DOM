@@ -107,8 +107,27 @@ Namespace STAR_DOM.Models
         ''' failure messages — and a customer who reads a different phone number on the
         ''' order page than on the merchant console has been told to trust two stores.
         ''' </summary>
+        ''' <remarks>
+        ''' Plain text on purpose. These sentences end up inside WebUi.AlertBox, which
+        ''' escapes whatever it is given, so markup here would render as literal
+        ''' &lt;a href=...&gt; text. The pages that CAN carry a link call
+        ''' WebUi.SupportContactHtml instead.
+        ''' </remarks>
         Public Shared ReadOnly Property SupportContact As String =
             "For concerns please message @star.d0mm on instagram or contact 09701375033."
+
+        ''' <summary>
+        ''' The Instagram handle, without the @, so the sentence above and the link
+        ''' below cannot drift apart and send customers to a different account.
+        ''' </summary>
+        Public Shared ReadOnly Property InstagramHandle As String = "star.d0mm"
+
+        ''' <summary>
+        ''' Where the handle leads. The mdxt query is Instagram's own click-tracking
+        ''' token and can be dropped without breaking the link.
+        ''' </summary>
+        Public Shared ReadOnly Property InstagramUrl As String =
+            "https://www.instagram.com/star.d0mm?mdxt=MXNjamszMzYxMXNzMg%3D%3D"
 
         ''' <summary>
         ''' A failed-payment sentence. It always opens with the same fixed line the

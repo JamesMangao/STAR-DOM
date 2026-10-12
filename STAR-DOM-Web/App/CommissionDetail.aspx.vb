@@ -491,7 +491,7 @@ Namespace STAR_DOM.Web
                       WebUi.Money(due) & "</b> — one payment, no deposit. Shipping is free.</p>")
             If channels.Count = 0 Then
                 sb.Append("<p class=""sub"" style=""margin:0"">No payment channel is available right now. " &
-                          WebUi.Esc(PaymentSetting.SupportContact) & "</p></div>")
+                          WebUi.SupportContactHtml() & "</p></div>")
                 Return sb.ToString()
             End If
 
@@ -547,7 +547,7 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""row space-between""><span class=""sub"" style=""font-size:11px"">Amount Due</span><b style=""font-size:14px;color:var(--primary)"">" & WebUi.Money(due) & "</b></div>")
                 sb.Append("</div>")
                 If img = "" AndAlso (ps Is Nothing OrElse (ps.AccountName = "" AndAlso ps.AccountNumber = "")) Then
-                    sb.Append("<p class=""sub"" style=""margin:0 0 10px"">No QR or account is configured for this channel yet. " & WebUi.Esc(PaymentSetting.SupportContact) & "</p>")
+                    sb.Append("<p class=""sub"" style=""margin:0 0 10px"">No QR or account is configured for this channel yet. " & WebUi.SupportContactHtml() & "</p>")
                 ElseIf img = "" Then
                     sb.Append("<p class=""sub"" style=""margin:0 0 10px"">Scan not set — send the amount to the account above, then enter your reference.</p>")
                 End If

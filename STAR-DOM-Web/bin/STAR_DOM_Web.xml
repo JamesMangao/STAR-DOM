@@ -287,6 +287,21 @@ STAR_DOM_Web
  apart the moment that string changes.
  </remarks>
 </member>
+<member name="M:STAR_DOM.Web.WebUi.SupportContactHtml">
+ <summary>
+ SupportContact with the Instagram handle turned into a real link.
+ </summary>
+ <remarks>
+ Escapes first, then swaps the handle for an anchor. That order matters:
+ escaping after inserting markup would mangle the tag, and escaping first
+ is safe because a handle is only letters, digits, dots and underscores,
+ none of which Esc touches. The rest of the sentence stays plain text.
+
+ Only the handle is linkified. The phone number is deliberately left as
+ digits: making it a tel: link looks right until the number is copied out
+ of the page, and then it carries the href with it.
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Web.GlobalApp.Application_AcquireRequestState(System.Object,System.EventArgs)">
  <summary>
  Single choke point for CSRF protection: every POST in the site is checked
@@ -1142,6 +1157,24 @@ STAR_DOM_Web
  the page layer, because the service layer writes the same sentence into its
  failure messages — and a customer who reads a different phone number on the
  order page than on the merchant console has been told to trust two stores.
+ </summary>
+ <remarks>
+ Plain text on purpose. These sentences end up inside WebUi.AlertBox, which
+ escapes whatever it is given, so markup here would render as literal
+ &lt;a href=...&gt; text. The pages that CAN carry a link call
+ WebUi.SupportContactHtml instead.
+ </remarks>
+</member>
+<member name="P:STAR_DOM.Models.PaymentSetting.InstagramHandle">
+ <summary>
+ The Instagram handle, without the @, so the sentence above and the link
+ below cannot drift apart and send customers to a different account.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Models.PaymentSetting.InstagramUrl">
+ <summary>
+ Where the handle leads. The mdxt query is Instagram's own click-tracking
+ token and can be dropped without breaking the link.
  </summary>
 </member>
 <member name="M:STAR_DOM.Models.PaymentSetting.PaymentFailedMessage(System.String)">

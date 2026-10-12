@@ -746,7 +746,31 @@ Namespace STAR_DOM.Web
             If contact.Length = 0 Then Return ""
             Return "<div class=""card"" style=""margin-top:16px;border-style:dashed;background:var(--surface);text-align:center"">" &
                    "<div style=""font-size:11px;letter-spacing:.1em;font-weight:800;color:var(--ink-soft);margin-bottom:8px"">STILL NEEDS HELP?</div>" &
-                   "<p class=""sub"" style=""margin:0"">" & Esc(contact) & "</p></div>"
+                   "<p class=""sub"" style=""margin:0"">" & SupportContactHtml() & "</p></div>"
+        End Function
+
+        ''' <summary>
+        ''' SupportContact with the Instagram handle turned into a real link.
+        ''' </summary>
+        ''' <remarks>
+        ''' Escapes first, then swaps the handle for an anchor. That order matters:
+        ''' escaping after inserting markup would mangle the tag, and escaping first
+        ''' is safe because a handle is only letters, digits, dots and underscores,
+        ''' none of which Esc touches. The rest of the sentence stays plain text.
+        '''
+        ''' Only the handle is linkified. The phone number is deliberately left as
+        ''' digits: making it a tel: link looks right until the number is copied out
+        ''' of the page, and then it carries the href with it.
+        ''' </remarks>
+        Public Function SupportContactHtml() As String
+            Dim html As String = Esc(PaymentSetting.SupportContact)
+            Dim token As String = "@" & PaymentSetting.InstagramHandle
+            Dim at As Integer = html.IndexOf(token, StringComparison.Ordinal)
+            If at < 0 Then Return html
+            Return html.Substring(0, at) &
+                   "<a href=""" & Esc(PaymentSetting.InstagramUrl) & """ target=""_blank"" rel=""noopener noreferrer"" " &
+                   "style=""color:var(--primary);font-weight:700"">" & Esc(token) & "</a>" &
+                   html.Substring(at + token.Length)
         End Function
 
     End Module
