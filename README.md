@@ -140,7 +140,7 @@ for the studio navigation.
 | Reviews | `/App/Merchant/Reviews.aspx` | Moderate what customers wrote |
 | Admin Console | `/App/Admin/Users.aspx` | Users and roles |
 | Pop-up Locations (admin) | `/App/Admin/AdminPopupLocations.aspx` | The same schedule as the storefront, with editing |
-| Payment Settings | `/App/Admin/PaymentSettings.aspx` | GCash / GOtyme QR images, account name and number, captions, what customers see |
+| Payment Settings | `/App/Admin/PaymentSettings.aspx` | QR images, account name and number, captions, per-channel enable, **and new channels** |
 
 Two more are infrastructure and have no navigation: `/App/AssetImg.aspx`
 streams venue photos out of the database, and `/App/PaymentQr.aspx` streams a
@@ -200,10 +200,10 @@ design system and a little vanilla JavaScript.
 |---|---|
 | **Language** | VB.NET |
 | **Framework** | ASP.NET Web Forms, .NET Framework 4.8 |
-| **Database** | PostgreSQL via Npgsql 4.1.10 — 30 tables, no ORM, parameterised SQL throughout |
+| **Database** | PostgreSQL via Npgsql 8.0.9 — 30 tables, no ORM, parameterised SQL throughout |
 | **Hosting** | IIS Express 10 locally, or Mono/XSP4 in a Docker image on Render |
 | **Roles** | Only two: **ADMIN** (the store owner, who is also the artist) and **CUSTOMER** |
-| **Payments** | GCash / GOtyme by QR, paid against a studio-quoted J&T fee — no COD |
+| **Payments** | GCash / GOtyme / any channel the owner adds, paid by QR against a studio-quoted J&T fee — no COD |
 | **Fulfilment** | J&T Express nationwide (delivery only) |
 | **Receipts** | BIR-style receipts with a VAT breakdown |
 | **External services** | None required — no payment gateway API, no shipping API, no third-party auth |
@@ -226,8 +226,9 @@ That one rule is what stops a change rippling across the whole site.
   automatically** — Stickers 4 for ₱100, Button pins 3 for ₱100), product
   detail, cart & checkout (delivery address + phone — the J&T fee is quoted
   after you order), place the order unpaid, then pay the **final** total once
-  the studio has returned it, via **GCash / GOtyme Scan-to-Pay** (e-wallet
-  reference number) behind a **password re-entry** — then track the parcel
+  the studio has returned it, via **Scan-to-Pay QR** against any channel the
+  owner has enabled (e-wallet reference number) behind a **password
+  re-entry** — then track the parcel
   through the J&T status line + tracker link and confirm it arrived ("Confirm
   order received") to unlock reviews, pop-up locations & schedules,
   commission requests (5-step wizard; commissioned products are
@@ -334,10 +335,10 @@ variables, so a new host needs configuration rather than a code change.
 [ARCHITECTURE-DIAGRAM.md](ARCHITECTURE-DIAGRAM.md) draws the full request
 path, the layer rules and the order & payment state machine.
 
-## Payment Settings (GCash / GOtyme QR management)
+## Payment Settings (QR channel management)
 
 **Admin → SYSTEM → Payment Settings** (`/App/Admin/PaymentSettings.aspx`) is
-where the owner manages everything customers see when paying by e-wallet —
+where the owner manages everything customers see when paying by QR —
 no code changes needed:
 
 | Setting | What it controls |
@@ -353,6 +354,40 @@ Each channel (GCash blue, GOtyme green) has its own card with a live
 **customer-view preview**, and changes take effect immediately on the order
 detail payment popup.
 
+### Adding a channel the code has never heard of
+
+**Add New Channel** takes any name — BPI, a rural bank, a wallet nobody else
+uses. No code change, no migration. The row is created with its own QR image,
+account name, number and enable flag, and it then behaves like a built-in
+everywhere: it appears in the customer's payment picker, it opens the Scan to
+Pay popup with its own QR, and it can be verified with a reference number.
+
+The customer's picker is built from the database, not from a hardcoded list, so
+this is the only step needed. `PaymentSetting.IsEWallet` is a **deny-list**
+(`""`, `PENDING`, `CARD`, `COD` are the only non-QR values) rather than an
+allow-list of GCash/GOtyme/Maya — an allow-list was the original bug here: a
+channel the owner added passed the picker, then failed the test, and the
+customer was shown the channel with **no QR and no error message**.
+
+Unknown channel names are title-cased on display, so `ONLINEBANK` reads as
+"Onlinebank".
+
+### The footer does not name every channel
+
+The footer lists **GCash · GOtyme · Online banks · J&T Express**. Wallets are
+named individually; **every other channel collapses into one "Online banks"
+chip**. Banks get enabled and retired constantly, and naming each one made the
+footer churn on every Payment Settings change — or keep advertising a bank
+that was no longer enabled. The chip disappears on its own when the last bank
+channel is switched off.
+
+This grouping is **footer-only**. The order picker and the commission pay panel
+still name every channel separately, because that is where the customer
+actually chooses which account to send to.
+
+The footer badges are read through `PaymentSettingService.EnabledChannels()`
+because `Site.master.vb` imports Services but not Repositories.
+
 **The image is stored in the database**, in `PaymentSettings.QrImageData` as
 `BYTEA` — not as a file under `Uploads\`. `App\PaymentQr.aspx` streams it back
 (`/App/PaymentQr.aspx?ch=GCASH`) with an `ETag`, so a backup, a restore, or a
@@ -364,6 +399,10 @@ clears the path.
 The pre-rename channel key `MAYA` is still read and displayed as GOtyme, and
 `supabase_schema.sql` carries an in-place rename for installs that still have
 it.
+
+> **These QR images are real bank account numbers.** A dump of this database
+> contains them. Keep dumps outside the repo (`.gitignore` excludes `*.dump`)
+> and never hand a database dump to anyone.
 
 
 ## Checkout and the payment flow
@@ -381,11 +420,11 @@ The flow continues on the order pages:
    password on the order. That **is** the confirmation: the order becomes
    `CONFIRMED` and the total is final (goods + bundle savings + shipping) in
    the same statement.
-2. **Customer pays** — on Order Detail the customer picks **GCash** or
-   **GOtyme** (the channel list appears only once the fee is quoted) and the
-   **Scan to Pay popup** opens with the admin-managed QR. After paying in
-   their wallet app they enter the **reference number + their password**,
-   which only parks the payment as **SUBMITTED** — *not* paid.
+2. **Customer pays** — on Order Detail the customer picks any channel Payment
+   Settings has enabled (the channel list appears only once the fee is quoted)
+   and the **Scan to Pay popup** opens with that channel's admin-managed QR.
+   After paying in their wallet app they enter the **reference number + their
+   password**, which only parks the payment as **SUBMITTED** — *not* paid.
 3. **Studio verifies** — the merchant sees the submitted reference beside a
    password box with **Confirm / Decline** buttons. Confirm moves the payment
    to **PAID**, finalises the order as `CONFIRMED` and issues the official
@@ -455,6 +494,71 @@ remaining account-only links are matched by one `GATED` path list in the
   is involved, the app only reads `SUPABASE_DB_URL`.
 - `bin\STAR_DOM_Web.dll` is committed because the Linux/Mono deploy runs the
   prebuilt binary — rebuild and commit `bin\` with any code change.
+
+
+## Tests
+
+`STAR-DOM-Tests` is an MSTest project (net4.8.1) covering the Fmt helpers and
+the repository/service layer. Build it, then run it with `vstest.console`:
+
+```bat
+msbuild STAR-DOM-Tests\STAR-DOM-Tests.vbproj -t:Build -p:Configuration=Debug
+vstest.console.exe STAR-DOM-Tests\bin\Debug\STAR_DOM_Tests.dll `
+  /TestAdapterPath:STAR-DOM-Web\packages\mstest.testadapter.4.5.1\buildTransitive\net462
+```
+
+**The `/TestAdapterPath` is required.** Without it vstest reports *“No test is
+available… Make sure that test discoverer & executors are registered”* even
+though the assembly is fine — the adapter lives in `packages\`, not next to
+the test DLL.
+
+The repository and service tests hit the real database, so they need
+`SUPABASE_DB_URL` in the **environment of the test host**, not in a file the
+process inherits by accident. Without it they throw on connect, which reads
+as dozens of unrelated failures:
+
+| Tests | Needs `SUPABASE_DB_URL`? |
+|---|---|
+| `FmtTests` — pure formatting helpers | no |
+| `*RepositoryTests`, `*ServiceTests` | **yes** |
+
+Two tests (`CurrentEvent_ReturnsEventOrNull`, `GetCurrentEvent_ReturnsEventOrNull`)
+are **date-dependent**: they assert a current event exists and fail once no
+pop-up date brackets today. The first also contradicts itself — its message
+says *“CurrentEvent can be null, that’s OK”* directly above an
+`Assert.IsNotNull`.
+
+
+## Support contact
+
+Where customers are told to reach the studio, and the footer hotline, are
+**not** scattered through the markup. `PaymentSetting.SupportContact` holds
+the one sentence, and `Code\WebUi.vb` renders it.
+
+| Surface | Source |
+|---|---|
+| Support note at the foot of a **finished** order or commission | `WebUi.SupportNote()` |
+| Payment-failure messages | `PaymentSetting.PaymentFailedMessage` |
+| Footer **MERCHANT INQUIRY HOTLINE** | `Site.master`, `+63 970 137 5033` |
+
+The handle `@star.d0mm` in that sentence is a **real link** to the profile on
+every page that can carry markup (`WebUi.SupportContactHtml()`). It stays
+plain text inside `SupportContact` itself, because the service layer feeds
+that string to `WebUi.AlertBox`, which **escapes** what it is given — markup
+there would render as literal `<a href=…>` text on exactly the payment-failure
+screens where it matters most.
+
+The note appears once the record is in a **final** state, and *every* ending
+counts — `Order.IsFinal` is `DELIVERED` / `RECEIVED` / `CANCELLED`, and
+`Commission.IsFinal` is `DELIVERED` / `RECEIVED` / `COMPLETED` / `DECLINED` /
+`CANCELLED` / `PAYMENT DECLINED`. A cancelled or declined request is exactly
+when a customer most wants to ask what happened. Those two properties live on
+the models rather than in the pages, because a status list copied into markup
+drifts the moment a state is added.
+
+The phone number is deliberately left as digits, not a `tel:` link — it looks
+tidier until someone copies the number out of the page and gets the `href`
+with it.
 
 
 ## How you actually work on this
@@ -641,10 +745,13 @@ copy tools\supabase-credentials.example.txt tools\supabase-credentials.txt
 - **Use the Session pooler (port 5432), not the Transaction pooler (6543).**
   Npgsql uses server-side prepared statements, which PgBouncer's transaction
   mode does not support — every query fails.
-- The vendored **Npgsql is 4.1.10**, which neither parses a `postgresql://` URI
-  nor knows an `Include Error Detail` key. `Db.UriToConnString` converts the
-  URI, and builds the result through `NpgsqlConnectionStringBuilder` rather
-  than by writing `Key=Value` text by hand.
+- `Db.UriToConnString` normalises a `postgresql://` URI into the
+  `Key=Value` form the connection string needs, and builds it through
+  `NpgsqlConnectionStringBuilder` rather than by writing text by hand.
+  Supabase, Heroku, Vercel and Railway all hand out the URI form, and
+  passing one through raw fails on every query in a way that reads like a
+  credentials problem rather than a format one. Anything that is not a URI
+  is returned untouched, so a hand-written keyword string still works.
 </details>
 
 ### Resetting Supabase
@@ -721,10 +828,12 @@ real Visual Studio supply its own. In the IDE you need neither — just open
 `STAR-DOM-Web.sln`, install the **ASP.NET and web development** workload if
 prompted, and press **Ctrl+F5**.
 
-> **Never use `-t:Rebuild`.** Clean runs first and deletes the four vendored
-> Npgsql dependency DLLs out of `bin\`, because nothing in the project
-> references them as build outputs. `build.bat` uses `-t:Build` and `bin\`
-> keeps all 16 files.
+> **Never use `-t:Rebuild`.** Clean runs first and deletes the vendored Npgsql
+> dependency DLLs out of `bin\`, because nothing in the project references
+> them as build outputs — they are copied there by the package restore, not
+> produced by it. `build.bat` uses `-t:Build`, and `bin\` keeps all 28 files
+> (14 DLLs). Restoring them is `dotnet restore` or a NuGet restore; it is not
+> something the build can do for you.
 
 After a rebuild, refresh the browser (IIS Express picks up new `bin` DLLs
 automatically; restart it if anything looks stale).
