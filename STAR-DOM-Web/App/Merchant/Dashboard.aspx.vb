@@ -50,8 +50,20 @@ Namespace STAR_DOM.Web
             ' a pop-up is a marketing presence, not a till. Leaving them would have
             ' put a permanently-zero "Event Booth Takings" card beside a reports page
             ' that no longer knows booth money exists.
+            '
+            ' The other tiles went with them, which was the wrong call. Stripping the
+            ' booth numbers also left one lonely revenue card in a grid built for
+            ' five, and the counts a merchant actually steers by -- orders paid,
+            ' commissions waiting on a reply, catalogue size, customers, rating --
+            ' had nowhere to live. None of those read EventSales, so putting them
+            ' back contradicts nothing.
             sb.Append("<div class=""grid kpis"">")
             sb.Append(DigitalMarketplaceKpi())
+            sb.Append(PaidOrdersKpi())
+            sb.Append(CommissionsWaitingKpi())
+            sb.Append(SkuCountKpi())
+            sb.Append(CustomerKpi())
+            sb.Append(RatingKpi())
             sb.Append("</div>")
 
             ' ---- Workbench ----
@@ -110,12 +122,103 @@ Namespace STAR_DOM.Web
             ' (in-person booth takings) from PAID orders — two different populations —
             ' so the KPI read 0.00 or worse even when online orders were landing.
             Dim digital As Decimal = _reports.RevenueTotal()
-            Return "<div class=""kpi k-icon"">" &
-                   "<span class=""k-ic"" style=""border-radius:9px;background:var(--tertiary-fixed);color:var(--tertiary)"">" & WebUi.Ic("hub") & "</span>" &
-                   "<div class=""k-label"">Digital Marketplace Revenue</div>" &
-                   "<div class=""k-value"">" & Fmt_Php(digital) & "</div>" &
-                   "<div class=""k-sub""><b style=""color:var(--ink)"">" & _reports.TotalCommissions().ToString() & " Commissions</b> &nbsp;&bull;&nbsp; <b style=""color:var(--ink)"">" &
-                   _reports.OrdersCount().ToString() & " Parcel Shipments</b></div></div>"
+
+            ' The foot line used to carry the commission and parcel counts, which was
+            ' then the only place they appeared. They are proper tiles now, so repeating
+            ' them here told the merchant the same thing twice. A recent trend instead:
+            ' a lifetime total on its own cannot say whether the shop is moving.
+            Dim recent As Decimal = 0D
+            ' Named row, not day: Day is a VB built-in, and shadowing it here
+            ' makes the loop read as a call to Day(date).
+            For Each row In _reports.RevenueLastNDays(30)
+                recent += row.total
+            Next
+
+            Return KpiTile("hub", "var(--tertiary-fixed)", "var(--tertiary)",
+                           "Digital Marketplace Revenue", Fmt_Php(digital),
+                           "<b style=""color:var(--ink)"">" & Fmt_Php(recent) &
+                           "</b> in the last 30 days")
+        End Function
+
+        ''' <summary>
+        ''' One KPI tile, built in one place.
+        ''' </summary>
+        ''' <remarks>
+        ''' Six near-identical string literals is how a KPI row drifts: one tile gets
+        ''' a heavier icon, another loses the icon entirely, and nothing looks wrong
+        ''' enough to notice. Every tile on the dashboard goes through this.
+        '''
+        ''' footHtml is pre-built markup and is deliberately NOT escaped — callers
+        ''' want to bold a figure inside it. Everything else IS escaped: the labels are
+        ''' literal today, but escaping should be the default rather than the thing
+        ''' someone remembers.
+        ''' </remarks>
+        Private Function KpiTile(icon As String, accentBg As String, accentFg As String,
+                                 label As String, value As String,
+                                 Optional footHtml As String = "") As String
+            Dim sb As New StringBuilder()
+            sb.Append("<div class=""kpi k-icon"">")
+            sb.Append("<span class=""k-ic"" style=""border-radius:9px;background:" & accentBg &
+                      ";color:" & accentFg & """>" & WebUi.Ic(icon) & "</span>")
+            sb.Append("<div class=""k-label"">" & WebUi.Esc(label) & "</div>")
+            sb.Append("<div class=""k-value"">" & WebUi.Esc(value) & "</div>")
+            If footHtml <> "" Then sb.Append("<div class=""k-sub"">" & footHtml & "</div>")
+            sb.Append("</div>")
+            Return sb.ToString()
+        End Function
+
+        ''' <summary>Orders whose payment has actually landed.</summary>
+        Private Function PaidOrdersKpi() As String
+            Return KpiTile("payments", "#e9f7ee", "var(--green)",
+                           "Paid Orders", _reports.PaidOrdersCount().ToString(),
+                           "<b style=""color:var(--ink)"">" & _reports.OrdersCount().ToString() &
+                           "</b> placed in total")
+        End Function
+
+        ''' <summary>
+        ''' Commission requests in the two states only the studio can move: submitted,
+        ''' or pending review. This is the tile that says "there is work waiting on you".
+        ''' </summary>
+        Private Function CommissionsWaitingKpi() As String
+            Return KpiTile("account_tree", "var(--primary)", "var(--on-primary)",
+                           "Awaiting Your Reply", _reports.PendingCommissions().ToString(),
+                           "<b style=""color:var(--ink)"">" & _reports.TotalCommissions().ToString() &
+                           "</b> commissions all-time")
+        End Function
+
+        ''' <summary>Active catalogue size, with the restock count attached.</summary>
+        Private Function SkuCountKpi() As String
+            ' --on-yellow is the palette's own text-on-yellow, so the amber icon keeps
+            ' the contrast the other tiles have instead of yellow-on-yellow.
+            Return KpiTile("inventory_2", "var(--yellow)", "var(--on-yellow)",
+                           "Handcrafted SKUs", _reports.TotalProducts().ToString(),
+                           "<b style=""color:var(--ink)"">" & _reports.LowStockCount().ToString() &
+                           "</b> low or out of stock")
+        End Function
+
+        Private Function CustomerKpi() As String
+            Return KpiTile("group", "var(--surface-mid)", "var(--tertiary)",
+                           "Customers", _reports.TotalCustomers().ToString(),
+                           "<b style=""color:var(--ink)"">" & _reports.ReviewCount().ToString() &
+                           "</b> published reviews")
+        End Function
+
+        ''' <summary>
+        ''' Average star rating. Reads an em dash rather than 0.00 when nothing is
+        ''' rated yet: COALESCE turns an unrated catalogue into a hard zero, and a zero
+        ''' looks like a failing score instead of an absence of scores.
+        ''' </summary>
+        Private Function RatingKpi() As String
+            Dim count As Integer = _reports.ReviewCount()
+            Dim value As String
+            If count = 0 Then
+                value = "—"
+            Else
+                value = _reports.AvgRating().ToString("0.00") & " / 5"
+            End If
+            Return KpiTile("star", "var(--yellow-soft)", "var(--on-yellow)",
+                           "Average Rating", value,
+                           "<b style=""color:var(--ink)"">" & count.ToString() & "</b> reviews")
         End Function
 
         Private Function ScheduledEventsPanel(current As PopUpEvent) As String

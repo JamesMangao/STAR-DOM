@@ -583,6 +583,40 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.LocationController(STAR_DOM.Models.PopUpEvent)">
  <summary>Top store-status widget with gradient accent, photo overlay and booth pulse.</summary>
 </member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.KpiTile(System.String,System.String,System.String,System.String,System.String,System.String)">
+ <summary>
+ One KPI tile, built in one place.
+ </summary>
+ <remarks>
+ Six near-identical string literals is how a KPI row drifts: one tile gets
+ a heavier icon, another loses the icon entirely, and nothing looks wrong
+ enough to notice. Every tile on the dashboard goes through this.
+
+ footHtml is pre-built markup and is deliberately NOT escaped — callers
+ want to bold a figure inside it. Everything else IS escaped: the labels are
+ literal today, but escaping should be the default rather than the thing
+ someone remembers.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.PaidOrdersKpi">
+ <summary>Orders whose payment has actually landed.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.CommissionsWaitingKpi">
+ <summary>
+ Commission requests in the two states only the studio can move: submitted,
+ or pending review. This is the tile that says "there is work waiting on you".
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.SkuCountKpi">
+ <summary>Active catalogue size, with the restock count attached.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDashboardPage.RatingKpi">
+ <summary>
+ Average star rating. Reads an em dash rather than 0.00 when nothing is
+ rated yet: COALESCE turns an unrated catalogue into a hard zero, and a zero
+ looks like a failing score instead of an absence of scores.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Web.MerchantDashboardPage.RecentOrdersPanel">
  <summary>
  The last five paid online orders, newest first. Booth takings used to be
