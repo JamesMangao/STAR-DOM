@@ -21,6 +21,8 @@ Namespace STAR_DOM.Web
         Protected authGate As System.Web.UI.HtmlControls.HtmlGenericControl
         Protected notifCount As Literal
         Protected footerTourLinks As Literal
+
+        Protected footerPayChips As Literal
         Protected toastWrap As System.Web.UI.HtmlControls.HtmlGenericControl
 
         Protected Sub Page_Load(sender As Object, e As EventArgs)
@@ -48,6 +50,15 @@ Namespace STAR_DOM.Web
                     RenderShell()
                 Catch ex As Exception
                     navLiteral.Text = WebUi.AlertBox("Could not load navigation: " & ex.Message)
+                End Try
+                ' Outside RenderShell: the footer must list the channels even on a
+                ' page whose own render threw, and a shell that failed must not take
+                ' the payment badges with it. Falls back to the two built-ins so the
+                ' footer is never blank.
+                Try
+                    RenderFooterPayChips()
+                Catch
+                    footerPayChips.Text = "<span class=""pay-chip"">GCash</span><span class=""pay-chip"">GOtyme</span>"
                 End Try
             End If
             RenderToast()
@@ -207,6 +218,64 @@ Namespace STAR_DOM.Web
             End Try
         End Sub
 
+        ''' <summary>
+        ''' Footer "PAYMENTS &amp; PLATFORM" badges, driven by PaymentSettings rather
+        ''' than hardcoded, so an admin who adds a channel is not contradicted by a
+        ''' footer still naming only GCash and GOtyme.
+        ''' </summary>
+        ''' <remarks>
+        ''' Wallets are named individually; every other channel collapses into ONE
+        ''' "Online banks" chip. Banks get added and removed constantly (BPI enabled,
+        ''' then retired again), and naming each one here made the footer churn on
+        ''' every Payment Settings change -- or worse, keep advertising a bank that
+        ''' is no longer enabled. One generic chip states the capability and drops
+        ''' out on its own when the last bank channel is switched off.
+        '''
+        ''' The grouping is deliberately footer-only. The order payment picker and the
+        ''' commission pay panel still name every channel separately, because that is
+        ''' where the customer actually chooses which account to send to.
+        '''
+        ''' J&amp;T Express is appended unconditionally: it is the courier, not a
+        ''' payment channel, and Payment Settings cannot turn it off.
+        ''' </remarks>
+        Private Sub RenderFooterPayChips()
+            Dim sb As New StringBuilder()
+            Dim keys As New List(Of String)()
+            Try
+                keys = New PaymentSettingService().EnabledChannels()
+            Catch
+                keys.Clear()
+            End Try
+            Dim anyBank As Boolean = False
+            Dim anyWallet As Boolean = False
+
+            ' ListAll orders GCash and GOtyme first and everything else after them,
+            ' so the wallet chips keep their familiar positions without re-sorting.
+            For Each k As String In keys
+                Select Case If(k, "").Trim().ToUpperInvariant()
+                    Case "GCASH", "GOTYME", "MAYA"
+                        sb.Append("<span class=""pay-chip"">" & WebUi.Esc(WebUi.ChannelBrand(k)) & "</span>")
+                        anyWallet = True
+                    Case Else
+                        ' Collapse BPI, ONLINEBANK, BANKTRANSFER, ... into one chip.
+                        anyBank = True
+                End Select
+            Next
+
+            If anyBank Then sb.Append("<span class=""pay-chip"">Online banks</span>")
+            sb.Append("<span class=""pay-chip"">J&amp;T Express</span>")
+
+            ' Never render a footer with no payment badges at all.
+            If Not anyWallet AndAlso Not anyBank Then
+                sb.Clear()
+                sb.Append("<span class=""pay-chip"">GCash</span>")
+                sb.Append("<span class=""pay-chip"">GOtyme</span>")
+                sb.Append("<span class=""pay-chip"">J&amp;T Express</span>")
+            End If
+
+            footerPayChips.Text = sb.ToString()
+        End Sub
+
         Private Function Subtitle() As String
             If STAR_DOM.Helpers.Session.IsAdmin Then Return "Administrator"
             Return "Art Lover"
@@ -337,6 +406,7 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""nav-group"">")
                 sb.Append("<div class=""nav-head"">SYSTEM<span class=""pill small gray"">ADMIN</span></div>")
                 sb.Append(NavLink(New NavItem("Admin Console", "/App/Admin/Users.aspx", "", "", "admin_panel_settings")))
+                sb.Append(NavLink(New NavItem("Storefront", "/App/Admin/Storefront.aspx", "", "", "star")))
                 sb.Append(NavLink(New NavItem("Pop-up Locations", "/App/Admin/AdminPopupLocations.aspx", "LIVE", "red", "pin_drop")))
                 sb.Append(NavLink(New NavItem("Payment Settings", "/App/Admin/PaymentSettings.aspx", "", "", "qr_code_2")))
                 sb.Append("</div>")

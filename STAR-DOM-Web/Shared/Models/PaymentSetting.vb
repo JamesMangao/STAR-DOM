@@ -75,11 +75,28 @@ Namespace STAR_DOM.Models
             Return Char.ToUpper(lower(0)) & lower.Substring(1)
         End Function
 
-        ''' <summary>True for either e-wallet, which always need a reference number.</summary>
+        ''' True when the channel is paid by scanning a QR and quoting a reference
+        ''' number from the customer's receipt -- the flow every live channel uses.
+        ''' </summary>
+        ''' <remarks>
+        ''' Deny-list, deliberately, and deliberately NOT a repository call: this is a
+        ''' model, and reaching into STAR_DOM.Repositories from here both breaks the
+        ''' documented layering and made the project stop compiling.
+        '''
+        ''' An allow-list naming GCASH/GOTYME/MAYA was the original bug. Payment
+        ''' Settings can create any channel, so an admin-added one (BPI, ONLINEBANK,
+        ''' ...) passed the picker but then failed this test, and OrderDetail drew
+        ''' neither the "Scan to Pay" button nor the QR popup: the customer picked
+        ''' the channel and was shown no QR at all, with no error to explain it.
+        '''
+        ''' STAR:DOM is online-only and takes no COD and no card, so the only values
+        ''' that are not QR-and-reference channels are the checkout placeholder and
+        ''' those two retired methods. Anything else is a real configured channel.
+        ''' </remarks>
         Public Shared Function IsEWallet(raw As String) As Boolean
             Select Case If(raw, "").Trim().ToUpperInvariant()
-                Case "GCASH", "GOTYME", "MAYA" : Return True
-                Case Else : Return False
+                Case "", "PENDING", "CARD", "COD" : Return False
+                Case Else : Return True
             End Select
         End Function
 

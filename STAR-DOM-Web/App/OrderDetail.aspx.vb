@@ -45,17 +45,15 @@ Namespace STAR_DOM.Web
                 ' attempt instead of submitting it.
                 If Guard.IsPost() AndAlso Request.Form("payOrder") = o.Id.ToString() Then
                     ' The channel is chosen in its own step above, so the order already
-                    ' carries GCash or GOtyme by the time we get here. Null-safe Trim: on
-                    ' Mono Convert.ToString(Nothing) can hand back Nothing, and .Trim()
-                    ' on that threw "Object reference not set" out of this page.
+                    ' carries a real payment channel. Null-safe Trim: on Mono Convert.
+                    ' ToString(Nothing) can hand back Nothing, and .Trim() on that threw
+                    ' "Object reference not set" out of this page.
                     Dim picked As String = Trim(Convert.ToString(Request.Form("payMethod"))).ToUpperInvariant()
-                    If picked = "GCASH" OrElse picked = "GOTYME" Then
-                        Dim pickResult As ServiceResult = _orders.ChoosePaymentMethod(o.Id, picked)
-                        If Not pickResult.Success Then
-                            Session("flash_msg") = pickResult.Message
-                            Session("flash_ok") = False
-                            Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
-                        End If
+                    Dim pickResult As ServiceResult = _orders.ChoosePaymentMethod(o.Id, picked)
+                    If Not pickResult.Success Then
+                        Session("flash_msg") = pickResult.Message
+                        Session("flash_ok") = False
+                        Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
                     End If
                     Dim r As ServiceResult = _orders.SubmitPayment(o.OrderNumber, Convert.ToString(Request.Form("payRef")), Convert.ToString(Request.Form("payPassword")))
                     Session("flash_msg") = r.Message
@@ -238,23 +236,25 @@ Namespace STAR_DOM.Web
                     sb.Append("</div>")
                 End If
                 Dim chosen As String = If(o.PaymentMethod, "").Trim().ToUpperInvariant()
-                Dim channelChosen As Boolean = (chosen = "GCASH" OrElse chosen = "GOTYME")
+                Dim ps1 As New PaymentSettingRepository()
+                Dim channels As List(Of String) = ps1.ListAll().Where(Function(p) p.IsEnabled).Select(Function(p) p.Channel).ToList()
+                Dim channelChosen As Boolean = channels.Contains(chosen)
                 If canPay AndAlso Not channelChosen Then
-                    ' Phase 1 — choose the wallet first. The order is parked as PENDING
-                    ' until this point, so the customer picks GCash or GOtyme here and
-                    ' the page returns with that wallet's QR already open.
-                    Dim ps1 As New PaymentSettingRepository()
+                    ' Phase 1 — choose a payment channel. Every enabled channel from
+                    ' Payment Settings is offered here: GCash, GOtyme, and any admin-
+                    ' created wallet (BPI, OnlineBank, …) that is turned on.
                     sb.Append("<div class=""card"" style=""border:1.5px solid var(--line);border-radius:14px;padding:16px"">")
                     sb.Append("<h3 style=""margin:0 0 6px;font-size:15px"">" & WebUi.Ic("payments", "sm") & " Choose how to pay</h3>")
-                    sb.Append("<p class=""sub"" style=""margin:0 0 12px;font-size:12px"">Pick GCash or GOtyme — we'll show the official QR so you can scan and pay.</p>")
+                    sb.Append("<p class=""sub"" style=""margin:0 0 12px;font-size:12px"">Pick a payment channel — we'll show the official QR so you can scan and pay.</p>")
                     sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"" style=""display:flex;flex-direction:column;gap:12px"">")
                     sb.Append(STAR_DOM.Web.Csrf.HiddenField())
                     sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
                     sb.Append("<label style=""display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"">Payment method *</label>")
                     sb.Append("<select name=""payMethod"" required style=""width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;background:var(--surface);color:var(--ink);outline:none"">")
                     sb.Append("<option value="""">Choose a payment method…</option>")
-                    If ps1.IsChannelEnabled(PaymentSettingRepository.Gcash) Then sb.Append("<option value=""GCASH"">GCash</option>")
-                    If ps1.IsChannelEnabled(PaymentSettingRepository.Gotyme) Then sb.Append("<option value=""GOTYME"">GOtyme</option>")
+                    For Each ch As String In channels
+                        sb.Append("<option value=""" & ch & """>" & WebUi.Esc(WebUi.ChannelBrand(ch)) & "</option>")
+                    Next
                     sb.Append("</select>")
                     sb.Append("<button class=""btn primary"" type=""submit"" name=""chooseMethod"" value=""1"" style=""padding:10px 20px;border-radius:10px;font-weight:700;display:inline-flex;align-items:center;gap:8px""><span class=""ic ms"">qr_code_2</span><span>Show QR &amp; pay</span></button>")
                     sb.Append("</form>")
@@ -264,7 +264,7 @@ Namespace STAR_DOM.Web
                     Dim brandName As String = WebUi.ChannelBrand(method)
                     Dim brandTitle As String = brandName & " Payment Verification"
                     Dim brandColor As String = WebUi.ChannelColor(method)
-                    Dim phRef As String = If(method = "GCASH", "e.g. 1002 9482 1192", "e.g. GTYME-9482-1192")
+                    Dim phRef As String = "e.g. " & (If(method = "GCASH", "1002 9482 1192", If(method = "GOTYME", "GTYME-9482-1192", "transaction reference from your receipt")))
 
                     sb.Append("<div class=""card"" style=""background:linear-gradient(180deg,#ffffff 0%,var(--surface-low) 100%);border:1.5px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--sh-1)"">")
                     sb.Append("<div style=""display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"">")

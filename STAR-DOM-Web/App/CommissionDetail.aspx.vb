@@ -473,8 +473,10 @@ Namespace STAR_DOM.Web
         Private Function PayPanel(cm As Commission, due As Decimal) As String
             Dim psRepo As New PaymentSettingRepository()
             Dim channels As New List(Of String)()
-            For Each ch As String In {PaymentSettingRepository.Gcash, PaymentSettingRepository.GOtyme}
-                If psRepo.IsChannelEnabled(ch) Then channels.Add(ch)
+            ' ListAll returns PaymentSetting rows (built-ins plus any admin-created
+            ' channel), and the flag on a row is IsEnabled.
+            For Each p As PaymentSetting In psRepo.ListAll()
+                If p.IsEnabled Then channels.Add(p.Channel)
             Next
 
             Dim sb As New StringBuilder()

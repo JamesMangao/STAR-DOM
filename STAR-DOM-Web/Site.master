@@ -83,9 +83,7 @@
                 <h4>PAYMENTS &amp; PLATFORM</h4>
                 <p>Trusted nationwide shipping with cashless checkout.</p>
                 <div class="pay-chips">
-                    <span class="pay-chip">GCash</span>
-                    <span class="pay-chip">GOtyme</span>
-                    <span class="pay-chip">J&amp;T Express</span>
+                    <asp:Literal ID="footerPayChips" runat="server" />
                 </div>
                 <ul style="margin-top:14px">
                     <li><a href="/App/Catalog.aspx">Products Catalog</a></li>

@@ -286,6 +286,28 @@ STAR_DOM_Web
  correct number, so the toast needs no data of its own.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.SiteMaster.RenderFooterPayChips">
+ <summary>
+ Footer "PAYMENTS &amp; PLATFORM" badges, driven by PaymentSettings rather
+ than hardcoded, so an admin who adds a channel is not contradicted by a
+ footer still naming only GCash and GOtyme.
+ </summary>
+ <remarks>
+ Wallets are named individually; every other channel collapses into ONE
+ "Online banks" chip. Banks get added and removed constantly (BPI enabled,
+ then retired again), and naming each one here made the footer churn on
+ every Payment Settings change -- or worse, keep advertising a bank that
+ is no longer enabled. One generic chip states the capability and drops
+ out on its own when the last bank channel is switched off.
+
+ The grouping is deliberately footer-only. The order payment picker and the
+ commission pay panel still name every channel separately, because that is
+ where the customer actually chooses which account to send to.
+
+ J&amp;T Express is appended unconditionally: it is the courier, not a
+ payment channel, and Payment Settings cannot turn it off.
+ </remarks>
+</member>
 <member name="T:STAR_DOM.Web.DefaultPage">
  <summary>
  Public storefront landing page. Anonymous visitors may browse the catalog,
@@ -682,7 +704,23 @@ STAR_DOM_Web
  every channel inside the master's single form. Scanned instead of read
  straight off Request.Form so pressing Enter in a text box — which submits
  the first submit button on the page — cannot hand back a mangled value.
+ Any valid channel key is accepted, not just the two built-ins: an
+ admin-created channel has to be editable on its card exactly like GCash.
  </summary>
+</member>
+<member name="M:STAR_DOM.Web.AdminPaymentSettingsPage.NormalizeChannel(System.String)">
+ <summary>Trimmed, upper-cased channel key. The legacy MAYA alias maps to GOtyme.</summary>
+</member>
+<member name="M:STAR_DOM.Web.AdminPaymentSettingsPage.IsValidChannelKey(System.String)">
+ <summary>
+ A channel key has to survive the VARCHAR(20) column and be usable as this
+ page's input-name prefix (see Field), so it is limited to letters, digits,
+ spaces, hyphens and underscores. Anything else - a comma, a slash, the
+ backslash that used to leak in - would produce a channel nobody can read.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.AdminPaymentSettingsPage.SetFlash(System.String,System.Boolean)">
+ <summary>One-shot flash message, matching the convention Flash() drains.</summary>
 </member>
 <member name="M:STAR_DOM.Web.AdminPaymentSettingsPage.ReadQrImage(System.Web.HttpPostedFile,System.String@)">
  <summary>
@@ -699,6 +737,19 @@ STAR_DOM_Web
  </summary>
 </member>
 <member name="M:STAR_DOM.Web.AdminPaymentSettingsPage.Flash">
+ <summary>Same one-shot flash message convention used across the app.</summary>
+</member>
+<member name="T:STAR_DOM.Web.AdminStorefrontPage">
+ <summary>
+ Admin console page for storefront presentation. Its one job right now is
+ choosing the product shown in the "POP-UP SPOTLIGHT" card at the top of the
+ landing page (and the marketplace hero). The choice is stored in SiteSettings
+ and read back by CatalogService.Spotlight, which falls back to the store's
+ best-selling active product — so the hero is never empty and always reflects
+ what actually sells, without anything needing to be flagged "featured".
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.AdminStorefrontPage.Flash">
  <summary>Same one-shot flash message convention used across the app.</summary>
 </member>
 <member name="T:STAR_DOM.Database.Db">
@@ -1013,9 +1064,6 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Models.PaymentSetting.ToTitleCase(System.String)">
  <summary>Title-case a string (e.g., "ONLINEBANK" -> "Onlinebank").</summary>
 </member>
-<member name="M:STAR_DOM.Models.PaymentSetting.IsEWallet(System.String)">
- <summary>True for either e-wallet, which always need a reference number.</summary>
-</member>
 <member name="P:STAR_DOM.Models.PaymentSetting.SupportContact">
  <summary>
  Where a customer goes when a payment cannot be confirmed. Held here, not in
@@ -1255,7 +1303,12 @@ STAR_DOM_Web
  </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.ListAll">
- <summary>All rows from the table (legacy MAYA row migrated to GOtyme if needed).</summary>
+ <summary>
+ Every configured channel — the two built-ins plus whatever the admin added
+ from App/Admin/PaymentSettings.aspx (ONLINEBANK, BANKTRANSFER, …). The
+ built-ins sort first so the familiar cards keep their place; everything else
+ follows alphabetically. A legacy MAYA row is adopted as GOtyme if needed.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.FindRow(System.String)">
  <summary>One mapped row for a channel key, or Nothing when there is none.</summary>
@@ -1264,6 +1317,15 @@ STAR_DOM_Web
  <summary>Insert or update one channel's settings. Channel can be any identifier
  (e.g., GCASH, GOTYME, ONLINEBANK, etc.). Validates only that it's not empty.</summary>
 </member>
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.DeleteChannel(System.String)">
+ <summary>
+ Removes one admin-created channel. The two built-ins are refused: GCash and
+ GOtyme are always offered at checkout, so ListAll would just re-add them as
+ defaults and the delete would look like it silently failed. Orders and
+ commissions keep the PaymentMethod string they recorded, so removing a
+ channel never rewrites a historical receipt.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.UpdateQrImage(System.String,System.Byte[],System.String,System.String)">
  <summary>
  Replace (or clear) just the QR image of one channel. The bytes go into
@@ -1271,6 +1333,11 @@ STAR_DOM_Web
  image. QrImageFile is cleared at the same time so a stale path cannot
  keep pointing at a file that is no longer the live image.
  </summary>
+ <remarks>
+ Any channel is accepted, not just the two built-ins: an admin-created channel
+ owns its QR image the same way GCash does. Restricting this to GCASH/GOTYME
+ made a custom channel silently drop the upload it had just been asked to save.
+ </remarks>
 </member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.AdoptFileAsImage(System.String,System.Byte[],System.String,System.String)">
  <summary>Stores an image that is still on disk into the row, then clears the path.</summary>
@@ -1297,6 +1364,16 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.DefaultFor(System.String)">
  <summary>Creates a sensible default for any channel. Built-in channels get
  preset account numbers; new channels get blank defaults.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.ProductRepository.BestSeller">
+ <summary>
+ The single best-selling active product across the whole store, by units
+ sold. Drives the automatic storefront spotlight when the admin has not
+ pinned a product, so the hero reflects what actually sells rather than
+ only the pieces someone remembered to flag "featured". Rozanov (ID 11)
+ is skipped for the same reason as in ListFeatured — a legacy seeded row
+ should not crowd the hero — and Name breaks ties deterministically.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ProductRepository.ListAll(System.String)">
  <summary>
@@ -1380,6 +1457,40 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.ReportRepository.CategorySales">
  <summary>Sales by category across online order lines.</summary>
 </member>
+<member name="T:STAR_DOM.Repositories.SiteSettingRepository">
+ <summary>
+ Read/write access to the SiteSettings table — a tiny key/value store for
+ admin-managed storefront options that do not deserve a table of their own
+ (currently the landing-page "pop-up spotlight" product). Values are always
+ stored as text; callers parse them back into the type they need.
+ </summary>
+</member>
+<member name="F:STAR_DOM.Repositories.SiteSettingRepository.SpotlightProductIdKey">
+ <summary>Key holding the Product.Id the admin pinned to the landing hero. "0"/"" means auto.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.SiteSettingRepository.Fetch(System.String,System.String)">
+ <summary>
+ One setting's raw text, or <paramref name="fallback"/> when the key is
+ unset (or the table does not exist yet on a pre-migration install).
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.SiteSettingRepository.Store(System.String,System.String,System.String)">
+ <summary>Insert or overwrite one setting.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.SiteSettingRepository.GetSpotlightProductId">
+ <summary>The Product.Id pinned to the landing hero, or 0 when left on automatic.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.SiteSettingRepository.SetSpotlightProductId(System.Int32,System.String)">
+ <summary>Pins a product to the landing hero. Pass 0 to go back to automatic.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.SiteSettingRepository.EnsureTable">
+ <summary>
+ Creates the SiteSettings table on demand, the same way Db.LogError
+ bootstraps AppErrors and PaymentSettingRepository bootstraps its table —
+ so the feature works on installs that have not re-run the schema yet.
+ Idempotent and cheap.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.UserAddressRepository.CreateIfNew(System.Int32,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
  <summary>Save the detailed address from a checkout/commission form, unless
  an address with the same street/barangay/city/zip already exists for this
@@ -1443,6 +1554,15 @@ STAR_DOM_Web
  <summary>
  Shopper-facing bundle legend, e.g. "Stickers Bundle — any 4 for ₱100 ·
  Button Pins Bundle — any 3 for ₱100". Empty when no deal bundle is active.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CatalogService.Spotlight">
+ <summary>
+ The single product shown in the landing-page hero spotlight. The admin can
+ pin one from the admin console; when nothing is pinned — or the pinned
+ product was deleted or hidden — it falls back to the store's best-selling
+ active product so the hero is never empty and always promotes something
+ that actually sells, whether or not it was flagged "featured".
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.CatalogService.CommissionSlots">
@@ -1631,12 +1751,13 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Services.OrderService.SubmitPayment(System.String,System.String,System.String)">
  <summary>
- Step 3 of the payment flow - the customer's side. The buyer pays GCash or
- GOtyme outside the app and hands over the reference number from the receipt
- plus their password. This does NOT make the order paid: it parks
- PaymentStatus at SUBMITTED so the studio can check the transfer against its
- own records first. No receipt is issued, PROCESSING cannot start, and J&amp;T
- stays shut until the studio confirms below.
+ Step 3 of the payment flow - the customer's side. The buyer pays by the
+ channel shown on the order page (any enabled channel from Payment Settings),
+ hands over the reference number from the receipt plus their password. This
+ does NOT make the order paid: it parks PaymentStatus at SUBMITTED so the
+ studio can check the transfer against its own records first. No receipt is
+ issued, PROCESSING cannot start, and J&amp;T stays shut until the studio
+ confirms below.
  </summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.ConfirmPayment(System.Int32,System.String)">
@@ -1712,6 +1833,24 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Services.OrderService.IssueReceiptFor(STAR_DOM.Models.Order)">
  <summary>Issue an official receipt whenever a payment becomes PAID.</summary>
+</member>
+<member name="T:STAR_DOM.Services.PaymentSettingService">
+ <summary>
+ Customer-facing view of the admin-managed payment channels.
+ </summary>
+ <remarks>
+ Payment Settings lets an admin create any channel (GCash, GOtyme, and
+ whatever else they add). Anything that has to show those channels to a
+ customer reads them through here rather than through the repository, so the
+ page -> service -> repository layering in ARCHITECTURE-DIAGRAM.md still
+ holds: the master page footer included.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.PaymentSettingService.EnabledChannels">
+ <summary>
+ Channel keys the storefront should advertise, built-ins first, admin-created
+ channels after them, alphabetically. Empty when nothing is configured.
+ </summary>
 </member>
 <member name="M:STAR_DOM.Services.ReportService.RevenueTotal">
  <summary>Every peso the studio took online. The web marketplace is the only channel.</summary>
