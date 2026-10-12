@@ -57,13 +57,22 @@ Namespace STAR_DOM.Models
         ''' Customer-facing brand name for a stored payment method. The pre-rename
         ''' 'MAYA' value is still mapped, so orders recorded before the switch to
         ''' GOtyme are labelled with the wallet the customer actually paid with.
+        ''' Unknown channels are title-cased (e.g., ONLINEBANK -> Onlinebank).
         ''' </summary>
         Public Shared Function DisplayName(raw As String) As String
-            Select Case If(raw, "").Trim().ToUpperInvariant()
+            Dim ch As String = If(raw, "").Trim().ToUpperInvariant()
+            Select Case ch
                 Case "GCASH" : Return "GCash"
                 Case "GOTYME", "MAYA" : Return "GOtyme"
-                Case Else : Return If(raw, "")
+                Case Else : Return ToTitleCase(raw)
             End Select
+        End Function
+
+        ''' <summary>Title-case a string (e.g., "ONLINEBANK" -> "Onlinebank").</summary>
+        Private Shared Function ToTitleCase(s As String) As String
+            If String.IsNullOrWhiteSpace(s) Then Return ""
+            Dim lower As String = s.ToLowerInvariant()
+            Return Char.ToUpper(lower(0)) & lower.Substring(1)
         End Function
 
         ''' <summary>True for either e-wallet, which always need a reference number.</summary>

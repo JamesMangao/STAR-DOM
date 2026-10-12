@@ -34,12 +34,44 @@ Namespace STAR_DOM.Web
             End Try
         End Sub
 
-        ' ---------------- POST: save channel settings ----------------
+        ' ---------------- POST: save channel settings / add new channel ----------------
 
         Private Sub HandlePost()
             If Not Csrf.IsValidRequest() Then
                 Out.Text = WebUi.AlertBox("Your session expired — please try again.")
                 Render()
+                Return
+            End If
+
+            ' Handle "Add New Channel" action (separate from per-channel save buttons)
+            Dim newChannelName As String = Request.Form("newChannelName")
+            If Not String.IsNullOrWhiteSpace(newChannelName) Then
+                Dim ch As String = newChannelName.Trim().ToUpperInvariant()
+                If String.IsNullOrWhiteSpace(ch) Then
+                    Session("flash_msg") = "Channel name cannot be empty."
+                    Session("flash_ok") = False
+                ElseIf ch = "GCASH" OrElse ch = "GOTYME" OrElse ch = "MAYA" Then
+                    Session("flash_msg") = ch & " already exists — edit the existing card instead."
+                    Session("flash_ok") = False
+                Else
+                    Dim newSetting As New PaymentSetting With {
+                        .Channel = ch,
+                        .AccountName = "",
+                        .AccountNumber = "",
+                        .QrDisplayMode = "BOTH",
+                        .IsEnabled = True,
+                        .UpdatedBy = If(STAR_DOM.Helpers.Session.CurrentUser IsNot Nothing,
+                                        STAR_DOM.Helpers.Session.CurrentUser.Username, "")
+                    }
+                    If _settings.Save(newSetting) Then
+                        Session("flash_msg") = "Channel " & ch & " created — configure its settings below."
+                        Session("flash_ok") = True
+                    Else
+                        Session("flash_msg") = "Could not create channel."
+                        Session("flash_ok") = False
+                    End If
+                End If
+                Response.Redirect("/App/Admin/PaymentSettings.aspx", True)
                 Return
             End If
 
@@ -226,8 +258,9 @@ Namespace STAR_DOM.Web
             Dim sb As New StringBuilder()
             sb.Append(WebUi.Section("Payment Settings",
                                     "SYSTEM ADMIN · E-WALLET QR MANAGEMENT",
-                                    "Control what customers see when they pay with GCash or GOtyme: the QR code, " &
-                                    "the account number, the account name, and how much of it is displayed."))
+                                    "Control what customers see when they pay: the QR code, " &
+                                    "the account number, the account name, and how much of it is displayed. " &
+                                    "Add new channels (e.g., ONLINEBANK, BANKTRANSFER) — they appear here and at checkout."))
             sb.Append(Flash())
 
             sb.Append("<div class=""sub"" style=""margin-bottom:14px"">" & WebUi.Ic("info", "sm") &
@@ -239,6 +272,20 @@ Namespace STAR_DOM.Web
             For Each s As PaymentSetting In all
                 sb.Append(ChannelCard(s))
             Next
+
+            ' --- Add New Channel card ---
+            sb.Append("<div class=""card add-channel-card"" style=""border-style:dashed;border-color:var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:220px;text-align:center"">")
+            sb.Append(Csrf.HiddenField())
+            sb.Append("<div style=""font-size:48px;color:var(--ink-soft);margin-bottom:12px"">" & WebUi.Ic("add_circle", "lg") & "</div>")
+            sb.Append("<b style=""font-size:16px;display:block;margin-bottom:6px"">Add New Channel</b>")
+            sb.Append("<span class=""sub"" style=""display:block;margin-bottom:16px"">Create a new payment channel (e.g., ONLINEBANK, BANKTRANSFER)</span>")
+            sb.Append("<input type=""text"" name=""newChannelName"" placeholder=""CHANNEL NAME (e.g. ONLINEBANK)"" " &
+                      "style=""width:100%;max-width:260px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;text-transform:uppercase"" maxlength=""20"">")
+            sb.Append("<div style=""margin-top:12px"">")
+            sb.Append("<button class=""btn primary"" type=""submit"" name=""newChannelName"" value=""\"">")
+            sb.Append("<span class=""ic ms"">add</span><span>Create Channel</span></button>")
+            sb.Append("</div></div>")
+
             sb.Append("</div>")
 
             sb.Append("<div class=""card"" style=""margin-top:16px"">")
@@ -253,7 +300,8 @@ Namespace STAR_DOM.Web
 
         Private Function ChannelCard(s As PaymentSetting) As String
             Dim isGcash As Boolean = String.Equals(s.Channel, PaymentSettingRepository.Gcash, StringComparison.OrdinalIgnoreCase)
-            Dim brandColor As String = If(isGcash, "#007dfe", "#00a651")
+            Dim isGotyme As Boolean = String.Equals(s.Channel, PaymentSettingRepository.Gotyme, StringComparison.OrdinalIgnoreCase)
+            Dim brandColor As String = If(isGcash, "#007dfe", If(isGotyme, "#00a651", "#7c3aed"))
             Dim brand As String = s.DisplayChannel
             ' Prefers the image stored in the database; falls back to an old file path.
             Dim qrFile As String = WebUi.QrImageUrl(s, s.Channel)

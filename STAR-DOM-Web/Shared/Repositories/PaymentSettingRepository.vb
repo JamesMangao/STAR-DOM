@@ -19,7 +19,7 @@ Namespace STAR_DOM.Repositories
         ''' </summary>
         Public Const LegacyMaya As String = "MAYA"
 
-        ''' <summary>Both rows, ordered GCash first. Missing rows come back as safe defaults.</summary>
+        ''' <summary>All rows from the table (legacy MAYA row migrated to GOtyme if needed).</summary>
         Public Function ListAll() As List(Of PaymentSetting)
             Dim found As New List(Of PaymentSetting)()
             Try
@@ -43,6 +43,7 @@ Namespace STAR_DOM.Repositories
                 End If
             End If
 
+            ' Ensure GCash and GOtyme always exist (as defaults if not in DB)
             For Each ch As String In {Gcash, GOtyme}
                 If Not found.Any(Function(p) String.Equals(p.Channel, ch, StringComparison.OrdinalIgnoreCase)) Then
                     found.Add(DefaultFor(ch))
@@ -53,7 +54,7 @@ Namespace STAR_DOM.Repositories
 
         Public Function GetByChannel(channel As String) As PaymentSetting
             Dim ch As String = If(channel, "").Trim().ToUpperInvariant()
-            If ch <> Gcash AndAlso ch <> GOtyme AndAlso ch <> LegacyMaya Then Return Nothing
+            If String.IsNullOrWhiteSpace(ch) Then Return Nothing
 
             Dim found As PaymentSetting = FindRow(ch)
             If found Is Nothing AndAlso ch <> LegacyMaya Then
@@ -80,12 +81,13 @@ Namespace STAR_DOM.Repositories
             Return Nothing
         End Function
 
-        ''' <summary>Insert or update one channel's settings. Returns False when the channel is unknown.</summary>
+        ''' <summary>Insert or update one channel's settings. Channel can be any identifier
+        ''' (e.g., GCASH, GOTYME, ONLINEBANK, etc.). Validates only that it's not empty.</summary>
         Public Function Save(setting As PaymentSetting) As Boolean
             If setting Is Nothing Then Return False
             Dim ch As String = If(setting.Channel, "").Trim().ToUpperInvariant()
             If ch = LegacyMaya Then ch = GOtyme
-            If ch <> Gcash AndAlso ch <> GOtyme Then Return False
+            If String.IsNullOrWhiteSpace(ch) Then Return False
             setting.Channel = ch
             EnsureTable()
 
@@ -181,11 +183,15 @@ Namespace STAR_DOM.Repositories
             End Try
         End Sub
 
+        ''' <summary>Creates a sensible default for any channel. Built-in channels get
+        ''' preset account numbers; new channels get blank defaults.</summary>
         Private Function DefaultFor(channel As String) As PaymentSetting
+            Dim ch As String = channel.Trim().ToUpperInvariant()
             Return New PaymentSetting With {
-                .Channel = channel,
+                .Channel = ch,
                 .AccountName = "STAR:DOM ATELIER / JAMES M.",
-                .AccountNumber = If(channel = Gcash, "0917 839 2041", "0998 552 1928"),
+                .AccountNumber = If(ch = Gcash, "0917 839 2041",
+                                 If(ch = GOtyme, "0998 552 1928", "")),
                 .QrImageFile = "",
                 .QrImageData = Nothing,
                 .QrImageMime = "",

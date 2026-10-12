@@ -1007,7 +1007,11 @@ STAR_DOM_Web
  Customer-facing brand name for a stored payment method. The pre-rename
  'MAYA' value is still mapped, so orders recorded before the switch to
  GOtyme are labelled with the wallet the customer actually paid with.
+ Unknown channels are title-cased (e.g., ONLINEBANK -> Onlinebank).
  </summary>
+</member>
+<member name="M:STAR_DOM.Models.PaymentSetting.ToTitleCase(System.String)">
+ <summary>Title-case a string (e.g., "ONLINEBANK" -> "Onlinebank").</summary>
 </member>
 <member name="M:STAR_DOM.Models.PaymentSetting.IsEWallet(System.String)">
  <summary>True for either e-wallet, which always need a reference number.</summary>
@@ -1251,13 +1255,14 @@ STAR_DOM_Web
  </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.ListAll">
- <summary>Both rows, ordered GCash first. Missing rows come back as safe defaults.</summary>
+ <summary>All rows from the table (legacy MAYA row migrated to GOtyme if needed).</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.FindRow(System.String)">
  <summary>One mapped row for a channel key, or Nothing when there is none.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.Save(STAR_DOM.Models.PaymentSetting)">
- <summary>Insert or update one channel's settings. Returns False when the channel is unknown.</summary>
+ <summary>Insert or update one channel's settings. Channel can be any identifier
+ (e.g., GCASH, GOTYME, ONLINEBANK, etc.). Validates only that it's not empty.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.UpdateQrImage(System.String,System.Byte[],System.String,System.String)">
  <summary>
@@ -1288,6 +1293,10 @@ STAR_DOM_Web
  Orders/Payments rows are deliberately left alone: their label is resolved
  when they are displayed (PaymentSetting.DisplayName).
  </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.DefaultFor(System.String)">
+ <summary>Creates a sensible default for any channel. Built-in channels get
+ preset account numbers; new channels get blank defaults.</summary>
 </member>
 <member name="M:STAR_DOM.Repositories.ProductRepository.ListAll(System.String)">
  <summary>
