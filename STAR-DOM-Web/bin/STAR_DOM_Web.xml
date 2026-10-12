@@ -844,7 +844,7 @@ STAR_DOM_Web
  </summary>
 </member>
 <member name="M:STAR_DOM.Helpers.Fmt.EventWindow(System.DateTime,System.DateTime)">
- <summary>"Sept 4–7, 2026" style event window.</summary>
+ <summary>"Sept 4—7, 2026" style event window.</summary>
 </member>
 <member name="T:STAR_DOM.Helpers.Clock">
  <summary>
