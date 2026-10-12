@@ -36,6 +36,12 @@ tools/supabase-credentials.txt
 tools/backup/
 
 # Packages / output
+# The test project's bin/ is pure build output -- it holds a copy of
+# STAR_DOM_Web.dll plus every vendored provider DLL, so committing it would
+# duplicate bin/ a second time on every build. The web project's bin/ IS
+# committed (below) because IIS serves straight out of it with no build step.
+STAR-DOM-Tests/bin/
+
 # The WebForms project root is STAR-DOM-Web/ (it holds the .vbproj, Site.master,
 # App/, css/, packages/ and bin/), so these negations must sit at that level --
 # a nested STAR-DOM-Web/STAR-DOM-Web/ path does not exist and would silently
