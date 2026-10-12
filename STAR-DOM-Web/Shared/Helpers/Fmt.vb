@@ -45,12 +45,12 @@ Namespace STAR_DOM.Helpers
             Return "—"
         End Function
 
-        ''' <summary>"Sept 4–7, 2026" style event window.</summary>
+        ''' <summary>"Sept 4—7, 2026" style event window.</summary>
         Public Function EventWindow(startD As Date, endD As Date) As String
             If startD.Year = endD.Year Then
-                Return startD.ToString("MMM d") & "–" & endD.ToString("d, yyyy")
+                Return startD.ToString("MMM d") & "—" & endD.ToString("d, yyyy")
             End If
-            Return startD.ToString("MMM d, yyyy") & " – " & endD.ToString("MMM d, yyyy")
+            Return startD.ToString("MMM d, yyyy") & " — " & endD.ToString("MMM d, yyyy")
         End Function
 
         Public Function DaysToGo(target As Date) As String
@@ -66,7 +66,7 @@ Namespace STAR_DOM.Helpers
         End Function
 
         Public Function Initials(name As String) As String
-            If String.IsNullOrWhiteSpace(name) Then Return "★"
+            If String.IsNullOrWhiteSpace(name) Then Return "•."
             Dim parts As String() = name.Trim().Split(" "c)
             If parts.Length = 1 Then Return parts(0).Substring(0, 1).ToUpper()
             Return (parts(0).Substring(0, 1) & parts(parts.Length - 1).Substring(0, 1)).ToUpper()
