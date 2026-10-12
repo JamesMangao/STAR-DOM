@@ -17,13 +17,13 @@ Say this while the landing page is still loading.
 > J&T Express — and can request custom commissions through a five-step wizard.
 >
 > The store owner runs everything from one console: products, events, order
-> fulfilment, and the two online payment channels themselves, whose QR details
-> are editable from an admin page.
+> fulfilment, and the online payment channels themselves — how many there are
+> is a setting, not a code change.
 >
 > The important part is that the system enforces the real workflow. An order
 > starts unpaid, because J&T charges by weight and the studio has to quote the
-> shipping fee before the total is final. The customer then pays by GCash or
-> GOtyme reference number, and the studio verifies that reference behind a
+> shipping fee before the total is final. The customer then pays by QR against
+> whichever channel the owner enabled, quotes a reference number, and the studio verifies that reference behind a
 > password before anything ships or starts processing. One side alone can never
 > complete a payment."
 
@@ -58,7 +58,7 @@ Repositories hold all the SQL.
 
 | Role | Who | Can do |
 |---|---|---|
-| **CUSTOMER** | Anyone who registers — registration always creates a customer | Browse, order (delivery only), pay by GCash/GOtyme, review, request commissions |
+| **CUSTOMER** | Anyone who registers — registration always creates a customer | Browse, order (delivery only), pay by QR against any enabled channel, review, request commissions |
 | **ADMIN** | The single store owner — the admin *is* the merchant | Everything else: products and stock, events, order confirmation and J&T quote, payment verification, commission pipeline, reports, user management, Payment Settings |
 
 **One-liner:** "It's a single-owner brand, so the admin is also the merchant.
@@ -68,11 +68,16 @@ There's no separate seller registration — every new account is a customer."
 
 ## 4. Numbers to Say Confidently
 
-- **30** database tables · **100** seeded products · **3** active bundles
-- **33** pages · **13** repositories · **8** services · **77** VB.NET files,
-  about **14,200** lines
-- **2** roles · **2** payment channels · **5** commission steps
-- **2** payment methods: GCash and GOtyme — no card, no COD, deliberately
+> Every number below was produced by `tools\doc-facts.bat`. Run it before a
+> presentation — these drifted once because they were typed by hand.
+
+- **30** database tables · **100** seeded products (91 active) · **3** active bundles · **7** pop-up events
+- **34** pages · **14** repositories · **9** services · **80** VB.NET files, about **15,600** lines
+- **93** tests (91 pass; 2 are date-dependent and unrelated to a demo)
+- **2** roles · **1** admin account · **9** customers · **5** commission steps
+- **3** payment channels live — GCash, GOtyme, BPI — and **unlimited**, because the owner
+  can add one from the admin page without touching the code. No card, no COD,
+  deliberately
 - **1** courier: J&T Express
 - Stickers **₱30** each, bundle **4 for ₱100** · Button pins **₱35** each, bundle **3 for ₱100**
 - Shipping: **quoted by J&T**, never a flat fee. Indicative zones:
@@ -105,16 +110,22 @@ There's no separate seller registration — every new account is a customer."
 3. The customer is notified: "Shipping is ₱X via J&T Express — final total ₱Y."
 4. Until this runs, payment submission refuses: there is no final figure to pay.
 
-### C. Paying with GCash / GOtyme ⭐ (the feature to show proudly)
+### C. Paying by QR ⭐ (the feature to show proudly)
 
-1. On **Order Detail**, the customer picks a channel. The channel list only
-   appears once the fee is quoted.
+1. On **Order Detail**, the customer picks a channel. The list is whatever the
+   owner has enabled — **GCash, GOtyme, BPI** — and it only appears once the
+   fee is quoted.
 2. The **Scan to Pay popup** opens. Everything in it is **admin-managed** —
    nothing is hardcoded:
    - the **QR image** (uploaded by the admin, or a styled placeholder)
-   - the **GCash / GOtyme number**
+   - the **account number** for that specific channel
    - the **account name**
    - the **display mode** — QR only, number + name only, name only, or everything
+
+   **Pick BPI here.** It is the one no developer wrote code for; it exists
+   because the owner added it. Then point out the footer says *"GCash · GOtyme ·
+   Online banks · J&T Express"* — the banks collapsed into one chip, so it does
+   not churn every time the owner changes a bank.
 3. The customer pays in their wallet app, saves the **reference number**, and
    enters it **plus their password**.
 4. This only parks the payment as **SUBMITTED** — it is not paid yet. A yellow
@@ -148,7 +159,7 @@ adds up honestly.
 ### G. Commissions
 
 Five-step wizard → the merchant **accepts and quotes an offer** (no deposit, no
-clarify round-trip) → the customer confirms → pays by GCash/GOtyme (reference
+clarify round-trip) → the customer confirms → pays by QR (reference
 only) → the merchant **verifies behind a password** → production (in
 production / revision / finalized) → **delivery only** → received → completed.
 
@@ -159,7 +170,7 @@ you cannot flood an artist's queue with requests.
 
 1. Log out, log in as `admin / admin123`.
 2. Sidebar → **SYSTEM → Payment Settings**.
-3. Two cards — **GCash (blue)** and **GOtyme (green)** — each with:
+3. One card per channel — **GCash (blue)**, **GOtyme (green)** and **BPI** — each with:
    - Account name and account number fields
    - QR image upload (PNG/JPG/WebP, max 5 MB) and a remove option
    - **"What customers see"** dropdown — *Everything / QR only / Number + name
@@ -171,10 +182,29 @@ you cannot flood an artist's queue with requests.
    customer will see.
 5. Save → "payment settings saved" flash → go straight back to the order popup
    and the change is already live.
+6. **Then the best beat in the whole demo:** the **Add New Channel** card. Type
+   a bank that does not exist yet, press the button, and it is immediately a
+   real payment option for every customer — its own card, its own QR slot, its
+   own account number.
 
-> **Script:** "So if the artisan changes her GCash number or swaps to a new QR
-> code, she does it here — no developer, no redeploy. It takes effect
-> immediately on every customer's payment screen."
+> **Script:** "So if the artisan changes her GCash number, swaps to a new QR
+> code, or decides to start accepting a bank I have never heard of, she does
+> it here — no developer, no redeploy, no database migration. It takes effect
+> immediately on every customer's payment screen. And I did not write code for
+> BPI."
+
+### I. Storefront spotlight (admin) ⭐ (a quick one)
+
+1. Sidebar → **ADMIN → Storefront**.
+2. Pick the product the landing hero should show. Save.
+3. Go back to `/` — the hero is that product.
+4. Unpin it and the hero falls back to the store’s **best-seller by units sold**,
+   so the front page always leads with something that actually sells instead of
+   whatever someone remembered to flag "featured".
+
+> **Script:** "The front page picks its own hero. I can pin one, but if I
+> delete it or hide it, it falls back to whatever is genuinely selling — the
+> page is never empty and never stale."
 
 ---
 
@@ -189,11 +219,14 @@ you cannot flood an artist's queue with requests.
 **"Why is there no payment method at checkout?"**
 > "Because the customer only pays the *final* total. J&T quotes the shipping
 > fee from the parcel's weight, so the studio confirms the order with that fee
-> first — only then do GCash and GOtyme appear on the order page."
+> first — only then do the enabled channels appear on the order page."
 
-**"What if the store owner changes her number?"**
-> "She edits it in Payment Settings. There is no hardcoded number anywhere in
-> the code — the popup reads from the Paymentsettings table."
+**"What if the store owner changes her number — or wants a bank you have never "
+**"heard of?"**
+> "She edits it in Payment Settings, and there is an Add New Channel button for
+> a bank the code has never seen. No hardcoded number and no hardcoded channel
+> list anywhere — the popup reads the Paymentsettings table, and the payment
+> picker is built from it."
 
 **"What happens if the reference number doesn't match?"**
 > "The studio declines it behind a password. The payment goes `FAILED` — never
@@ -248,8 +281,9 @@ you cannot flood an artist's queue with requests.
 4. **Merchant confirms** — log out, log in as `admin / admin123` → Orders &
    Payments → **Confirm & Quote**. Mistype the password once to show the guard
    working → then confirm. Now `CONFIRMED` and the total is final.
-5. ⭐ **Pay (bella)** — Order Detail: pick **GCash** → the Scan-to-Pay popup
-   (QR, number, name). Point out: "all of this comes from admin settings."
+5. ⭐ **Pay (bella)** — Order Detail: pick **BPI** (the channel I did not code)
+   → the Scan-to-Pay popup with *its* QR, number and name. Point out: "all of
+   this comes from admin settings."
    Enter the reference and her password → the yellow "Payment submitted —
    waiting for verification" card.
 6. ⭐ **Verify (admin)** — the stored reference shows next to a password box →
@@ -258,10 +292,15 @@ you cannot flood an artist's queue with requests.
 7. **Fulfil** — `PROCESSING` (point out that it refused before the payment was
    confirmed) → book J&T with a tracking number → `SHIPPED` → `DELIVERED`.
 8. **Receive** — bella taps "Confirm order received" → `RECEIVED` → review.
-9. ⭐ **Payment Settings** — show the two channel cards and the display-mode
-   dropdown. Switch it to "Number + name only", save, then reopen the order
-   popup: the QR image is gone and only the number and name show. Switch back.
-10. **Commission Hub** — the five-step wizard → the merchant quotes an offer →
+9. ⭐ **Payment Settings** — the three channel cards and the display-mode
+   dropdown. Switch BPI to "Number + name only", save, then reopen the order
+   popup: that QR image is gone and only the number and name show. Switch back.
+10. ⭐ **Add New Channel** — type a bank that does not exist, press the button,
+    save. Reopen the order payment picker: the new bank is already an option.
+    That is the strongest 20 seconds in the demo.
+11. **Storefront spotlight** — pin a hero product on `/`, then unpin it and show
+    it fall back to the best-seller.
+12. **Commission Hub** — the five-step wizard → the merchant quotes an offer →
     confirm → pay → password-gated verify → production. End on the delivery-only
     note and the enforced capacity.
 
@@ -284,8 +323,9 @@ you cannot flood an artist's queue with requests.
 - No live payment gateway — reference numbers plus studio verification, not
   API-verified.
 - Tracking links to J&T's own site; no webhook sync.
-- Booth takings in the reports are read-only demo rows — no in-store sales
-  entry screen.
+- Pop-up booths take no money. STAR:DOM is online-only, so there is no in-store
+  sales entry at all and booth takings are absent from reports and dashboard.
+  A pop-up is a marketing presence, not a till.
 - Single-owner model; a multi-seller marketplace would need role expansion.
 - The database password is typed once per machine and stored in a git-ignored
   file. There is no local fallback database, deliberately — one shared database
@@ -317,10 +357,14 @@ you cannot flood an artist's queue with requests.
 ## 10. Pre-Presentation Checklist
 
 - [ ] Run `setup.bat` once, then `doctor.bat`, and confirm it says ready.
-- [ ] **Upload real GCash / GOtyme QR screenshots to Payment Settings** so the
-      popup looks good on screen (PNG/JPG, square, max 5 MB).
-- [ ] Demo logins ready: `bella / customer123` · `admin / admin123` ·
-      `mika / admin123`
+- [ ] Run `tools\doc-facts.bat` and check every number in Section 4 still holds.
+- [ ] **Upload real QR screenshots to Payment Settings** for all three channels
+      (PNG/JPG, square, max 5 MB) so the popup looks good on screen.
+- [ ] Demo logins ready: `admin / admin123` (the only admin) ·
+      `bella / customer123` (customer)
+- [ ] ⚠️ **`mika`, `renzo` and `puffu` are CUSTOMERS, not owners.** If your demo
+      script logs in as one of them expecting the Merchant Dashboard, it will
+      bounce straight back out. Use `admin`.
 - [ ] Have one `PENDING` order ready for the owner to quote, and one `SUBMITTED`
       payment ready to verify.
 - [ ] Tunnel URL or localhost — both work; the tunnel needs internet.
