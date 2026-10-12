@@ -29,7 +29,9 @@ Namespace STAR_DOM.Repositories
         End Function
 
         Public Function ListFeatured(Optional limit As Integer = 8) As List(Of Product)
-            Return Db.Rows(BaseSelect & "WHERE p.IsActive = TRUE AND p.IsFeatured = TRUE ORDER BY p.SoldCount DESC LIMIT @l",
+            ' Exclude Rozanov (ID 11) from featured — it's a legacy seeded product that
+            ' shouldn't crowd the marketplace spotlight; keep it in catalog/search.
+            Return Db.Rows(BaseSelect & "WHERE p.IsActive = TRUE AND p.IsFeatured = TRUE AND p.Id <> 11 ORDER BY p.SoldCount DESC LIMIT @l",
                            Db.P("@l", limit)).Select(Function(r) Map(r)).ToList()
         End Function
 

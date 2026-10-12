@@ -45,14 +45,15 @@ Namespace STAR_DOM.Web
             sb.Append(WebUi.BtnHref("/App/CommissionHub.aspx", "Request Custom Commission", "ghost", "draw"))
             sb.Append("</div>")
             Dim rep As New ReportService()
-            ' Paid online orders. Booths are marketing presence, not tills — the old
-            ' two-channel figure is why this strip never matched the reports page.
             Dim totalSalesVol As Decimal = rep.RevenueTotal()
             Dim formattedVol As String = If(totalSalesVol >= 1000D, "₱" & (totalSalesVol / 1000D).ToString("0.#") & "K+", "₱" & totalSalesVol.ToString("N0"))
+            Dim totalProducts As Integer = _catalog.ListProducts().Count
+            Dim totalCategories As Integer = _catalog.ListCategories().Count
 
-            sb.Append("<div class=""grid kpis"" style=""grid-template-columns:repeat(3,minmax(130px,1fr));max-width:600px;margin:20px 0 0"">")
+            sb.Append("<div class=""grid kpis"" style=""grid-template-columns:repeat(4,minmax(130px,1fr));max-width:800px;margin:20px 0 0"">")
             sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:#ffe0de"">" & WebUi.Ic("lightbulb") & "</span><div class=""k-value"" style=""font-size:15px;line-height:1.2;letter-spacing:-.01em"">UNLIMITED</div><div class=""k-label"">Ideas for commission</div></div>")
-            sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:var(--yellow-soft);color:var(--on-yellow)"">" & WebUi.Ic("paid") & "</span><div class=""k-value"" style=""font-size:26px"">" & formattedVol & "</div><div class=""k-label"">Bazaar Sales Volume</div></div>")
+            sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:var(--yellow-soft);color:var(--on-yellow)"">" & WebUi.Ic("paid") & "</span><div class=""k-value"" style=""font-size:26px"">" & formattedVol & "</div><div class=""k-label"">Online Sales Volume</div></div>")
+            sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:#ffe0de"">" & WebUi.Ic("inventory_2") & "</span><div class=""k-value"" style=""font-size:26px"">" & totalProducts.ToString() & "</div><div class=""k-label"">Handcrafted SKUs</div></div>")
             sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:var(--tertiary-fixed);color:var(--tertiary)"">" & WebUi.Ic("verified") & "</span><div class=""k-value"" style=""font-size:19px;line-height:1.2"">100%</div><div class=""k-label"">Human-made art</div></div>")
             sb.Append("</div></div>")
 
