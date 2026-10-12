@@ -19,16 +19,21 @@ Namespace STAR_DOM.Repositories
         ''' </summary>
         Public Const LegacyMaya As String = "MAYA"
 
-        ''' <summary>All rows from the table (legacy MAYA row migrated to GOtyme if needed).</summary>
+        ''' <summary>
+        ''' Every configured channel — the two built-ins plus whatever the admin added
+        ''' from App/Admin/PaymentSettings.aspx (ONLINEBANK, BANKTRANSFER, …). The
+        ''' built-ins sort first so the familiar cards keep their place; everything else
+        ''' follows alphabetically. A legacy MAYA row is adopted as GOtyme if needed.
+        ''' </summary>
         Public Function ListAll() As List(Of PaymentSetting)
             Dim found As New List(Of PaymentSetting)()
             Try
-                found = Db.Rows("SELECT * FROM PaymentSettings ORDER BY CASE Channel WHEN 'GCASH' THEN 0 WHEN 'GOTYME' THEN 1 WHEN 'MAYA' THEN 2 ELSE 3 END").
+                found = Db.Rows("SELECT * FROM PaymentSettings " &
+                                "ORDER BY CASE Channel WHEN 'GCASH' THEN 0 WHEN 'GOTYME' THEN 1 WHEN 'MAYA' THEN 2 ELSE 3 END, Channel").
                     Select(Function(r) Map(r)).ToList()
             Catch
                 ' Table not created yet (pre-migration install): fall through to defaults.
             End Try
-            found.RemoveAll(Function(p) p.Channel <> Gcash AndAlso p.Channel <> GOtyme AndAlso p.Channel <> LegacyMaya)
 
             ' Adopt the pre-rename MAYA row as GOtyme unless a real GOtyme row already
             ' exists, so the editor shows the settings that were actually configured
@@ -106,15 +111,40 @@ Namespace STAR_DOM.Repositories
         End Function
 
         ''' <summary>
+        ''' Removes one admin-created channel. The two built-ins are refused: GCash and
+        ''' GOtyme are always offered at checkout, so ListAll would just re-add them as
+        ''' defaults and the delete would look like it silently failed. Orders and
+        ''' commissions keep the PaymentMethod string they recorded, so removing a
+        ''' channel never rewrites a historical receipt.
+        ''' </summary>
+        Public Function DeleteChannel(channel As String) As Boolean
+            Dim ch As String = If(channel, "").Trim().ToUpperInvariant()
+            If ch = LegacyMaya Then ch = GOtyme
+            If String.IsNullOrWhiteSpace(ch) OrElse ch = Gcash OrElse ch = GOtyme Then Return False
+            Try
+                Return Db.Exec("DELETE FROM PaymentSettings WHERE Channel = @c", Db.P("@c", ch)) > 0
+            Catch
+                ' A read-only session or a missing table: report the failure, do not throw
+                ' from a settings screen.
+                Return False
+            End Try
+        End Function
+
+        ''' <summary>
         ''' Replace (or clear) just the QR image of one channel. The bytes go into
         ''' the database so they travel with a pg_dump; passing Nothing clears the
         ''' image. QrImageFile is cleared at the same time so a stale path cannot
         ''' keep pointing at a file that is no longer the live image.
         ''' </summary>
+        ''' <remarks>
+        ''' Any channel is accepted, not just the two built-ins: an admin-created channel
+        ''' owns its QR image the same way GCash does. Restricting this to GCASH/GOTYME
+        ''' made a custom channel silently drop the upload it had just been asked to save.
+        ''' </remarks>
         Public Sub UpdateQrImage(channel As String, imageBytes As Byte(), mime As String, updatedBy As String)
             Dim ch As String = If(channel, "").Trim().ToUpperInvariant()
             If ch = LegacyMaya Then ch = GOtyme
-            If ch <> Gcash AndAlso ch <> GOtyme Then Return
+            If String.IsNullOrWhiteSpace(ch) Then Return
             EnsureTable()
             Dim m As String = If(mime, "").Trim()
             If m = "" AndAlso imageBytes IsNot Nothing AndAlso imageBytes.Length > 0 Then m = "image/png"

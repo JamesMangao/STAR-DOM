@@ -43,18 +43,23 @@ Namespace STAR_DOM.Web
                 Return
             End If
 
-            ' Handle "Add New Channel" action (separate from per-channel save buttons)
-            Dim newChannelName As String = Request.Form("newChannelName")
-            If Not String.IsNullOrWhiteSpace(newChannelName) Then
-                Dim ch As String = newChannelName.Trim().ToUpperInvariant()
-                If String.IsNullOrWhiteSpace(ch) Then
-                    Session("flash_msg") = "Channel name cannot be empty."
-                    Session("flash_ok") = False
-                ElseIf ch = "GCASH" OrElse ch = "GOTYME" OrElse ch = "MAYA" Then
-                    Session("flash_msg") = ch & " already exists — edit the existing card instead."
-                    Session("flash_ok") = False
+            ' Handle "Add New Channel". It needs its own submit name: the button used to
+            ' share "newChannelName" with the text input, so the browser posted both the
+            ' typed value and the button's own, Request.Form joined them with a comma,
+            ' and the row was stored under a mangled name — created on paper, and then
+            ' invisible, because ListAll dropped anything that was not a built-in.
+            If Request.Form("createChannel") IsNot Nothing Then
+                Dim ch As String = NormalizeChannel(Request.Form("newChannelName"))
+                Dim existing As List(Of PaymentSetting) = _settings.ListAll()
+
+                If ch = "" Then
+                    SetFlash("Channel name cannot be empty.", False)
+                ElseIf Not IsValidChannelKey(ch) Then
+                    SetFlash("Channel name must be 1-20 characters, using only letters, numbers, spaces, hyphens or underscores.", False)
+                ElseIf existing.Any(Function(p) String.Equals(p.Channel, ch, StringComparison.OrdinalIgnoreCase)) Then
+                    SetFlash("Channel " & ch & " already exists — edit its card below instead.", False)
                 Else
-                    Dim newSetting As New PaymentSetting With {
+                    Dim created As New PaymentSetting With {
                         .Channel = ch,
                         .AccountName = "",
                         .AccountNumber = "",
@@ -63,13 +68,28 @@ Namespace STAR_DOM.Web
                         .UpdatedBy = If(STAR_DOM.Helpers.Session.CurrentUser IsNot Nothing,
                                         STAR_DOM.Helpers.Session.CurrentUser.Username, "")
                     }
-                    If _settings.Save(newSetting) Then
-                        Session("flash_msg") = "Channel " & ch & " created — configure its settings below."
-                        Session("flash_ok") = True
+                    If _settings.Save(created) Then
+                        SetFlash("Channel " & ch & " created — configure its settings below.", True)
                     Else
-                        Session("flash_msg") = "Could not create channel."
-                        Session("flash_ok") = False
+                        SetFlash("Could not create channel.", False)
                     End If
+                End If
+                Response.Redirect("/App/Admin/PaymentSettings.aspx", True)
+                Return
+            End If
+
+            ' Handle "Delete channel". Offered only on admin-created cards; the two
+            ' built-ins are refused by the repository. This is also the only way to get
+            ' rid of a row left behind by an earlier bad create (e.g. a mangled name),
+            ' which now shows up as a card instead of being silently hidden.
+            Dim removeChannel As String = Request.Form("deleteChannel")
+            If removeChannel IsNot Nothing Then
+                Dim doomed As String = NormalizeChannel(removeChannel)
+                If _settings.DeleteChannel(doomed) Then
+                    SetFlash("Channel " & doomed & " removed. Orders already paid through it keep their record.", True)
+                Else
+                    SetFlash("Could not remove " & If(doomed = "", "that channel", doomed) &
+                             " — the built-in GCash and GOtyme wallets cannot be deleted.", False)
                 End If
                 Response.Redirect("/App/Admin/PaymentSettings.aspx", True)
                 Return
@@ -194,18 +214,45 @@ Namespace STAR_DOM.Web
         ''' every channel inside the master's single form. Scanned instead of read
         ''' straight off Request.Form so pressing Enter in a text box — which submits
         ''' the first submit button on the page — cannot hand back a mangled value.
+        ''' Any valid channel key is accepted, not just the two built-ins: an
+        ''' admin-created channel has to be editable on its card exactly like GCash.
         ''' </summary>
         Private Function PostedChannel() As String
             Dim values As String() = Request.Form.GetValues("channel")
             If values Is Nothing Then Return ""
             For Each raw As String In values
-                Dim c As String = If(raw, "").Trim().ToUpperInvariant()
-                If c = PaymentSettingRepository.Gcash OrElse c = PaymentSettingRepository.Gotyme Then
-                    Return c
-                End If
+                Dim c As String = NormalizeChannel(raw)
+                If IsValidChannelKey(c) Then Return c
             Next
             Return ""
         End Function
+
+        ''' <summary>Trimmed, upper-cased channel key. The legacy MAYA alias maps to GOtyme.</summary>
+        Private Shared Function NormalizeChannel(raw As String) As String
+            Dim ch As String = If(raw, "").Trim().ToUpperInvariant()
+            If ch = PaymentSettingRepository.LegacyMaya Then Return PaymentSettingRepository.GOtyme
+            Return ch
+        End Function
+
+        ''' <summary>
+        ''' A channel key has to survive the VARCHAR(20) column and be usable as this
+        ''' page's input-name prefix (see Field), so it is limited to letters, digits,
+        ''' spaces, hyphens and underscores. Anything else - a comma, a slash, the
+        ''' backslash that used to leak in - would produce a channel nobody can read.
+        ''' </summary>
+        Private Shared Function IsValidChannelKey(ch As String) As Boolean
+            If String.IsNullOrWhiteSpace(ch) OrElse ch.Length > 20 Then Return False
+            For Each c As Char In ch
+                If Not (Char.IsLetterOrDigit(c) OrElse c = " "c OrElse c = "-"c OrElse c = "_"c) Then Return False
+            Next
+            Return True
+        End Function
+
+        ''' <summary>One-shot flash message, matching the convention Flash() drains.</summary>
+        Private Sub SetFlash(message As String, ok As Boolean)
+            Session("flash_msg") = message
+            Session("flash_ok") = ok
+        End Sub
 
         Private Function TrimTo(value As String, max As Integer) As String
             Dim v As String = If(value, "").Trim()
@@ -258,15 +305,27 @@ Namespace STAR_DOM.Web
             Dim sb As New StringBuilder()
             sb.Append(WebUi.Section("Payment Settings",
                                     "SYSTEM ADMIN · E-WALLET QR MANAGEMENT",
-                                    "Control what customers see when they pay: the QR code, " &
-                                    "the account number, the account name, and how much of it is displayed. " &
-                                    "Add new channels (e.g., ONLINEBANK, BANKTRANSFER) — they appear here and at checkout."))
+                                    "Choose what customers see at checkout — the QR code, " &
+                                    "the account number and name, and how much of each is shown."))
             sb.Append(Flash())
 
-            sb.Append("<div class=""sub"" style=""margin-bottom:14px"">" & WebUi.Ic("info", "sm") &
-                      " Changes take effect immediately on the order payment popup and at checkout. " &
-                      "Upload a PNG/JPG/WebP of each wallet's official QR code (max 5 MB). Display mode options: " &
-                      "<b>QR code only</b>, <b>number + name only</b>, <b>name only</b>, or <b>everything</b>.</div>")
+            ' The old intro was one long paragraph that buried the display-mode options
+            ' mid-sentence. It is now a single callout: a short lead, the four modes as
+            ' pills the eye can count at a glance, then the new-channel note.
+            sb.Append("<div class=""page-tip"">")
+            sb.Append(WebUi.Ic("info", "lg"))
+            sb.Append("<div class=""tip-body"">")
+            sb.Append("<p><b>Changes apply instantly</b> — on the order payment popup and at checkout. " &
+                      "Upload a PNG/JPG/WebP of each wallet's official QR code (max 5 MB).</p>")
+            sb.Append("<p><b>Display mode</b> — pick one per channel:</p>")
+            sb.Append("<div class=""mode-list"">")
+            For Each mode As String In {"QR code only", "Number + name only", "Name only", "Everything"}
+                sb.Append("<span class=""mode-pill"">" & mode & "</span>")
+            Next
+            sb.Append("</div>")
+            sb.Append("<p>New channels (e.g. <b>ONLINEBANK</b>, <b>BANKTRANSFER</b>) appear here " &
+                      "and at checkout as soon as you create them.</p>")
+            sb.Append("</div></div>")
 
             sb.Append("<div class=""grid"" style=""grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px"">")
             For Each s As PaymentSetting In all
@@ -282,7 +341,7 @@ Namespace STAR_DOM.Web
             sb.Append("<input type=""text"" name=""newChannelName"" placeholder=""CHANNEL NAME (e.g. ONLINEBANK)"" " &
                       "style=""width:100%;max-width:260px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;text-transform:uppercase"" maxlength=""20"">")
             sb.Append("<div style=""margin-top:12px"">")
-            sb.Append("<button class=""btn primary"" type=""submit"" name=""newChannelName"" value=""\"">")
+            sb.Append("<button class=""btn primary"" type=""submit"" name=""createChannel"" value=""1"">")
             sb.Append("<span class=""ic ms"">add</span><span>Create Channel</span></button>")
             sb.Append("</div></div>")
 
@@ -299,10 +358,12 @@ Namespace STAR_DOM.Web
         End Sub
 
         Private Function ChannelCard(s As PaymentSetting) As String
+            ' Only the icon differs per channel now: ChannelColor/ChannelBrand already
+            ' answer for the built-ins and for anything the admin added.
             Dim isGcash As Boolean = String.Equals(s.Channel, PaymentSettingRepository.Gcash, StringComparison.OrdinalIgnoreCase)
-            Dim isGotyme As Boolean = String.Equals(s.Channel, PaymentSettingRepository.Gotyme, StringComparison.OrdinalIgnoreCase)
-            Dim brandColor As String = If(isGcash, "#007dfe", If(isGotyme, "#00a651", "#7c3aed"))
-            Dim brand As String = s.DisplayChannel
+            Dim isBuiltIn As Boolean = isGcash OrElse String.Equals(s.Channel, PaymentSettingRepository.Gotyme, StringComparison.OrdinalIgnoreCase)
+            Dim brandColor As String = WebUi.ChannelColor(s.Channel)
+            Dim brand As String = WebUi.ChannelBrand(s.Channel)
             ' Prefers the image stored in the database; falls back to an old file path.
             Dim qrFile As String = WebUi.QrImageUrl(s, s.Channel)
 
@@ -383,8 +444,15 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""sub"" style=""font-size:11px;margin-bottom:8px"">Last updated " & s.UpdatedAt.ToString("MMM d, yyyy h:mm tt") &
                           If(s.UpdatedBy <> "", " by " & WebUi.Esc(s.UpdatedBy), "") & "</div>")
             End If
+            sb.Append("<div class=""frow"" style=""margin:0"">")
             sb.Append("<button class=""btn primary"" type=""submit"" name=""channel"" value=""" & WebUi.Attr(s.Channel) & """>" &
                       "<span class=""ic ms"">save</span><span>Save " & WebUi.Esc(brand) & " Settings</span></button>")
+            If Not isBuiltIn Then
+                sb.Append("<button class=""btn danger sm"" type=""submit"" name=""deleteChannel"" value=""" & WebUi.Attr(s.Channel) & """ " &
+                          "data-confirm=""" & WebUi.Attr("Delete the " & brand & " channel? Orders already paid through it keep their record.") & """ data-confirm-danger>" &
+                          "<span class=""ic ms"">delete</span><span>Delete channel</span></button>")
+            End If
+            sb.Append("</div>")
             sb.Append("</div>")
             Return sb.ToString()
         End Function
@@ -396,8 +464,8 @@ Namespace STAR_DOM.Web
         ''' </summary>
         Private Function QrPreviewBlock(s As PaymentSetting, compact As Boolean) As String
             Dim isGcash As Boolean = String.Equals(s.Channel, PaymentSettingRepository.Gcash, StringComparison.OrdinalIgnoreCase)
-            Dim brandColor As String = If(isGcash, "#007dfe", "#00a651")
-            Dim brand As String = s.DisplayChannel
+            Dim brandColor As String = WebUi.ChannelColor(s.Channel)
+            Dim brand As String = WebUi.ChannelBrand(s.Channel)
             Dim showQr As Boolean = (s.QrDisplayMode = "BOTH" OrElse s.QrDisplayMode = "QR_ONLY")
             Dim showNumber As Boolean = (s.QrDisplayMode = "BOTH" OrElse s.QrDisplayMode = "NUMBER_NAME")
             Dim showName As Boolean = (s.QrDisplayMode = "BOTH" OrElse s.QrDisplayMode = "NUMBER_NAME" OrElse s.QrDisplayMode = "NAME_ONLY")

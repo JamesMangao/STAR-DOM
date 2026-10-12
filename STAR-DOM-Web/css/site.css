@@ -298,9 +298,33 @@ img { max-width: 100%; }
 }
 .kicker { display: inline-flex; align-items: center; gap: 7px; }
 .sec h2 { font-size: 26px; font-weight: 800; letter-spacing: -.5px; margin: 2px 0; font-family: var(--font-display); }
-.sec .sub { color: var(--ink-soft); margin: 2px 0 0; max-width: 720px; }
+.sec .sub { color: var(--ink-soft); margin: 2px 0 0; max-width: 760px; line-height: 1.6; }
 .sec-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .sub { color: var(--ink-soft); }
+
+/* ---------- page tip: the "how this page works" intro callout ----------
+   A settings page that opens with one long paragraph reads as a wall of text and
+   buries its useful detail. This turns that intro into a single compact card: an
+   icon rail, a short lead, and the available options as static pills the eye can
+   count at a glance. Same icon-rail shape as .bundle-note, neutral/red palette. */
+.page-tip {
+  display: flex; align-items: flex-start; gap: 13px;
+  max-width: 920px; margin: 4px 0 18px; padding: 13px 16px 14px;
+  background: #fff7f5; border: 1px solid #ffd9d3; border-left: 3px solid var(--primary);
+  border-radius: 12px;
+}
+.page-tip > .ms { color: var(--primary); font-size: 22px; line-height: 1.3; flex: 0 0 auto; }
+.page-tip .tip-body { font-size: 13px; line-height: 1.65; color: var(--ink-soft); }
+.page-tip .tip-body b { color: var(--ink); font-weight: 700; }
+.page-tip .tip-body p { margin: 0 0 7px; }
+.page-tip .tip-body p:last-child { margin-bottom: 0; }
+.mode-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; }
+.mode-pill {
+  display: inline-block; border-radius: 999px; padding: 3px 11px;
+  background: #fff; border: 1px solid var(--line);
+  font-family: var(--font-display); font-size: 10.5px; font-weight: 800;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); white-space: nowrap;
+}
 .grad-text {
   background: linear-gradient(96deg, #b70011 0%, #bc5200 46%, #d97706 78%, #fed01b 118%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -465,6 +489,55 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* Row actions that change state are small POST forms, not links: the button has to
    look exactly like the link it replaced (spacing, weight, size). */
 .tbl .rowact button { margin-right: 10px; font-weight: 700; font-size: 12.5px; }
+
+/* ---------- products & stock table (merchant console) ----------
+   Every row edits its stock inline and carries state-changing row actions. The
+   STOCK cell is therefore one compact control: the number, its Save button and
+   the LOW flag share a single line instead of the flag dropping under the input,
+   and the ACTIONS cell is an evenly spaced, hoverable link row rather than bare
+   underlined text with stray gaps. */
+.tbl-products { min-width: 900px; }
+.tbl-products td { padding: 10px 12px; }
+.tbl-products .sku {
+  font-family: var(--font-mono); font-size: 12.5px; font-weight: 700;
+  letter-spacing: -.02em; color: var(--ink-soft); white-space: nowrap;
+}
+.tbl-products .price { color: var(--primary); font-weight: 800; font-family: var(--font-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* The number box and its Save button are one matched pair: same height, radius,
+   border and font scale, so the row reads as a single control rather than two
+   differently-sized widgets sitting next to each other. */
+.stockcell { --stock-h: 34px; display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; }
+.stockcell form { display: flex; align-items: center; gap: 7px; margin: 0; }
+.stock-input {
+  width: 64px; height: var(--stock-h); box-sizing: border-box; padding: 0 10px; text-align: center;
+  border: 1px solid var(--line-hi); border-radius: 9px; background: #fff; color: var(--ink);
+  font-family: var(--font-display); font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.stockcell .btn { height: var(--stock-h); box-sizing: border-box; padding: 0 14px; border-radius: 9px; font-size: 12.5px; }
+.stock-input:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
+/* Number spinners eat width and add noise in a dense table. */
+.stock-input::-webkit-outer-spin-button, .stock-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stock-input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+.stock-flag {
+  display: inline-block; border-radius: 999px; padding: 3px 9px;
+  font-family: var(--font-display); font-size: 9.5px; font-weight: 800;
+  letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+}
+.stock-flag.low { background: #ffe0de; color: #93000a; border: 1px solid #ffb4ab; }
+
+.tbl-products .rowact { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tbl-products .rowact a, .tbl-products .rowact button {
+  margin: 0; padding: 5px 9px; border-radius: 7px; border: 1px solid transparent;
+  background: transparent; cursor: pointer; text-decoration: none;
+  font-family: var(--font-display); font-weight: 700; font-size: 12.5px; color: var(--primary);
+  transition: background .14s ease, border-color .14s ease;
+}
+.tbl-products .rowact a:hover, .tbl-products .rowact button:hover { background: var(--surface-low); border-color: var(--line); }
+.tbl-products .rowact .danger { color: #b91c1c; }
+.tbl-products .rowact .danger:hover { background: #ffe0de; border-color: #ffb4ab; }
 
 /* ---------- orders & payments table (merchant console) ----------
    The rows carry several small forms (quote shipping, book J&T, confirm a

@@ -232,12 +232,9 @@ Namespace STAR_DOM.Services
 
             ' The channel is part of the record now, not free text: it decides which
             ' account the reference is checked against, so it must be a live, enabled
-            ' e-wallet channel.
+            ' channel from Payment Settings (not just GCash or GOtyme).
             Dim channel As String = If(method, "").Trim().ToUpperInvariant()
             If channel = PaymentSettingRepository.LegacyMaya Then channel = PaymentSettingRepository.GOtyme
-            If Not PaymentSetting.IsEWallet(channel) Then
-                Return ServiceResult.Fail("Choose GCash or GOtyme as your payment method.")
-            End If
             If Not New PaymentSettingRepository().IsChannelEnabled(channel) Then
                 Return ServiceResult.Fail(PaymentSetting.PaymentFailedMessage(
                     "That payment channel is not available right now. " &
@@ -247,7 +244,7 @@ Namespace STAR_DOM.Services
             Dim ref As String = If(reference, "").Trim()
             If ref = "" Then
                 Return ServiceResult.Fail(PaymentSetting.PaymentFailedMessage(
-                    "Enter the GCash or GOtyme reference number from your payment receipt."))
+                    "Enter the " & PaymentSetting.DisplayName(channel) & " reference number from your payment receipt."))
             End If
 
             _repo.SetPaymentReference(commissionId, ref, channel)

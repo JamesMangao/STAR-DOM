@@ -57,18 +57,17 @@ Namespace STAR_DOM.Services
             ' Orders are online-only: delivered nationwide via J&T Express. Card is not
             ' offered — the accepted e-payments are GCash and GOtyme.
             '
-            ' "PENDING" is the parked method for the quote-first flow: the customer
-            ' places the order before choosing a channel, and picks GCash / GOtyme
-            ' on the order page once the studio has returned the final total.
-            ' Orders.PaymentMethod is NOT NULL, so the column needs a value now.
-            ' Cash on Delivery is gone: every parcel is booked with J&T and paid
-            ' for up front against the final total.
+            ' Checkout parks the method as "PENDING" for the quote-first flow; the
+            ' customer picks a real channel on the order page once the studio returns
+            ' the final total and shipping fee.
             Dim method As String = If(paymentMethod, "").Trim().ToUpperInvariant()
             If method = PaymentSettingRepository.LegacyMaya Then method = PaymentSettingRepository.Gotyme
             If method = "" Then method = "PENDING"
-            If method <> "PENDING" AndAlso
-               method <> "GCASH" AndAlso method <> "GOTYME" Then
-                Return ServiceResult.Fail("Please choose GCash or GOtyme.")
+            If method <> "PENDING" Then
+                Dim enabled As PaymentSettingRepository = New PaymentSettingRepository()
+                If Not enabled.IsChannelEnabled(method) Then
+                    Return ServiceResult.Fail("That payment method is not available right now.")
+                End If
             End If
 
 
@@ -209,9 +208,6 @@ Namespace STAR_DOM.Services
                                           "once the studio returns the final total and shipping fee.")
             End If
             Dim pick As String = If(method, "").Trim().ToUpperInvariant()
-            If pick <> "GCASH" AndAlso pick <> "GOTYME" Then
-                Return ServiceResult.Fail("Choose GCash or GOtyme.")
-            End If
             If Not _paySettings.IsChannelEnabled(pick) Then
                 Return ServiceResult.Fail("That payment method is not available right now.")
             End If
@@ -250,12 +246,13 @@ Namespace STAR_DOM.Services
         End Function
 
         ''' <summary>
-        ''' Step 3 of the payment flow - the customer's side. The buyer pays GCash or
-        ''' GOtyme outside the app and hands over the reference number from the receipt
-        ''' plus their password. This does NOT make the order paid: it parks
-        ''' PaymentStatus at SUBMITTED so the studio can check the transfer against its
-        ''' own records first. No receipt is issued, PROCESSING cannot start, and J&amp;T
-        ''' stays shut until the studio confirms below.
+        ''' Step 3 of the payment flow - the customer's side. The buyer pays by the
+        ''' channel shown on the order page (any enabled channel from Payment Settings),
+        ''' hands over the reference number from the receipt plus their password. This
+        ''' does NOT make the order paid: it parks PaymentStatus at SUBMITTED so the
+        ''' studio can check the transfer against its own records first. No receipt is
+        ''' issued, PROCESSING cannot start, and J&amp;T stays shut until the studio
+        ''' confirms below.
         ''' </summary>
         Public Function SubmitPayment(orderNumber As String, reference As String, password As String) As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")

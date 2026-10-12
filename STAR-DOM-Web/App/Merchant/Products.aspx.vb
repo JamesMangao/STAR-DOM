@@ -155,7 +155,7 @@ Namespace STAR_DOM.Web
                     sb.Append(WebUi.EmptyRow("No products yet — add your first product."))
                 End If
             Else
-                sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
+                sb.Append("<div class=""tblwrap""><table class=""tbl tbl-products""><thead><tr>")
                 Dim headers As New List(Of String) From {"SKU", "PRODUCT", "CATEGORY"}
                 headers.AddRange(New String() {"PRICE", "STOCK", "FLAGS", "ACTIONS"})
                 For Each h As String In headers
@@ -165,20 +165,22 @@ Namespace STAR_DOM.Web
                 For Each p As Product In mine
                     Dim lowFlag As Boolean = p.StockQuantity <= p.LowStockThreshold
                     sb.Append("<tr>")
-                    sb.Append("<td>" & WebUi.Esc(p.Sku) & "</td>")
+                    sb.Append("<td class=""sku"">" & WebUi.Esc(p.Sku) & "</td>")
                     ' No brand/studio line under the name: the studio is a single seller,
                     ' so the vendor name on every row was noise the merchant asked to drop.
                     sb.Append("<td><b>" & WebUi.Esc(p.Name) & "</b></td>")
                     sb.Append("<td>" & WebUi.Esc(p.CategoryName) & "</td>")
-                    sb.Append("<td>" & WebUi.Money(p.BasePrice) & "</td>")
+                    sb.Append("<td class=""price"">" & WebUi.Money(p.BasePrice) & "</td>")
                     ' The row id rides on the button and the qty input is named
                     ' stock_<id>, because the shell form flattens every row's fields
                     ' into one post and a shared name would arrive joined ("5,7").
-                    sb.Append("<td><form method=""post"" style=""display:flex;gap:6px;align-items:center"">" &
+                    ' One control per row: the flag rides beside the input and its Save
+                    ' button, so "LOW" no longer drops onto its own line under the field.
+                    sb.Append("<td><div class=""stockcell""><form method=""post"">" &
                               STAR_DOM.Web.Csrf.HiddenField() &
-                              "<input name=""stock_" & p.Id.ToString() & """ type=""number"" value=""" & p.StockQuantity.ToString() & """ style=""width:64px;padding:5px;border:1px solid var(--line);border-radius:7px"">" &
-                              "<button class=""btn ghost sm"" type=""submit"" name=""savestock"" value=""" & p.Id.ToString() & """><span class=""ic ms"">save</span><span>Save</span></button></form>" &
-                              If(lowFlag, "<span style=""color:var(--primary);font-size:11px;font-weight:700"">LOW</span>", "") & "</td>")
+                              "<input class=""stock-input"" name=""stock_" & p.Id.ToString() & """ type=""number"" min=""0"" inputmode=""numeric"" value=""" & p.StockQuantity.ToString() & """ aria-label=""Stock quantity for " & WebUi.Attr(p.Name) & """ />" &
+                              "<button class=""btn ghost sm"" type=""submit"" name=""savestock"" value=""" & p.Id.ToString() & """ aria-label=""Save stock for " & WebUi.Attr(p.Name) & """><span class=""ic ms"">save</span><span>Save</span></button></form>" &
+                              If(lowFlag, "<span class=""stock-flag low"" title=""At or below the low-stock threshold"">LOW</span>", "") & "</div></td>")
                     sb.Append("<td>")
                     Dim flags As New List(Of String)()
                     If p.IsFeatured Then flags.Add("FEATURED")
@@ -192,12 +194,14 @@ Namespace STAR_DOM.Web
                     ' Hide/Show and Delete change state, so they are small POST forms
                     ' with the row id on the button: the ?toggle=/?del= links were GET
                     ' navigations the handlers (which require a POST) never saw.
+                    ' Styling lives in .tbl-products .rowact so the three actions read as a
+                    ' tidy, evenly spaced link row instead of bare underlined text.
                     sb.Append("<td class=""rowact""><a href=""/App/Merchant/ProductEdit.aspx?id=" & p.Id.ToString() & """>Edit</a>" &
-                              "<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
-                              "<button type=""submit"" name=""toggle"" value=""" & p.Id.ToString() & """ data-confirm=""Toggle product availability?"" style=""background:none;border:0;padding:0;font:inherit;color:var(--primary);cursor:pointer;text-decoration:underline"">" &
+                              "<form method=""post"">" & STAR_DOM.Web.Csrf.HiddenField() &
+                              "<button type=""submit"" name=""toggle"" value=""" & p.Id.ToString() & """ data-confirm=""Toggle product availability?"">" &
                               If(p.IsActive, "Hide", "Show") & "</button></form>" &
-                              "<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
-                              "<button type=""submit"" name=""del"" value=""" & p.Id.ToString() & """ data-confirm=""Delete this product?"" data-confirm-danger style=""background:none;border:0;padding:0;font:inherit;color:#b91c1c;cursor:pointer;text-decoration:underline"">Delete</button></form></td>")
+                              "<form method=""post"">" & STAR_DOM.Web.Csrf.HiddenField() &
+                              "<button class=""danger"" type=""submit"" name=""del"" value=""" & p.Id.ToString() & """ data-confirm=""Delete this product?"" data-confirm-danger>Delete</button></form></td>")
                     sb.Append("</tr>")
                 Next
                 sb.Append("</tbody></table></div>")
@@ -213,7 +217,7 @@ Namespace STAR_DOM.Web
             sb.Append("<div class=""field"" style=""flex:1;min-width:180px;margin:0""><label>New category</label><input name=""catName"" required></div>")
             sb.Append("<div class=""field"" style=""flex:2;min-width:220px;margin:0""><label>Description</label><input name=""catDesc""></div>")
             sb.Append("<button class=""btn primary"" type=""submit"" name=""addcat"" value=""1""><span class=""ic ms"">add</span><span>Add Category</span></button></form>")
-            sb.Append("<div class=""tblwrap""><table class=""tbl""><thead><tr>")
+            sb.Append("<div class=""tblwrap""><table class=""tbl tbl-products""><thead><tr>")
             For Each h As String In {"CATEGORY", "DESCRIPTION", "STATUS", ""}
                 sb.Append("<th>" & h & "</th>")
             Next
@@ -221,10 +225,10 @@ Namespace STAR_DOM.Web
             For Each c As Category In cats
                 sb.Append("<tr><td><b>" & WebUi.Esc(c.Name) & "</b></td><td>" & WebUi.Esc(c.Description) & "</td>")
                 sb.Append("<td>" & If(c.IsActive, WebUi.Badge("ACTIVE"), WebUi.Badge("HIDDEN")) & "</td>")
-                sb.Append("<td class=""rowact""><form method=""post"" style=""display:inline"">" &
+                sb.Append("<td class=""rowact""><form method=""post"">" &
                           STAR_DOM.Web.Csrf.HiddenField() &
-                          "<button type=""submit"" name=""delcat"" value=""" & c.Id.ToString() &
-                          """ data-confirm=""Delete this category? Products keep their category ref until reassigned."" data-confirm-danger style=""background:none;border:0;padding:0;font:inherit;color:#b91c1c;cursor:pointer;text-decoration:underline"">Delete</button></form></td></tr>")
+                          "<button class=""danger"" type=""submit"" name=""delcat"" value=""" & c.Id.ToString() &
+                          """ data-confirm=""Delete this category? Products keep their category ref until reassigned."" data-confirm-danger>Delete</button></form></td></tr>")
             Next
             sb.Append("</tbody></table></div>")
             Out.Text = sb.ToString()

@@ -35,6 +35,21 @@ Namespace STAR_DOM.Repositories
                            Db.P("@l", limit)).Select(Function(r) Map(r)).ToList()
         End Function
 
+        ''' <summary>
+        ''' The single best-selling active product across the whole store, by units
+        ''' sold. Drives the automatic storefront spotlight when the admin has not
+        ''' pinned a product, so the hero reflects what actually sells rather than
+        ''' only the pieces someone remembered to flag "featured". Rozanov (ID 11)
+        ''' is skipped for the same reason as in ListFeatured — a legacy seeded row
+        ''' should not crowd the hero — and Name breaks ties deterministically.
+        ''' </summary>
+        Public Function BestSeller() As Product
+            Dim rows As List(Of DataRow) = Db.Rows(BaseSelect &
+                "WHERE p.IsActive = TRUE AND p.Id <> 11 ORDER BY p.SoldCount DESC, p.Name LIMIT 1")
+            If rows.Count = 0 Then Return Nothing
+            Return Map(rows(0))
+        End Function
+
         Public Function ListByMerchant(merchantId As Integer, Optional search As String = "") As List(Of Product)
             Dim sql As String = BaseSelect & "WHERE p.MerchantId = @m "
             Dim ps As New List(Of NpgsqlParameter)() From {Db.P("@m", merchantId)}

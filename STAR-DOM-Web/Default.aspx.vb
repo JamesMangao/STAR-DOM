@@ -32,11 +32,12 @@ Namespace STAR_DOM.Web
         Private Sub RenderPage()
             Dim sb As New StringBuilder()
             Dim featured As List(Of Product) = _catalog.Featured(8)
+            Dim spotlight As Product = _catalog.Spotlight()
             Dim categories As List(Of Category) = _catalog.ListCategories()
             Dim current As PopUpEvent = _events.CurrentEvent()
             Dim slots As List(Of CommissionSlotView) = _catalog.CommissionSlots()
 
-            sb.Append(Hero(featured))
+            sb.Append(Hero(spotlight))
             sb.Append(StatStrip(categories.Count))
             sb.Append(HowItWorks())
             sb.Append(CategoryTiles(categories))
@@ -51,7 +52,7 @@ Namespace STAR_DOM.Web
 
         ' ---------- hero ----------
 
-        Private Function Hero(featured As List(Of Product)) As String
+        Private Function Hero(spot As Product) As String
             Dim sb As New StringBuilder()
             sb.Append("<div class=""hero"">")
             sb.Append("<div class=""row space-between"" style=""align-items:stretch;gap:26px"">")
@@ -72,25 +73,26 @@ Namespace STAR_DOM.Web
                       " No account needed to browse &mdash; sign in only when you check out.</div>")
             sb.Append("</div>")
 
-            ' collage from the first two featured products
-            sb.Append("<div style=""flex:1;min-width:280px;max-width:430px"">")
-            If featured.Count >= 2 Then sb.Append(Spotlight(featured(0), featured(1)))
+            ' single featured spotlight — the stacked second card used to stretch this
+            ' column and push the KPI strip far down the page.
+            ' flex column so the spotlight card stretches down to the hero's bottom border
+            sb.Append("<div style=""flex:1;min-width:280px;max-width:430px;display:flex;flex-direction:column"">")
+            ' The hero shows the product the admin pinned (CatalogService.Spotlight);
+            ' when none is pinned it is the store's best-selling active product.
+            If spot IsNot Nothing Then sb.Append(Spotlight(spot))
             sb.Append("</div></div></div>")
             Return sb.ToString()
         End Function
 
-        Private Function Spotlight(a As Product, b As Product) As String
+        Private Function Spotlight(a As Product) As String
             Dim sb As New StringBuilder()
-            sb.Append("<div class=""card"" style=""overflow:hidden;padding:0;position:relative"">")
+            sb.Append("<div class=""card"" style=""overflow:hidden;padding:0;position:relative;flex:1;display:flex;flex-direction:column"">")
             sb.Append("<div class=""badge"" style=""background:var(--primary);color:#fff;position:absolute;margin:10px;z-index:2"">FEATURED</div>")
-            sb.Append(WebUi.ProductImg(a.PrimaryImageFile, a.Id, a.Name, "height:210px"))
+            sb.Append(WebUi.ProductImg(a.PrimaryImageFile, a.Id, a.Name, "flex:1;min-height:210px"))
             sb.Append("<div style=""padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px"">" &
                       "<b>" & WebUi.Esc(a.Name) & "</b> <span style=""color:var(--primary);font-weight:800"">" &
                       WebUi.Money(a.BasePrice) & "</span></div>")
             sb.Append("</div>")
-            sb.Append("<div class=""card"" style=""padding:0;overflow:hidden;margin-top:12px"">" & WebUi.ProductImg(b.PrimaryImageFile, b.Id, b.Name, "height:150px") &
-                      "<div style=""padding:8px 10px;font-size:12px""><b>" & WebUi.Esc(b.Name) & "</b><br>" &
-                      WebUi.Money(b.BasePrice) & "</div></div>")
             Return sb.ToString()
         End Function
 

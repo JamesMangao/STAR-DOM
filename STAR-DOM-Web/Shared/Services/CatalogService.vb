@@ -27,6 +27,22 @@ Namespace STAR_DOM.Services
             Return _products.ListFeatured(limit)
         End Function
 
+        ''' <summary>
+        ''' The single product shown in the landing-page hero spotlight. The admin can
+        ''' pin one from the admin console; when nothing is pinned — or the pinned
+        ''' product was deleted or hidden — it falls back to the store's best-selling
+        ''' active product so the hero is never empty and always promotes something
+        ''' that actually sells, whether or not it was flagged "featured".
+        ''' </summary>
+        Public Function Spotlight() As Product
+            Dim pinned As Integer = New SiteSettingRepository().GetSpotlightProductId()
+            If pinned > 0 Then
+                Dim chosen As Product = _products.GetById(pinned)
+                If chosen IsNot Nothing AndAlso chosen.IsActive Then Return chosen
+            End If
+            Return _products.BestSeller()
+        End Function
+
         ''' <summary>Open commission slot cards for merchants with capacity (drives the hub + marketplace sections).</summary>
         Public Function CommissionSlots() As List(Of CommissionSlotView)
             Dim slots As New List(Of CommissionSlotView)()

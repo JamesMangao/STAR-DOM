@@ -59,8 +59,40 @@ Namespace STAR_DOM.Web
             ev.LineupText = If(_editingId > 0, ev.LineupText, "")
             ev.Description = Convert.ToString(Request.Form("description"))
 
+            ' The venue dropdown's last option adds a location inline. "loc" then
+            ' arrives as the __new__ sentinel (or simply fails to parse), and the typed
+            ' fields are saved first so the new row's Id can become this event's venue —
+            ' one POST, instead of stopping the booking to go and seed the venue list.
+            Dim locRaw As String = Convert.ToString(Request.Form("loc"))
             Dim locId As Integer = 0
-            Integer.TryParse(Request.Form("loc"), locId)
+            Integer.TryParse(locRaw, locId)
+            Dim newLocName As String = Trim(Convert.ToString(Request.Form("newLocName")))
+            If locId <= 0 AndAlso (String.Equals(locRaw, "__new__", StringComparison.Ordinal) OrElse newLocName <> "") Then
+                ' Reuse a venue with the same name instead of inserting a second one:
+                ' when the event save below fails the editor re-renders, and a retry must
+                ' not leave the list with two identical malls in it.
+                Dim already As StoreLocation = _events.ListLocations().FirstOrDefault(
+                    Function(x) String.Equals(x.Name, newLocName, StringComparison.OrdinalIgnoreCase))
+                If already IsNot Nothing Then
+                    locId = already.Id
+                Else
+                    Dim newLoc As New StoreLocation With {
+                        .Name = newLocName,
+                        .City = Trim(Convert.ToString(Request.Form("newLocCity"))),
+                        .Region = Trim(Convert.ToString(Request.Form("newLocRegion"))),
+                        .Address = Trim(Convert.ToString(Request.Form("newLocAddress"))),
+                        .Venue = "",
+                        .Contact = "",
+                        .IsActive = True
+                    }
+                    Dim locResult As ServiceResult = _events.SaveLocation(newLoc)
+                    If Not locResult.Success Then
+                        RenderForm(locResult.Message)
+                        Return
+                    End If
+                    locId = newLoc.Id
+                End If
+            End If
             ev.LocationId = locId
 
             Dim sd As Date
@@ -156,12 +188,48 @@ Namespace STAR_DOM.Web
             sb.Append(STAR_DOM.Web.Csrf.HiddenField())
             sb.Append("<div class=""card mb"">")
             sb.Append("<div class=""field""><label>Event name *</label><input name=""name"" required value=""" & WebUi.Attr(If(ev IsNot Nothing, ev.Name, "")) & """ placeholder=""e.g. SM City Santa Rosa""></div>")
-            sb.Append("<div class=""field""><label>Mall / venue location</label><select name=""loc"">")
-            For Each l As Models.StoreLocation In _events.ListLocations()
+            ' The venue list is seeded, so a merchant booking a mall that is not on it
+            ' used to be stuck. The last option opens the panel below instead; it is
+            ' submitted with the same POST and the new row's Id becomes the event venue.
+            Dim locs As List(Of StoreLocation) = _events.ListLocations()
+            sb.Append("<div class=""field""><label>Mall / venue location</label><select name=""loc"" id=""evLoc"">")
+            For Each l As StoreLocation In locs
                 Dim sel As String = If(ev IsNot Nothing AndAlso ev.LocationId = l.Id, " selected", "")
                 sb.Append("<option value=""" & l.Id.ToString() & """" & sel & ">" & WebUi.Esc(l.Name) & " — " & WebUi.Esc(l.City) & "</option>")
             Next
+            sb.Append("<option value=""__new__"">Add a new venue location…</option>")
             sb.Append("</select></div>")
+
+            sb.Append("<div id=""evNewLoc"" style=""display:none;margin:-2px 0 12px;border:1px dashed var(--line);border-radius:12px;padding:12px 14px;background:var(--surface-low)"">")
+            sb.Append("<b style=""font-size:13px;display:block;margin-bottom:8px"">" & WebUi.Ic("add_location_alt", "sm") & " New venue location</b>")
+            sb.Append("<div class=""form-grid2"">")
+            sb.Append("<div class=""field""><label>Venue name *</label><input name=""newLocName"" data-req maxlength=""160"" placeholder=""e.g. SM Mall of Asia""></div>")
+            sb.Append("<div class=""field""><label>City *</label><input name=""newLocCity"" data-req maxlength=""80"" placeholder=""e.g. Pasay City""></div>")
+            sb.Append("</div>")
+            sb.Append("<div class=""form-grid2"">")
+            ' Regions already in use are offered as suggestions so a new mall joins the
+            ' grouping the tour schedule and itinerary filter on instead of inventing a
+            ' near-duplicate one.
+            Dim regions As New List(Of String)()
+            For Each l As StoreLocation In locs
+                If l.Region <> "" AndAlso Not regions.Contains(l.Region) Then regions.Add(l.Region)
+            Next
+            sb.Append("<div class=""field""><label>Region *</label><input name=""newLocRegion"" data-req list=""evRegionList"" maxlength=""80"" placeholder=""e.g. Metro Manila South"">")
+            sb.Append("<datalist id=""evRegionList"">")
+            For Each rg As String In regions
+                sb.Append("<option value=""" & WebUi.Attr(rg) & """></option>")
+            Next
+            sb.Append("</datalist></div>")
+            sb.Append("<div class=""field""><label>Address</label><input name=""newLocAddress"" maxlength=""255"" placeholder=""e.g. Mall of Asia Complex""></div>")
+            sb.Append("</div>")
+            sb.Append("<div class=""sub"" style=""font-size:11.5px"">Saved with this event and added to the venue list for next time.</div>")
+            sb.Append("</div>")
+            ' required is toggled with the panel: a hidden input that is still required
+            ' makes the browser refuse to submit and point at a field nobody can see.
+            sb.Append("<script>(function(){var s=document.getElementById('evLoc'),p=document.getElementById('evNewLoc');" &
+                      "if(!s||!p)return;function sync(){var on=s.value==='__new__';p.style.display=on?'':'none';" &
+                      "var f=p.querySelectorAll('[data-req]');for(var i=0;i<f.length;i++){f[i].required=on;}}" &
+                      "s.addEventListener('change',sync);sync();})();</script>")
             sb.Append("<div class=""form-grid2"">")
             sb.Append(Field("venue", "Venue detail / booth area", If(ev IsNot Nothing, ev.VenueDetail, "")))
             sb.Append(Field("booth", "Booth / stall # *", If(ev IsNot Nothing, ev.BoothNumber, "")))

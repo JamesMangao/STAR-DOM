@@ -26,6 +26,7 @@ Namespace STAR_DOM.Web
         Private Sub RenderPage()
             Dim sb As New StringBuilder()
             Dim featured As List(Of Product) = _catalog.Featured(8)
+            Dim spotlight As Product = _catalog.Spotlight()
             Dim categories As List(Of Category) = _catalog.ListCategories()
             Dim current As PopUpEvent = _events.CurrentEvent()
             Dim upcoming As List(Of PopUpEvent) = _events.ListUpcoming()
@@ -47,20 +48,23 @@ Namespace STAR_DOM.Web
             Dim rep As New ReportService()
             Dim totalSalesVol As Decimal = rep.RevenueTotal()
             Dim formattedVol As String = If(totalSalesVol >= 1000D, "₱" & (totalSalesVol / 1000D).ToString("0.#") & "K+", "₱" & totalSalesVol.ToString("N0"))
-            Dim totalProducts As Integer = _catalog.ListProducts().Count
             Dim totalCategories As Integer = _catalog.ListCategories().Count
 
-            sb.Append("<div class=""grid kpis"" style=""grid-template-columns:repeat(4,minmax(130px,1fr));max-width:800px;margin:20px 0 0"">")
+            sb.Append("<div class=""grid kpis"" style=""grid-template-columns:repeat(3,minmax(180px,1fr));max-width:620px;margin:20px 0 0"">")
             sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:#ffe0de"">" & WebUi.Ic("lightbulb") & "</span><div class=""k-value"" style=""font-size:15px;line-height:1.2;letter-spacing:-.01em"">UNLIMITED</div><div class=""k-label"">Ideas for commission</div></div>")
             sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:var(--yellow-soft);color:var(--on-yellow)"">" & WebUi.Ic("paid") & "</span><div class=""k-value"" style=""font-size:26px"">" & formattedVol & "</div><div class=""k-label"">Online Sales Volume</div></div>")
-            sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:#ffe0de"">" & WebUi.Ic("inventory_2") & "</span><div class=""k-value"" style=""font-size:26px"">" & totalProducts.ToString() & "</div><div class=""k-label"">Handcrafted SKUs</div></div>")
             sb.Append("<div class=""kpi k-icon""><span class=""k-ic"" style=""background:var(--tertiary-fixed);color:var(--tertiary)"">" & WebUi.Ic("verified") & "</span><div class=""k-value"" style=""font-size:19px;line-height:1.2"">100%</div><div class=""k-label"">Human-made art</div></div>")
             sb.Append("</div></div>")
 
-            ' hero collage — first few featured products
-            sb.Append("<div style=""flex:1;min-width:280px;max-width:430px"">")
-            If featured.Count >= 2 Then
-                sb.Append(ProductSpotlight(featured(0), featured(1)))
+            ' hero spotlight — a single featured piece; the stacked second card used
+            ' to stretch this column and push the catalog section down the page.
+            ' flex column so the spotlight card can stretch down to the hero's bottom
+            ' border instead of floating half-height in the middle of the banner.
+            sb.Append("<div style=""flex:1;min-width:280px;max-width:430px;display:flex;flex-direction:column"">")
+            ' The hero shows the product the admin pinned (CatalogService.Spotlight);
+            ' when none is pinned it is the store's best-selling active product.
+            If spotlight IsNot Nothing Then
+                sb.Append(ProductSpotlight(spotlight))
             End If
             sb.Append("</div></div></div>")
 
@@ -135,11 +139,11 @@ Namespace STAR_DOM.Web
 
         ' ---------- building blocks ----------
 
-        Private Function ProductSpotlight(a As Product, b As Product) As String
+        Private Function ProductSpotlight(a As Product) As String
             Dim sb As New StringBuilder()
-            sb.Append("<div class=""card"" style=""overflow:hidden;padding:0"">")
+            sb.Append("<div class=""card"" style=""overflow:hidden;padding:0;flex:1;display:flex;flex-direction:column"">")
             sb.Append("<div class=""badge"" style=""background:var(--primary);color:#fff;position:absolute;margin:10px"">POP-UP SPOTLIGHT</div>")
-            sb.Append(WebUi.ProductImg(a.PrimaryImageFile, a.Id, a.Name, "height:210px"))
+            sb.Append(WebUi.ProductImg(a.PrimaryImageFile, a.Id, a.Name, "flex:1;min-height:210px"))
             sb.Append("<div style=""padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px"">" &
                       "<b>" & WebUi.Esc(a.Name) & "</b> <span style=""color:var(--primary);font-weight:800"">" &
                       WebUi.Money(a.BasePrice) & "</span></div>")
@@ -147,9 +151,6 @@ Namespace STAR_DOM.Web
                         a.StockQuantity.ToString() & " remaining!</div>", "<div class=""stockline"" style=""padding:0 14px 12px"">" &
                         a.StockQuantity.ToString() & " in booth stock</div>"))
             sb.Append("</div>")
-            sb.Append("<div class=""card"" style=""padding:0;overflow:hidden;margin-top:12px"">" & WebUi.ProductImg(b.PrimaryImageFile, b.Id, b.Name, "height:150px") &
-                      "<div style=""padding:8px 10px;font-size:12px""><b>" & WebUi.Esc(b.Name) & "</b><br>" &
-                      WebUi.Money(b.BasePrice) & "</div></div>")
             Return sb.ToString()
         End Function
 
