@@ -23,6 +23,12 @@ Namespace STAR_DOM.Services
         Private ReadOnly _receipts As New ReceiptRepository()
         Private ReadOnly _cart As New CartService()
         Private ReadOnly _products As New ProductRepository()
+        ''' <summary>
+        ''' The studio's earnings ledger. Every path that establishes RECEIVED
+        ''' releases it, and every path that refunds voids it, so the two can never
+        ''' drift apart from the order's own status.
+        ''' </summary>
+        Private ReadOnly _ledger As New CommissionLedgerService()
 
         ''' <summary>
         ''' Raised inside the checkout transaction when a conditional stock decrement
@@ -470,6 +476,10 @@ Namespace STAR_DOM.Services
             _orders.SetReceiptSource(orderId, ReceiptSources.Customer)
             _orders.AppendHistory(orderId, order.Status, OrderStatuses.Received,
                                   ReceiptSources.Customer, "", Session.CurrentUser.Username)
+            ' The parcel is in the buyer's hands, so the studio has genuinely earned
+            ' the sale. Released here rather than by a scheduled job so the ledger row
+            ' is never out of step with the order it belongs to.
+            _ledger.ReleaseForOrder(order, "Released: the customer confirmed the parcel arrived")
             Dim notif As New NotificationService()
             notif.NotifyRole("ADMIN", "Order received – " & order.OrderNumber,
                              "The customer confirmed this order arrived.",
@@ -513,6 +523,12 @@ Namespace STAR_DOM.Services
             _orders.OpenHold(orderId, text, Session.CurrentUser.Username)
             _orders.AppendHistory(orderId, order.Status, OrderStatuses.Held,
                                   ReceiptSources.Customer, text, Session.CurrentUser.Username)
+            ' A dispute stops the sweep from closing the order, so the earning must
+            ' stop moving with it. It is already HELD (the order reached DELIVERED to
+            ' be disputable at all); this is the idempotent safety net for any row
+            ' whose accrual was missed, e.g. an order delivered before the ledger
+            ' existed.
+            _ledger.HoldForOrder(order, "Held: delivery is under dispute")
             Dim notif As New NotificationService()
             notif.NotifyRole("ADMIN", "Delivery dispute " & order.OrderNumber,
                              "The customer reports a problem with this delivery: " & text,
@@ -531,7 +547,8 @@ Namespace STAR_DOM.Services
         ''' person, because there is no gateway here that could move it by itself.
         ''' </remarks>
         Public Function ResolveDispute(orderId As Integer, resolution As String,
-                                       note As String) As ServiceResult
+                                       note As String, igRef As String,
+                                       Optional tracking As String = "") As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
             If Not Session.IsAdmin Then Return ServiceResult.Fail("Only an administrator can resolve a dispute.")
 
@@ -543,35 +560,100 @@ Namespace STAR_DOM.Services
 
             Dim res As String = If(resolution, "").Trim().ToUpperInvariant()
             Dim targetStatus As String
+            Dim waybill As String = If(tracking, "").Trim()
             Select Case res
                 Case "RECEIVED"
                     targetStatus = OrderStatuses.Received
                 Case "REFUNDED"
                     targetStatus = OrderStatuses.Refunded
                 Case "RESHIP"
-                    targetStatus = OrderStatuses.Delivered
+                    ' A reship goes back out through the same door as the first parcel:
+                    ' SHIPPED, not straight to DELIVERED. It is a new courier hand-off,
+                    ' so it needs a new J&T waybill -- the old one is the parcel the
+                    ' customer never got, and reusing it would leave them tracking a
+                    ' shipment that already ended. Without a number there is nothing
+                    ' for the customer to follow, so a missing one is refused outright.
+                    If waybill = "" Then
+                        Return ServiceResult.Fail("Enter the new J&T tracking number for the reshipped parcel.")
+                    End If
+                    targetStatus = OrderStatuses.Shipped
                 Case Else
                     Return ServiceResult.Fail("Choose whether the parcel was received, refunded, or sent again.")
             End Select
 
+            Dim ig As String = If(igRef, "").Trim()
             _orders.ResolveHold(orderId, res, targetStatus, Session.CurrentUser.Username)
             If res = "RECEIVED" Then
                 _orders.MarkReceived(orderId)
                 _orders.SetReceiptSource(orderId, ReceiptSources.Studio)
             End If
+            If res = "REFUNDED" Then
+                _orders.SetRefundIgRef(orderId, ig)
+            ElseIf res = "RESHIP" Then
+                ' No refund, so no money moves: the order simply goes back out. The
+                ' delivery cycle is reset with it, so the new parcel gets its own
+                ' delivered notification and its own reminder before the sweep may
+                ' close it again -- and the earning stays HELD throughout, because
+                ' nothing has been confirmed received yet.
+                _orders.UpdateShipping(orderId, "J&T Express", waybill, OrderStatuses.Shipped)
+                _orders.ResetDeliveryCycle(orderId)
+                _orders.SetHoldIgRef(orderId, ig)
+            Else
+                _orders.SetHoldIgRef(orderId, ig)
+            End If
             _orders.AppendHistory(orderId, OrderStatuses.Held, targetStatus,
-                                  ReceiptSources.Studio, If(note, ""), Session.CurrentUser.Username)
+                                  ReceiptSources.Studio, TimelineReason(ig, note), Session.CurrentUser.Username)
 
+            If res = "RECEIVED" Then
+                _ledger.ReleaseForOrder(order, "Released: the studio resolved the dispute as received")
+            ElseIf res = "REFUNDED" Then
+                ' Same as RecordRefund: the payment moves with the order, so a refunded
+                ' sale is not left inside gross revenue.
+                _orders.UpdatePaymentStatus(orderId, OrderStatuses.Refunded)
+                _orders.SetPaymentsRefunded(orderId)
+                _ledger.VoidForOrder(order, If(Trim(If(note, "")) = "", "Dispute resolved as refunded", note))
+                _receipts.MarkRefunded(orderId)
+            ElseIf res = "RESHIP" Then
+                ' Still not confirmed received, so the earning stays exactly where it
+                ' is: held.
+                _ledger.HoldForOrder(order, "Held: the parcel is being sent again")
+            End If
+
+            Dim outcomeLine As String
+            Select Case res
+                Case "RECEIVED" : outcomeLine = "the parcel did arrive"
+                Case "REFUNDED" : outcomeLine = "the order was refunded"
+                Case "RESHIP" : outcomeLine = "the parcel is being sent again"
+                Case Else : outcomeLine = res.ToLowerInvariant()
+            End Select
             Dim notif As New NotificationService()
             notif.Notify(order.UserId, "Your order " & order.OrderNumber & " has been looked into",
-                         "The studio has finished investigating your delivery. Outcome: " & res & ".",
+                         "The studio has finished investigating your delivery: " & outcomeLine & "." &
+                         If(res = "RESHIP", " Nothing further is needed from you — the new parcel will " &
+                                            "arrive with tracking number " & waybill & ".", "") &
+                         If(ig <> "", " (Instagram reference " & ig & ")", ""),
                          "ORDER", "order-detail")
             Return ServiceResult.Ok("Dispute resolved.")
         End Function
 
         ''' <summary>
-        ''' Mark an order received on the customer's behalf. Admin only, and only with
-        ''' a reason, which is kept on the order.
+        ''' The stored reason for a studio-sourced transition, with the Instagram
+        ''' reference in front of it. The history row is what the timeline panel
+        ''' renders, so putting the IG ref here -- rather than only on the order row --
+        ''' is what makes "resolved by studio &middot; IG ref &middot; reason" one honest line
+        ''' instead of two facts kept in different places.
+        ''' </summary>
+        Private Shared Function TimelineReason(igRef As String, note As String) As String
+            Dim ig As String = Trim(If(igRef, ""))
+            Dim text As String = Trim(If(note, ""))
+            If ig = "" Then Return text
+            If text = "" Then Return "IG " & ig
+            Return "IG " & ig & " · " & text
+        End Function
+
+        ''' <summary>
+        ''' Mark an order received on the customer's behalf. Admin only, and requires
+        ''' a reason, a proof of delivery already on file, and the admin's password.
         ''' </summary>
         ''' <remarks>
         ''' This exists for the real case: the customer tells the studio over the phone
@@ -580,8 +662,12 @@ Namespace STAR_DOM.Services
         ''' silent -- so ReceiptSource records STUDIO and the reason is mandatory,
         ''' leaving a plain answer to "why does this order say received when nobody
         ''' clicked anything".
+        '''
+        ''' The locked spec requires POD + password for this path. An order without a
+        ''' proof of delivery cannot be closed by the studio on the customer's behalf.
         ''' </remarks>
-        Public Function StudioMarkReceived(orderId As Integer, reason As String) As ServiceResult
+        Public Function StudioMarkReceived(orderId As Integer, reason As String,
+                                          igRef As String, password As String) As ServiceResult
             If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
             If Not Session.IsAdmin Then Return ServiceResult.Fail("Only an administrator can do that.")
 
@@ -597,11 +683,29 @@ Namespace STAR_DOM.Services
             If text.Length = 0 Then
                 Return ServiceResult.Fail("Say how you know the parcel arrived - the reason is kept on the order.")
             End If
+            Dim pwd As String = If(password, "").Trim()
+            If pwd = "" Then Return ServiceResult.Fail(PaymentFailedMessage("Enter your password to mark this order as received."))
+            Dim freshUser As User = New UserRepository().GetById(Session.CurrentUser.Id)
+            If freshUser Is Nothing OrElse Not PasswordHasher.Verify(pwd, freshUser.PasswordHash) Then
+                Return ServiceResult.Fail(PaymentFailedMessage("Password incorrect — the order was not marked."))
+            End If
 
+            ' The locked spec requires a proof of delivery on file for studio override.
+            If order.PodImageData Is Nothing OrElse order.PodImageData.Length = 0 Then
+                Return ServiceResult.Fail("This order has no proof of delivery on file. Upload a POD first " &
+                                          "before marking it as received on the customer's behalf.")
+            End If
+
+            Dim ig As String = If(igRef, "").Trim()
             _orders.MarkReceived(orderId)
             _orders.SetReceiptSource(orderId, ReceiptSources.Studio)
+            _orders.SetHoldIgRef(orderId, ig)  ' record IG ref alongside studio override
             _orders.AppendHistory(orderId, order.Status, OrderStatuses.Received,
-                                  ReceiptSources.Studio, text, Session.CurrentUser.Username)
+                                  ReceiptSources.Studio, TimelineReason(ig, text), Session.CurrentUser.Username)
+            ' The studio asserted the parcel arrived and carries a POD to back it, so
+            ' the earning is released on the same grounds the customer's own
+            ' confirmation would have released it.
+            _ledger.ReleaseForOrder(order, "Released: the studio marked the order received on the customer's behalf")
             Return ServiceResult.Ok("Order marked as received.")
         End Function
 
@@ -636,10 +740,350 @@ Namespace STAR_DOM.Services
             Return ServiceResult.Ok("Proof of delivery saved.")
         End Function
 
+        ''' <summary>
+        ''' Record a refund for an order. Admin only. The order status becomes REFUNDED
+        ''' (not CANCELLED), the IG reference is recorded, and the audit trail captures
+        ''' the reason. The money itself moves outside the system -- this records the
+        ''' decision, it does not perform a refund.
+        ''' </summary>
+        ''' <remarks>
+        ''' The locked spec: "admin 'Record a refund' + reason + IG ref -> REFUNDED
+        ''' (not CANCELLED). receipt: existing OR marked refunded. commission: clawback.
+        ''' void commission row, flag reversal. No money moves."
+        '''
+        ''' Each of those three is honoured literally:
+        '''   - REFUNDED, never CANCELLED. Cancelling an order and refunding one are
+        '''     different facts, and writing CANCELLED over a paid order loses the
+        '''     record that money actually changed hands.
+        '''   - The official receipt is KEPT and stamped refunded. It cannot be
+        '''     re-issued (UNIQUE(PaymentId)) and it must not be deleted: the sale
+        '''     genuinely happened and the BIR record of it survives the refund.
+        '''   - The studio's earning is voided. If it had already been released when
+        '''     the customer confirmed receipt, the row is voided AND flagged as a
+        '''     reversal -- a clawback rather than a row that never existed.
+        '''
+        ''' No money moves: there is no gateway here that could send it, so this
+        ''' records the decision exactly as Orders.REFUNDED does.
+        ''' </remarks>
+        Public Function RecordRefund(orderId As Integer, reason As String,
+                                     igRef As String, password As String) As ServiceResult
+            If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
+            If Not Session.IsAdmin Then Return ServiceResult.Fail("Only an administrator can do that.")
+
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.Status = OrderStatuses.Cancelled Then
+                Return ServiceResult.Fail("This order was cancelled.")
+            End If
+            If order.Status = OrderStatuses.Refunded Then
+                Return ServiceResult.Fail("This order is already refunded.")
+            End If
+            ' A refund is money going back, so there has to be money to give back.
+            ' A PENDING or FAILED payment is not a refund, it is a cancellation, and
+            ' offering it here would let REFUNDED be written over an unpaid order.
+            If order.PaymentStatus <> "PAID" Then
+                Return ServiceResult.Fail("This order has no confirmed payment, so there is nothing to refund. " &
+                                          "Cancel it instead.")
+            End If
+            Dim text As String = If(reason, "").Trim()
+            If text.Length = 0 Then
+                Return ServiceResult.Fail("Say why this order is being refunded - the reason is kept on the order.")
+            End If
+            Dim pwd As String = If(password, "").Trim()
+            If pwd = "" Then Return ServiceResult.Fail(PaymentFailedMessage("Enter your password to record this refund."))
+            Dim freshUser As User = New UserRepository().GetById(Session.CurrentUser.Id)
+            If freshUser Is Nothing OrElse Not PasswordHasher.Verify(pwd, freshUser.PasswordHash) Then
+                Return ServiceResult.Fail(PaymentFailedMessage("Password incorrect -- the refund was not recorded."))
+            End If
+
+            Dim ig As String = If(igRef, "").Trim()
+            _orders.UpdateStatus(orderId, OrderStatuses.Refunded)
+            ' The order is REFUNDED, and so is what was paid against it. Leaving the
+            ' payment at PAID would keep a refunded sale inside gross revenue, which is
+            ' summed over PaymentStatus = 'PAID'.
+            _orders.UpdatePaymentStatus(orderId, OrderStatuses.Refunded)
+            _orders.SetPaymentsRefunded(orderId)
+            _orders.SetRefundIgRef(orderId, ig)
+            _orders.AppendHistory(orderId, order.Status, OrderStatuses.Refunded,
+                                  ReceiptSources.Studio, TimelineReason(ig, text), Session.CurrentUser.Username)
+            ' The receipt is marked, not re-issued. Best-effort on purpose: a receipt
+            ' failure must not be able to make a recorded refund look like it never
+            ' happened.
+            _receipts.MarkRefunded(orderId)
+            ' Void the earning, flagging a reversal when it had already been released.
+            _ledger.VoidForOrder(order, text)
+
+            Dim notif As New NotificationService()
+            notif.Notify(order.UserId, "Your order " & order.OrderNumber & " has been refunded",
+                         "The studio has recorded a refund for this order. Reason: " & text &
+                         If(ig <> "", " (Instagram reference " & ig & ")", ""),
+                         "ORDER", "order-detail")
+            Return ServiceResult.Ok("Refund recorded. " & PaymentSetting.SupportContact)
+        End Function
+
+
+        ' ====================================================================
+        ' The delivery sweep
+        ' ====================================================================
+        ' A parcel that lands and is never confirmed is the normal case, not the
+        ' exception: most buyers simply never press the button. Without a scheduled
+        ' close, every one of those orders sits in DELIVERED for ever, the studio's
+        ' earning never releases, and the order can never be reviewed. The sweep is
+        ' the answer, and its whole design is about not being able to do damage:
+        '
+        '   - The window is counted from the courier hand-off, not from now.
+        '   - Day 5-6 sends ONE reminder (ReminderSentAt is set-once).
+        '   - Day 7 closes the order ONLY when every one of these holds:
+        '       * the customer was told the parcel landed (DeliveredNotifiedAt), and
+        '       * the single reminder actually went out (ReminderSentAt), and
+        '       * a proof of delivery is on file, and
+        '       * the studio recorded the courier as having delivered it.
+        '     Anything else stays DELIVERED and is flagged to the studio instead.
+        '   - HELD orders are not in the candidate set at all, so a dispute stops the
+        '     close completely rather than only being written down.
+        '
+        ' Every write is guarded (set-once stamps, ON CONFLICT DO NOTHING on the
+        ' ledger), so a re-run, an overlapping run and a manual retry are all safe.
+
+        ''' <summary>Days after the courier hand-off at which the reminder goes out.</summary>
+        Public Const SweepReminderAfterDays As Integer = 5
+        ''' <summary>Days after the courier hand-off at which the order may be closed.</summary>
+        Public Const SweepAutoCloseAfterDays As Integer = 7
+        ''' <summary>Recorded as the actor on a row the scheduled job wrote.</summary>
+        Public Const SweepActor As String = "delivery-sweep"
+
+        ''' <summary>
+        ''' True when the studio's courier status says the parcel was delivered.
+        ''' </summary>
+        ''' <remarks>
+        ''' This is a text match on what a person typed off J&amp;T's tracking page, and
+        ''' that is deliberate: there is no courier API, so an automatic status claim
+        ''' would be a guess. "deliver" covers J&amp;T's own wordings (Delivered,
+        ''' DELIVERED, Delivered - left with neighbour), which is the only vocabulary
+        ''' the studio is told to type.
+        ''' </remarks>
+        Public Shared Function CourierConfirmsDelivery(courierStatus As String) As Boolean
+            Dim s As String = If(courierStatus, "").Trim().ToLowerInvariant()
+            If s = "" Then Return False
+            Return s.Contains("deliver")
+        End Function
+
+        ''' <summary>What one sweep run did. Counted so the run can be logged and read.</summary>
+        Public Class DeliverySweepReport
+            Public Property Examined As Integer
+            Public Property Notified As Integer
+            Public Property Reminded As Integer
+            Public Property Closed As Integer
+            Public Property Flagged As Integer
+
+            Public ReadOnly Property Summary As String
+                Get
+                    Return "delivery sweep: " & Examined.ToString() & " delivered, " &
+                           Notified.ToString() & " notified, " & Reminded.ToString() & " reminded, " &
+                           Closed.ToString() & " closed, " & Flagged.ToString() & " flagged"
+                End Get
+            End Property
+        End Class
+
+        ''' <summary>
+        ''' Run the delivery sweep. Safe to call twice; safe to call late.
+        ''' </summary>
+        ''' <remarks>
+        ''' Idempotency comes from the data, not from a lock: the two stamps are
+        ''' set-once, the ledger accrual is ON CONFLICT DO NOTHING, and both the close
+        ''' and the flag are guarded on the order still being in the state they expect.
+        ''' Two runs racing can therefore both do their job without a second
+        ''' notification, a second history row or a double commission. A dry run reads
+        ''' and reports without writing anything.
+        ''' </remarks>
+        Public Function RunDeliverySweep(Optional dryRun As Boolean = False) As DeliverySweepReport
+            Dim report As New DeliverySweepReport()
+            Dim notif As New NotificationService()
+            Dim today As Date = Clock.Now
+
+            ' A failure on one order must not abandon the ones behind it: the sweep's
+            ' job is to make progress on a batch, and one unreadable row would
+            ' otherwise stall every delivery in the system for good.
+            For Each c As DeliverySweepCandidate In _orders.ListDeliveredForSweep()
+                Try
+                    report.Examined += 1
+                    Dim days As Integer = If(c.DeliveredAt.HasValue,
+                                             CInt(Math.Floor((today - c.DeliveredAt.Value).TotalDays)), 0)
+
+                    ' 1. The same-day announcement. Normally stamped the moment the order
+                    '    became DELIVERED; this is the catch-up for rows delivered before
+                    '    that stamp existed, and it is a precondition of the close below.
+                    If Not c.DeliveredNotifiedAt.HasValue Then
+                        c.DeliveredNotifiedAt = today
+                        If Not dryRun Then
+                            _orders.StampDeliveredNotified(c.OrderId)
+                            notif.Notify(c.UserId, "Order delivered – " & c.OrderNumber,
+                                         "Your parcel has been delivered. Please confirm you received it in " &
+                                         "My Orders — and if anything is wrong, report a delivery problem " &
+                                         "from the same page within 7 days.", "ORDER", "order-detail")
+                        End If
+                        report.Notified += 1
+                    End If
+
+                    ' 2. ONE reminder, once, in the 5-6 day window.
+                    If days >= SweepReminderAfterDays AndAlso Not c.ReminderSentAt.HasValue Then
+                        c.ReminderSentAt = today
+                        If Not dryRun Then
+                            _orders.StampReminderSent(c.OrderId)
+                            notif.Notify(c.UserId, "Did your order arrive? – " & c.OrderNumber,
+                                         "Your order was marked delivered and we have not heard back. " &
+                                         "If it arrived, confirm it in My Orders so it can be closed. If it " &
+                                         "did not, report a delivery problem there and the studio will look " &
+                                         "into it with J&amp;T Express — nothing closes automatically while a " &
+                                         "dispute is open.", "ORDER", "order-detail")
+                        End If
+                        report.Reminded += 1
+                    End If
+
+                    ' 3. Day 7: close, or flag and leave it alone. The two stamps are a
+                    '    hard precondition, so an order whose customer was never
+                    '    notified can never be closed against them.
+                    If days >= SweepAutoCloseAfterDays AndAlso
+                       c.DeliveredNotifiedAt.HasValue AndAlso c.ReminderSentAt.HasValue Then
+                        If c.HasPod AndAlso CourierConfirmsDelivery(c.CourierStatus) Then
+                            If Not dryRun Then
+                                ' The customer is now RECEIVED by the courier's evidence and
+                                ' the absence of any dispute, and the audit trail says so in
+                                ' words rather than leaving a bare status flip.
+                                _orders.MarkReceived(c.OrderId)
+                                _orders.SetReceiptSource(c.OrderId, ReceiptSources.CourierPod)
+                                _orders.AppendHistory(c.OrderId, OrderStatuses.Delivered, OrderStatuses.Received,
+                                                      ReceiptSources.CourierPod,
+                                                      "Closed automatically: courier proof of delivery on file and no dispute in the delivery window",
+                                                      SweepActor)
+                                Dim closed As Order = _orders.GetById(c.OrderId)
+                                _ledger.ReleaseForOrder(closed, "Released: closed automatically from the courier proof of delivery")
+                                notif.Notify(c.UserId, "Order closed – " & c.OrderNumber,
+                                             "Your order has been recorded as received: the studio has the " &
+                                             "courier's proof of delivery on file and no problem was reported. " &
+                                             "If that is wrong, message the studio and they will sort it out.",
+                                             "ORDER", "order-detail")
+                            End If
+                            report.Closed += 1
+                        ElseIf Not _orders.HasSweepFlag(c.OrderId) Then
+                            ' Nothing to close it on. Stays DELIVERED and the studio is
+                            ' told once: the flag is read back out of the audit trail, so a
+                            ' daily run does not repeat the same note every morning.
+                            If Not dryRun Then
+                                _orders.AppendHistory(c.OrderId, OrderStatuses.Delivered, OrderStatuses.Delivered,
+                                                      ReceiptSources.AutoSweep,
+                                                      "Past the delivery window with no courier proof of delivery on file — the studio needs to check with J&T and record it",
+                                                      SweepActor)
+                                notif.NotifyRole("ADMIN", "Order needs attention – " & c.OrderNumber,
+                                                 "This order has been sitting in DELIVERED past the delivery window. " &
+                                                 "There is no courier proof of delivery on file, so it cannot be closed " &
+                                                 "automatically. Check it with J&T Express and record the outcome on " &
+                                                 "the Delivery page.",
+                                                 "ORDER", "merchant-orders")
+                            End If
+                            report.Flagged += 1
+                        End If
+                    End If
+                Catch ex As Exception
+                    ' One bad order must not take the run down; the next run picks it up.
+                    Db.LogError("DeliverySweep", ex)
+                End Try
+            Next
+
+            ' The run itself is logged. It goes to AppErrors because that is the only
+            ' table this application already keeps for machine-run auditable events,
+            ' and each order the sweep touched also left a row in its own history -- so
+            ' "what did the 3am job do" is answerable from both ends.
+            If Not dryRun Then
+                Try
+                    Db.LogError("DeliverySweep", New InvalidOperationException(report.Summary))
+                Catch
+                    ' never let logging break the run
+                End Try
+            End If
+            Return report
+        End Function
+
         ''' <summary>The delivery audit trail for an order, newest first.</summary>
         Public Function OrderHistory(orderId As Integer) As List(Of OrderStatusEntry)
             Return _orders.ListHistory(orderId)
         End Function
+
+        ''' <summary>
+        ''' The delivery panel's timeline for one order: the recorded transitions,
+        ''' each rendered in the fixed wording the locked spec lays down.
+        ''' </summary>
+        ''' <remarks>
+        ''' Built from the history rows rather than from the current status, because a
+        ''' status is only ever one moment and the questions people actually ask
+        ''' ("who closed this, and why", "was it the courier's proof or my own click")
+        ''' are answered by the sequence. The provenance words -- "confirmed by
+        ''' customer", "courier POD on file", "marked by studio" -- ARE the answer, so
+        ''' no username is appended: the line already says who acted.
+        ''' </remarks>
+        Public Function DeliveryTimeline(order As Order) As List(Of String)
+            Dim lines As New List(Of String)()
+            If order Is Nothing OrElse order.Id <= 0 Then Return lines
+            For Each e As OrderStatusEntry In _orders.ListHistory(order.Id)
+                Dim line As String = TimelineLine(e, order)
+                If line <> "" Then lines.Add(line)
+            Next
+            Return lines
+        End Function
+
+        ''' <summary>One timeline line, in the wording the locked spec fixes.</summary>
+        Public Shared Function TimelineLine(entry As OrderStatusEntry, order As Order) As String
+            If entry Is Nothing Then Return ""
+            ' Named toStatus/fromStatus, not to/from: both are VB keywords (For..To,
+            ' and the From in a query expression), so the short names do not compile.
+            Dim toStatus As String = If(entry.ToStatus, "").Trim().ToUpperInvariant()
+            Dim fromStatus As String = If(entry.FromStatus, "").Trim().ToUpperInvariant()
+            Dim source As String = If(entry.Source, "").Trim().ToUpperInvariant()
+            Dim reason As String = Trim(If(entry.Reason, ""))
+            Dim podOnFile As Boolean = order IsNot Nothing AndAlso order.HasPod
+
+            Select Case toStatus
+                Case OrderStatuses.Delivered
+                    ' Two different DELIVERED rows exist: the delivery claim itself, and
+                    ' the sweep's own "still not closed" flag. Only the first is a
+                    ' delivery event, so the flag is skipped -- it is the studio's to-do,
+                    ' not a step the customer took.
+                    If source = ReceiptSources.AutoSweep Then Return ""
+                    If podOnFile Then Return "DELIVERED · courier POD on file"
+                    Return "DELIVERED · " & If(reason <> "", reason, "handed to J&T Express")
+
+                Case OrderStatuses.Held
+                    Return "HELD · under investigation · contact studio via IG"
+
+                Case OrderStatuses.Received
+                    Select Case source
+                        Case ReceiptSources.Customer
+                            Return "RECEIVED · confirmed by customer"
+                        Case ReceiptSources.CourierPod
+                            Return "RECEIVED · courier POD on file"
+                        Case ReceiptSources.AutoSweep
+                            Return "RECEIVED · courier POD on file"
+                        Case Else
+                            ' A studio-sourced RECEIVED is either the studio asserting it
+                            ' on the customer's behalf, or a dispute the studio resolved.
+                            ' The two are told apart by where the row came FROM, which is
+                            ' exactly why the from-status is stored on the row.
+                            If fromStatus = OrderStatuses.Held Then
+                                Return "RECEIVED · resolved by studio · " & If(reason <> "", reason, "no reason given")
+                            End If
+                            Return "RECEIVED · marked by studio · " & If(reason <> "", reason, "no reason given")
+                    End Select
+
+                Case OrderStatuses.Refunded
+                    Return "REFUNDED · recorded by studio · " & If(reason <> "", reason, "no reason given")
+
+                Case Else
+                    ' Anything else the order went through (PENDING, CONFIRMED, ...) is
+                    ' not part of the delivery story this panel tells.
+                    Return ""
+            End Select
+        End Function
+
 
         ''' <summary>The proof-of-delivery image for an order, or Nothing.</summary>
         Public Function PodImage(orderId As Integer) As Byte()
@@ -771,12 +1215,21 @@ Namespace STAR_DOM.Services
             Dim isOwnOrder As Boolean = Session.IsAuthenticated AndAlso order.UserId = Session.CurrentUser.Id
             If newStatus = "CANCELLED" AndAlso Not isStore Then
                 If Not isOwnOrder Then Return ServiceResult.Fail("Not authorized.")
-                If order.Status <> "PENDING" Then
-                    Return ServiceResult.Fail("The studio has confirmed this order, so it can no " &
+                ' The cutoff is the PAYMENT, not the courier quote. The rule table has
+                ' PENDING payment cancellable from both PENDING and CONFIRMED order
+                ' status, and only blocks once a reference is SUBMITTED or the money is
+                ' PAID/REFUNDED. Gating on the order status alone was wrong twice over:
+                ' it refused a CONFIRMED-but-unpaid order the customer was told they
+                ' could still cancel, and it left FAILED open (which is correct -- a
+                ' rejected reference means nothing was paid, so the order may still be
+                ' pulled back).
+                If order.PaymentStatus = "SUBMITTED" OrElse order.PaymentStatus = "PAID" OrElse
+                   order.PaymentStatus = "REFUNDED" Then
+                    Return ServiceResult.Fail("A payment has already been submitted for this order, so it can no " &
                                               "longer be cancelled here. " & PaymentSetting.SupportContact)
                 End If
-                If order.PaymentStatus = "SUBMITTED" OrElse order.PaymentStatus = "PAID" Then
-                    Return ServiceResult.Fail("A payment has already been submitted for this order, so it can no " &
+                If order.Status <> "PENDING" AndAlso order.Status <> "CONFIRMED" Then
+                    Return ServiceResult.Fail("This order is already being prepared, so it can no " &
                                               "longer be cancelled here. " & PaymentSetting.SupportContact)
                 End If
             ElseIf Not isStore Then
@@ -835,8 +1288,18 @@ Namespace STAR_DOM.Services
             If newStatus = "SHIPPED" AndAlso String.IsNullOrWhiteSpace(tracking) Then
                 Return ServiceResult.Fail("Enter the J&T tracking number before marking this order as SHIPPED.")
             End If
-            If newStatus = "DELIVERED" AndAlso String.IsNullOrWhiteSpace(order.TrackingNumber) Then
-                Return ServiceResult.Fail("Book this order with J&T (enter its tracking number) before marking it as DELIVERED.")
+
+            ' DELIVERED requires proof: either a tracking number (the J&T waybill that
+            ' was entered at SHIPPED) OR a proof of delivery already on file. Without
+            ' either there is nothing to show the customer and nothing the sweep can
+            ' use to auto-close. This is the "tracking# o POD" gate from the locked spec.
+            If newStatus = "DELIVERED" Then
+                Dim hasTracking As Boolean = Not String.IsNullOrWhiteSpace(order.TrackingNumber)
+                Dim hasPod As Boolean = order.PodImageData IsNot Nothing AndAlso order.PodImageData.Length > 0
+                If Not hasTracking AndAlso Not hasPod Then
+                    Return ServiceResult.Fail("This order cannot be marked DELIVERED yet — enter the J&T tracking number " &
+                                              "or upload a proof of delivery first.")
+                End If
             End If
 
             ' Every cancellation carries a reason: an order that simply disappears
@@ -857,8 +1320,13 @@ Namespace STAR_DOM.Services
                     _orders.UpdateStatus(orderId, newStatus)
                     ' Written inside the transaction, so the trail can never record a
                     ' move that then failed to commit.
+                    ' The actor is recorded from who actually pressed the button. It used
+                    ' to say "STUDIO" unconditionally, so a customer cancelling their own
+                    ' order left a row claiming the studio had done it -- the one
+                    ' distinction this column exists to make.
                     _orders.AppendHistory(orderId, order.Status, newStatus,
-                                          "STUDIO", why, Session.CurrentUser.Username)
+                                          If(isStore, ReceiptSources.Studio, ReceiptSources.Customer),
+                                          why, Session.CurrentUser.Username)
                     If newStatus = "SHIPPED" OrElse newStatus = "DELIVERED" Then
                         _orders.UpdateShipping(orderId, "J&T Express", tracking, newStatus)
                     End If
@@ -887,6 +1355,23 @@ Namespace STAR_DOM.Services
             If newStatus = "CANCELLED" Then
                 notif.Notify(order.UserId, "Order cancelled – " & order.OrderNumber,
                              "Your order has been cancelled. Reason: " & why, "ORDER", "my-orders")
+            ElseIf newStatus = "DELIVERED" Then
+                ' The parcel is with the customer and the 7-day window starts now, so
+                ' they are told the same day rather than discovering it on a page poll.
+                ' StampDeliveredNotified is set-once, so a re-read cannot restart the
+                ' clock -- and the sweep refuses to auto-close an order that was never
+                ' announced, which is what makes this stamp load-bearing rather than
+                ' cosmetic.
+                _orders.StampDeliveredNotified(orderId)
+                ' Delivery is the point the studio's earning starts accruing: the parcel
+                ' is out of the studio's hands, and it is not really earned until the
+                ' customer confirms receipt. Idempotent, so re-marking changes nothing.
+                _ledger.HoldForOrder(order, "Held: delivered and awaiting confirmation")
+                notif.Notify(order.UserId, "Order delivered – " & order.OrderNumber,
+                             "Your parcel has been delivered. Please confirm you received it in My Orders — " &
+                             "and if anything is wrong, report a delivery problem from the same page within 7 days." &
+                             If(shownTracking.Length > 0, " Tracking: " & shownTracking, ""),
+                             "ORDER", "order-detail")
             Else
                 notif.Notify(order.UserId, "Order " & newStatus.Replace("_", " ") & " – " & order.OrderNumber,
                              "Your order is now: " & newStatus.Replace("_", " ") & ". " &

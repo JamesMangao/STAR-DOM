@@ -81,6 +81,21 @@ Namespace STAR_DOM.Web
                       "<div class=""rp-accred"">" & WebUi.Esc(r.IssuerAccreditation) & " &middot; BIR REGISTERED</div></div>")
             sb.Append("</div>")
 
+            ' A refunded sale KEEPS its receipt. The OR number, the issue date and the
+            ' amounts are the record of a sale that genuinely happened, and
+            ' UNIQUE(PaymentId) means a second receipt could not be issued for the same
+            ' payment anyway -- so the honest form is the original receipt, marked. This
+            ' band is the "marked refunded" half of that rule, and it is rendered from
+            ' the receipt's own stamp rather than from the order's status so it cannot
+            ' disagree with the receipt it is printed on.
+            If r.IsRefunded Then
+                sb.Append("<div style=""margin:0 0 14px;padding:12px 16px;border-radius:12px;""")
+                sb.Append("""border:1.5px solid var(--primary);background:#ffe0de;color:var(--ink)"">")
+                sb.Append("<b style=""display:block"">REFUNDED " & WebUi.Esc(Fmt.DateF(r.RefundedAt.Value)) & "</b>")
+                sb.Append("<span class=""sub"" style=""color:var(--ink)"">This receipt records the original sale. " &
+                          "The order has since been refunded and the amount above is no longer payable.</span></div>")
+            End If
+
             ' sold to
             sb.Append("<div class=""rp-kv"">")
             sb.Append("<div><span class=""rp-klabel"">SOLD TO</span><div class=""rp-kval"">" & WebUi.Esc(r.SoldToName) & "</div></div>")

@@ -1,0 +1,72 @@
+name: Delivery sweep
+
+# The delivery sweep closes orders the customer never confirmed: it sends the
+# single day-5 reminder and, from day 7, closes an order that has a courier proof
+# of delivery on file and no dispute. It has to run on a schedule rather than on
+# a page view, because it is the customer's silence that triggers it -- there is
+# no page anyone visits for that.
+#
+# It is safe to re-run: every write on the server is guarded (set-once stamps,
+# ON CONFLICT DO NOTHING on the commission ledger), so a duplicate run, a manual
+# dispatch minutes after a scheduled one, and a retry after a timeout all leave
+# the same single result per order.
+#
+# Two pieces of configuration live outside this file, both deliberately not in git:
+#   DELIVERY_SWEEP_TOKEN  (repository secret)  - must equal the DELIVERY_SWEEP_TOKEN
+#                                                environment variable on the host
+#   DELIVERY_SWEEP_URL    (repository variable) - site origin, no trailing slash,
+#                                                e.g. https://star-dom.example
+#
+# A token committed to a repository is a token everyone has, which is why the
+# server refuses the request outright when its own environment variable is unset
+# (HTTP 503) rather than quietly allowing it.
+
+on:
+  schedule:
+    # 01:00 UTC = 09:00 Asia/Manila, so the reminder and the close land in the
+    # studio's working morning and the customer's own waking hours.
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report what would happen without changing anything'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run the delivery sweep
+        env:
+          SWEEP_TOKEN: ${{ secrets.DELIVERY_SWEEP_TOKEN }}
+          SWEEP_URL: ${{ vars.DELIVERY_SWEEP_URL }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          : "${SWEEP_TOKEN:?DELIVERY_SWEEP_TOKEN is not set as a repository secret}"
+          : "${SWEEP_URL:?DELIVERY_SWEEP_URL is not set as a repository variable}"
+
+          # Trim a trailing slash so the join cannot produce a double slash, which
+          # some hosts rewrite and some 404.
+          url="${SWEEP_URL%/}"
+          if [ "$DRY_RUN" = "true" ]; then url="$url/App/DeliverySweep.aspx?dry=1"; else url="$url/App/DeliverySweep.aspx"; fi
+
+          # --fail-with-body: a non-2xx must fail the job (and print why) rather
+          # than look like a successful run. Retries are safe because the sweep is
+          # idempotent; they are also the reason this is a plain POST rather than
+          # anything cleverer.
+          #
+          # -d '' is required, not decorative: IIS rejects a POST with no
+          # Content-Length before ASP.NET ever sees it, answering HTTP 411
+          # (Length Required). An empty body makes the request well-formed while
+          # carrying nothing the endpoint reads.
+          curl --fail-with-body -sS --max-time 120 \
+            --retry 3 --retry-delay 20 --retry-all-errors \
+            -X POST "$url" \
+            -H "DELIVERY_SWEEP_TOKEN: $SWEEP_TOKEN" \
+            -d ''

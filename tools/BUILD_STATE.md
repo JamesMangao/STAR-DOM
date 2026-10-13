@@ -570,3 +570,119 @@ PRESENTATION-CHEATSHEET) updated to match.
   test now prints `1`, busy-count lines return real numbers). To query manually
   put `-c` before the URL, and use delayed expansion if calling via a batch:
   `cmd /v:on /c "call tools\supabase-env.bat && psql -X -t -A -c \"…\" \"!SUPABASE_DB_URL!\""`.
+
+## Delivery sweep + studio earnings ledger (2026-10-14)
+Flow v5's last two pieces: the scheduled delivery sweep and the Phase 3
+commission ledger. Build passes clean (`build.bat`, 0 errors); the 2 failing
+tests are the pre-existing, data-dependent event ones (no pop-up event is
+currently in its window) and touch nothing in this change.
+
+- **`OrderCommissions`** — one row per order (`UNIQUE(OrderId)`), holding the
+  studio's earning on that sale: goods total only, since the courier fee is
+  money collected for J&T. `HELD` from `DELIVERED`, `RELEASED` on `RECEIVED`,
+  `VOID` on a refund — with `Reversed = TRUE` when the row had already been
+  released, so a clawback is a flagged reversal rather than a row that never
+  existed. `CommissionLedgerService` owns the state machine; every transition is
+  a guarded UPDATE, and accrual is `ON CONFLICT (OrderId) DO NOTHING`, which is
+  what makes the sweep safe to re-run and stops a double commission.
+- **`ReleaseForOrder` accrues before it releases.** The release is guarded on a
+  `HELD` row, so releasing an order whose accrual never happened matched nothing
+  and silently did nothing — an order could become `RECEIVED` with no earning
+  recorded. Caught by running the sweep for real against a delivered fixture.
+- **Delivery sweep** (`OrderService.RunDeliverySweep`) — days counted from
+  `Shipping.DeliveredAt`: day 5-6 sends ONE reminder (`ReminderSentAt`, set-once),
+  day 7 closes the order when a POD is on file, the courier status says delivered
+  and no dispute exists — otherwise it stays `DELIVERED` and is flagged to the
+  studio once (the flag is read back out of `OrderStatusHistory`, so a daily job
+  does not repeat the same note). Both stamps are a hard precondition, so nothing
+  closes against a customer who was never told. `HELD` orders are not in the
+  candidate query at all. One bad order cannot take a run down.
+- **`App/DeliverySweep.aspx`** — POST-only, `DELIVERY_SWEEP_TOKEN` header from
+  the environment, constant-time compare, **503 when the host has no token**
+  (fails closed), 403 on a mismatch (logged as `Context='Security'`), 405 on GET,
+  `?dry=1` for a no-write report. Exempted from CSRF in `Global.asax.vb` by an
+  **exact** `AppRelativeCurrentExecutionFilePath` match, above the
+  expired-session redirect. Verified live: GET 405, no/wrong token 403, correct
+  token 200, and a plain POST elsewhere still blocked.
+- **`.github/workflows/delivery-sweep.yml`** — daily cron + `workflow_dispatch`
+  (with a dry-run input). Needs the `DELIVERY_SWEEP_TOKEN` **secret** and the
+  `DELIVERY_SWEEP_URL` **variable**; neither is in git. `curl` sends `-d ''`
+  because IIS answers **HTTP 411** to a POST with no Content-Length before
+  ASP.NET ever runs — found by calling the endpoint by hand.
+- **Timeline panel** — `OrderService.TimelineLine` renders the fixed wording
+  (`RECEIVED · courier POD on file`, `HELD · under investigation · contact studio
+  via IG`, …) from the history rows, and both the customer page and the studio
+  delivery page use it, so the two sides cannot be reading different sentences.
+  Studio-sourced rows store the IG ref in the reason (`IG <ref> · <reason>`).
+- **RESHIP → `SHIPPED` + a new waybill.** Resolving a dispute as a reship now
+  requires a tracking number, writes a fresh `Shipping` row, and clears
+  `DeliveredAt` plus both notification stamps so the new parcel gets its own
+  announcement, reminder and 7-day window (`UpdateShipping` clears `DeliveredAt`
+  on `SHIPPED`).
+- **Refund fixes.** `RecordRefund` requires a `PAID` payment, marks the existing
+  receipt refunded (`Receipts.RefundedAt`, shown as a band on the receipt page —
+  never a second receipt, which `UNIQUE(PaymentId)` forbids anyway), and voids the
+  ledger. The Delivery page's refund panel was gated on the order *already* being
+  `REFUNDED`, i.e. unreachable, because `RecordRefund` refuses an
+  already-refunded order; it now shows for any paid, not-yet-refunded order.
+- **Cancel matrix (as specified).** The customer cutoff is the **payment**, not
+  the quote: cancellable from `PENDING` **or** `CONFIRMED` while `PENDING`/`FAILED`,
+  and blocked from `SUBMITTED`/`PAID`/`REFUNDED`. The service used to require
+  order status `PENDING` while the page already offered the button on a
+  confirmed-unpaid order, so the click was refused. Verified end-to-end through
+  the order page as a real customer. Order status changes now record the actual
+  actor (`CUSTOMER` vs `STUDIO`) instead of always saying `STUDIO`. The studio's
+  row button shows for any unsettled order (`PENDING`…`SHIPPED`), never `HELD`.
+- **Merchant Orders** gained a `RESOLUTION` column (outcome badge + reason +
+  IG ref), and a new **Studio Earnings** page plus nav entry show the ledger with
+  held / released / void / clawback totals.
+- **Schema**: `OrderCommissions` + `Receipts.RefundedAt`, in
+  `supabase_schema.sql` for a fresh install and in
+  `Database\phase2_sweep_ledger.sql` for a database already running (applied to
+  the shared Supabase instance; additive and idempotent, no existing row
+  touched). Still psql-first ordering: `-c`/`-f` before the connection string.
+- **Live verification** (fixtures created, driven over HTTP, then fully deleted —
+  0 orders, 0 ledger rows, 0 history rows left): sweep run 1 closed the
+  POD-bearing order as `RECEIVED` / `COURIER_POD` with a `RELEASED` ledger row
+  and one `delivery-sweep` history row, and flagged the no-POD order without
+  closing it; run 2 changed nothing. Clawback confirmed by recording a real
+  refund through the admin UI: order `REFUNDED`, ledger `VOID` + `Reversed`,
+  clawback notification sent, and the timeline rendered
+  `REFUNDED · recorded by studio · IG <ref> · <reason>`.
+
+## A refunded sale leaves revenue, and the orders list is a list again (2026-10-14)
+
+Two follow-ups to the Flow v5 work above. Build passes clean (`build.bat`,
+0 errors); 91/93 tests pass, the same two pre-existing data-dependent event
+failures and nothing else.
+
+- **A refund now moves the payment with the order.** The refund paths set
+  `Orders.PaymentStatus = 'REFUNDED'`, but the `Payments` row stayed `PAID`, and
+  gross revenue is `SUM(TotalAmount) ... WHERE PaymentStatus = 'PAID'`. So a sale
+  the studio had already given the money back on kept counting as revenue, and
+  the order read `REFUNDED` while its payment said `PAID`. `SetPaymentsRefunded`
+  moves only `PAID` rows (there is nothing to give back on a payment that never
+  landed) and both refund paths call it: the dispute outcome and the admin's
+  "Record a refund". `PaymentStatus = 'REFUNDED'` had been reserved for exactly
+  this since `CANCELLED` stopped writing it.
+- **My Orders is a list, not a control panel.** Each row's only action is now
+  **View / Track**. The inline *Cancel* and *Write a review* links are gone from
+  the list, and with the button gone the page's `cancelOrder` POST handler went
+  too — the list has no mutating handler at all, so it is a smaller attack
+  surface as well as one place fewer to keep in step. Both actions still exist
+  inside the order page, which is the one place that has the order's state in
+  front of it; the detail page's Cancel goes through the same
+  `UpdateOrderState(..., "CANCELLED", ...)` gate, so the cancel matrix is
+  unchanged.
+- **Live verification.** Refund of a delivered order (commission still `HELD`):
+  order + payment row + receipt all `REFUNDED`/marked, ledger `VOID` with
+  `Reversed = FALSE` (nothing had been released, so there was nothing to
+  reverse), and gross revenue fell by exactly that order's total
+  (₱1035 → ₱390). Refund of a `RECEIVED` order (commission already `RELEASED`):
+  ledger `VOID` with `Reversed = TRUE` and the "Commission clawed back" admin
+  notification sent — the clawback branch, confirmed through the admin UI.
+  On the list, a `PENDING`/unpaid order that used to render a Cancel link now
+  renders only View / Track (`cancelOrder` absent from the whole rendered page),
+  while the same order's own page still offers **Cancel Order**; a `RECEIVED`
+  order still offers **Write a review** on its page. Every fixture was deleted
+  afterwards (0 leftover orders).

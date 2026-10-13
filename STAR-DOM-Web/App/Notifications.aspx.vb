@@ -109,6 +109,9 @@ Namespace STAR_DOM.Web
                 Case "commission-hub", "commissions" : Return "/App/CommissionHub.aspx" & hl
                 Case "commission-pipeline" : Return "/App/Merchant/Pipeline.aspx" & hl
                 Case "merchant-dashboard" : Return "/App/Merchant/Dashboard.aspx"
+                Case "merchant-orders" : Return "/App/Merchant/Orders.aspx"
+                Case "merchant-delivery" : Return "/App/Merchant/Orders.aspx"
+                Case "merchant-earnings" : Return "/App/Merchant/Earnings.aspx"
                 Case "popup-locations", "events" : Return "/App/PopupLocations.aspx"
                 Case Else : Return ""
             End Select

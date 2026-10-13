@@ -394,6 +394,7 @@ Namespace STAR_DOM.Web
                     New NavItem("Commission Pipeline", "/App/Merchant/Pipeline.aspx", "", "", "account_tree"),
                     New NavItem("Sales Reports", "/App/Merchant/Reports.aspx", "", "", "bar_chart"),
                     New NavItem("Orders & Payments", "/App/Merchant/Orders.aspx", "", "", "payments"),
+                    New NavItem("Studio Earnings", "/App/Merchant/Earnings.aspx", "", "", "paid"),
                     New NavItem("Reviews", "/App/Merchant/Reviews.aspx", "", "", "reviews")
                 }
                 For Each it As NavItem In studio

@@ -92,6 +92,15 @@ Namespace STAR_DOM.Web
                     Session("flash_ok") = r2.Success
                     Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
                 End If
+                ' Customer disputes a delivery that the studio marked as delivered.
+                ' The order parks in HELD so nothing can quietly close it while the
+                ' studio is still looking into it.
+                If Guard.IsPost() AndAlso Request.Form("disputeOrder") = o.Id.ToString() Then
+                    Dim rd As ServiceResult = _orders.OpenDispute(o.Id, Convert.ToString(Request.Form("disputeReason")))
+                    Session("flash_msg") = rd.Message
+                    Session("flash_ok") = rd.Success
+                    Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
+                End If
                 If Guard.IsPost() AndAlso Request.Form("cancelOrder") = o.Id.ToString() Then
                     Dim r3 As ServiceResult = _orders.UpdateOrderState(o.Id, "CANCELLED", "", Convert.ToString(Request.Form("reason")))
                     Session("flash_msg") = r3.Message
@@ -203,22 +212,24 @@ Namespace STAR_DOM.Web
             Dim canPay As Boolean = (isOwner AndAlso quoted AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
                                      o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED")
             Dim canMarkReceived As Boolean = (isOwner AndAlso o.Status = "DELIVERED")
+            ' A dispute needs a delivery claim to disagree with, so it is offered on
+            ' exactly the same state as "mark as received" and nowhere else.
+            Dim canDispute As Boolean = (isOwner AndAlso o.Status = "DELIVERED")
             ' Reviews open the moment the customer confirms the parcel arrived — that is
             ' the only point at which they have actually held the item, so this is
             ' where they are offered.
             Dim canReviewItems As Boolean = (isOwner AndAlso o.Status = "RECEIVED")
-            ' The customer may pull the order back only while the studio has not yet
-            ' confirmed it -- and "confirmed" is the moment the J&T fee is entered,
-            ' which is far earlier than it sounds. PENDING is the single state in
-            ' which Cancel exists at all.
+            ' The customer may pull the order back while payment is not yet confirmed.
+            ' Cancel is allowed when PaymentStatus is PENDING (not SUBMITTED/PAID),
+            ' regardless of whether the studio has confirmed the order (CONFIRMED status).
+            ' Once the customer submits payment (SUBMITTED) or it's confirmed (PAID),
+            ' the order can no longer be cancelled by the customer.
             '
-            ' This was declared False and never assigned, so the cancel button below
-            ' never rendered and the only way to cancel was the orders list. It now
-            ' mirrors the gate in OrderService.UpdateOrderState and the one on
-            ' App\Orders.aspx, so all three agree instead of two of them lying.
-            Dim canCancel As Boolean = (isOwner AndAlso o.Status = "PENDING" AndAlso
-                                        o.PaymentStatus <> "SUBMITTED" AndAlso o.PaymentStatus <> "PAID")
-            If canPay OrElse canMarkReceived OrElse canCancel OrElse canReviewItems OrElse
+            ' This mirrors the gate in OrderService.UpdateOrderState.
+            Dim canCancel As Boolean = (isOwner AndAlso
+                                        o.PaymentStatus <> "SUBMITTED" AndAlso o.PaymentStatus <> "PAID" AndAlso
+                                        o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED")
+            If canPay OrElse canMarkReceived OrElse canCancel OrElse canReviewItems OrElse canDispute OrElse
                 (isOwner AndAlso Not quoted AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING") OrElse
                 (isOwner AndAlso o.PaymentStatus = "SUBMITTED") Then
                 sb.Append("<div style=""margin-top:16px;display:flex;flex-direction:column;gap:12px"">")
@@ -351,6 +362,24 @@ Namespace STAR_DOM.Web
                     sb.Append("</form>")
                 End If
 
+If canDispute Then
+                    sb.Append("<div style=""margin-top:8px"">")
+                    sb.Append("<form method=""post"" action=""/App/OrderDetail.aspx"">")
+                    sb.Append(STAR_DOM.Web.Csrf.HiddenField())
+                    sb.Append("<input type=""hidden"" name=""id"" value=""" & o.Id.ToString() & """>")
+                    sb.Append("<b style=""display:block;margin-bottom:4px"">Has this order not arrived?</b>")
+                    sb.Append("<p class=""sub"" style=""margin:0 0 8px;color:var(--ink)"">Tell us and the studio " &
+                              "will check it with J&amp;T Express. Nothing is closed automatically while they look " &
+                              "into it.</p>")
+                    sb.Append("<textarea name=""disputeReason"" rows=""3"" required " &
+                              "style=""width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);" &
+                              "font:inherit;margin-bottom:8px"" " &
+                              "placeholder=""The tracking says delivered but I have not received the parcel...""></textarea>")
+                    sb.Append("<button class=""btn"" type=""submit"" name=""disputeOrder"" value=""" &
+                              o.Id.ToString() & """><span class=""ic ms"">report_problem</span>" &
+                              "<span>Report a delivery problem</span></button>")
+                    sb.Append("</form></div>")
+                End If
                 If canReviewItems Then
                     sb.Append(ReviewQueue(o))
                 End If
@@ -368,6 +397,8 @@ Namespace STAR_DOM.Web
                 sb.Append("</div>")
             End If
             sb.Append("</div>")
+
+            sb.Append(DeliveryPanel(o, isOwner))
 
             ' details + items
             sb.Append("<div style=""flex:1.6;min-width:320px"">")
@@ -462,18 +493,10 @@ Namespace STAR_DOM.Web
 
                 If ps Is Nothing Then
                     ' The channel this order was placed against has since been
-                    ' removed from Payment Settings. Falling back to GCash here --
-                    ' which this block used to do, to avoid rendering an empty
-                    ' popup -- showed the customer GCash's QR under a "pay with BPI"
-                    ' heading. They would scan it, send real money to the wrong
-                    ' account, and the studio would have no way to reconcile it
-                    ' against the reference. An empty popup is a far smaller harm.
-                    '
-                    ' They are not blocked: the reference field is still right
-                    ' there, SubmitPayment never required the channel row, and the
-                    ' studio verifies whatever arrives. Say plainly that the
-                    ' details are gone and point them at a human.
-                    sb.Append(WebUi.ChannelDetailsGoneNote(method))
+                    ' removed from Payment Settings. The QR modal is not shown
+                    ' (no account details to display), but the reference field
+                    ' remains available for the customer to submit their payment
+                    ' reference, which the studio can still verify.
                 Else
                     sb.Append(WebUi.QrPaymentModal(ps, method, o.TotalAmount, openNow, False))
                 End If
@@ -490,6 +513,80 @@ Namespace STAR_DOM.Web
         End Sub
 
 
+''' <summary>
+        ''' Delivery panel for the order page: the held banner, how the order was
+        ''' received, and the audit trail.
+        ''' </summary>
+        ''' <remarks>
+        ''' The trail is the customer-facing half of this feature, not a debug aid.
+        ''' Once a studio can close an order on the customer's behalf, "why does
+        ''' this say received when I never clicked anything" is a question the order
+        ''' page has to be able to answer without asking a human. It is rendered
+        ''' newest-first and every line says who acted, in plain words.
+        ''' </remarks>
+        Private Function DeliveryPanel(o As Order, isOwner As Boolean) As String
+            Dim sb As New System.Text.StringBuilder()
+
+            ' A disputed order is parked, and the page says so at the top rather than
+            ' leaving the customer to wonder why their "mark as received" button
+            ' vanished.
+            If o.IsHeld Then
+                sb.Append("<div class=""card mb"" style=""border-color:#eec200;background:var(--yellow-soft)"">")
+                sb.Append("<b style=""display:block;margin-bottom:4px"">" & WebUi.Ic("help", "sm") &
+                          " Delivery under investigation</b>")
+                sb.Append("<p class=""sub"" style=""margin:0 0 6px;color:var(--ink)"">You told us this order had not " &
+                          "arrived. The studio is looking into it and this order will not be closed automatically " &
+                          "in the meantime.</p>")
+                If Not String.IsNullOrWhiteSpace(o.HoldReason) Then
+                    sb.Append("<p class=""sub"" style=""margin:0 0 6px;color:var(--ink)"">What you reported: <b>" &
+                              WebUi.Esc(o.HoldReason) & "</b></p>")
+                End If
+                If o.PodCapturedAt.HasValue Then
+                    sb.Append("<p class=""sub"" style=""margin:0 0 6px;color:var(--ink)"">The studio has since recorded a " &
+                              "proof of delivery. If you still have not received the parcel, reply to their message " &
+                              "so they can check with J&amp;T Express.</p>")
+                End If
+                ' The held state is not final: a refund or a reship is still on the table,
+                ' and the customer has to be told how to ask for one. The handle and its
+                ' link come from PaymentSetting so this sentence cannot drift away from
+                ' the one every other support note on the site renders.
+                sb.Append("<p class=""sub"" style=""margin:0;color:var(--ink)"">Message us on Instagram " &
+                          "<a href=""" & WebUi.Attr(PaymentSetting.InstagramUrl) & """ target=""_blank"" " &
+                          "rel=""noopener noreferrer"" style=""color:var(--primary);font-weight:700"">@" &
+                          WebUi.Esc(PaymentSetting.InstagramHandle) & "</a> for a refund or a reship. " &
+                          "Nothing is closed on this order while it is under investigation.</p>")
+                sb.Append("</div>")
+            End If
+
+            ' Say how the order closed. On a studio override this is the only place
+            ' the customer learns the studio closed it and why.
+            Dim label As String = o.ReceiptSourceLabel
+            If Not String.IsNullOrWhiteSpace(label) Then
+                sb.Append("<div class=""card mb""><b style=""display:block;margin-bottom:4px"">Delivery</b>")
+                sb.Append("<p class=""sub"" style=""margin:0 0 6px;color:var(--ink)"">" & WebUi.Esc(label) & "</p>")
+                If o.ReceiptSource = ReceiptSources.Studio AndAlso o.ReceivedAt.HasValue Then
+                    sb.Append("<p class=""sub"" style=""margin:0;color:var(--ink)"">" &
+                              "Closed on " & Fmt.DateF(o.ReceivedAt.Value) & ".</p>")
+                End If
+                sb.Append("</div>")
+            End If
+
+            ' The timeline is rendered by the shared formatter rather than assembled
+            ' here: the order page and the studio's delivery page have to say the same
+            ' thing about the same order, and two hand-built copies of these sentences
+            ' drift apart the first time one of them is reworded.
+            Dim trail As List(Of String) = _orders.DeliveryTimeline(o)
+            If trail.Count > 0 Then
+                sb.Append("<div class=""card mb""><b style=""display:block;margin-bottom:6px"">Delivery timeline</b>")
+                sb.Append("<ul class=""sub"" style=""margin:0;padding-left:18px;list-style:disc"">")
+                For Each line As String In trail
+                    sb.Append("<li style=""margin-bottom:3px"">" & WebUi.Esc(line) & "</li>")
+                Next
+                sb.Append("</ul></div>")
+            End If
+
+            Return sb.ToString()
+        End Function
         Private Function DisplayPay(pm As String) As String
             Return WebUi.ChannelBrand(pm)
         End Function

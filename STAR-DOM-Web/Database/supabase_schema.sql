@@ -832,6 +832,63 @@ ALTER TABLE Orders ADD COLUMN IF NOT EXISTS HoldResolution VARCHAR(40) NOT NULL 
 -- give two places for the same fact to drift apart.
 
 -- ------------------------------------------------------------
+-- The studio's earning on an order (the commission ledger)
+-- ------------------------------------------------------------
+-- One row per order, holding what the studio earned on that sale. It exists
+-- because money and delivery are two different questions: the customer pays
+-- before anything ships, but the studio has not really earned the sale until
+-- the parcel is in the buyer's hands. So the earning is HELD while the order
+-- sits in DELIVERED or HELD, RELEASED the moment the order becomes RECEIVED,
+-- and VOID if the order is refunded. A refund after release is a clawback:
+-- the row is voided AND Reversed is set, because "never earned" and "earned
+-- then taken back" are different books.
+--
+-- No money moves here. There is no gateway in this application that could
+-- send it, so this records the decision the same way Orders.REFUNDED does.
+-- The amount is the goods total (Subtotal - DiscountAmount): the courier fee
+-- is money the studio collects and immediately hands to J&T, so counting it
+-- as earning would overstate every delivery.
+--
+-- UNIQUE(OrderId) is what makes the ledger idempotent. The delivery sweep is
+-- retried and re-run, and a second accrual for the same order would double
+-- the studio's books with nothing to point at.
+CREATE TABLE IF NOT EXISTS OrderCommissions (
+  Id SERIAL PRIMARY KEY,
+  OrderId INT NOT NULL,
+  Amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  -- What the amount was computed from, so a later change of basis is visible
+  -- on the rows that predate it rather than silently rewriting history.
+  Basis VARCHAR(20) NOT NULL DEFAULT 'GOODS_TOTAL',
+  -- HELD / RELEASED / VOID
+  Status VARCHAR(20) NOT NULL DEFAULT 'HELD',
+  -- True when a RELEASED row was later voided (clawback), false when a row was
+  -- voided before it had ever been released.
+  Reversed BOOLEAN NOT NULL DEFAULT FALSE,
+  HeldAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ReleasedAt TIMESTAMPTZ NULL,
+  VoidedAt TIMESTAMPTZ NULL,
+  -- Why the earning was voided (a refund reason), or a note on the release.
+  Reason VARCHAR(500) NOT NULL DEFAULT '',
+  UpdatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT UK_OrderCommissions_Order UNIQUE (OrderId),
+  CONSTRAINT FK_OrderCommissions_Order FOREIGN KEY (OrderId) REFERENCES Orders(Id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS IDX_OrderCommissions_Status ON OrderCommissions (Status);
+
+-- ------------------------------------------------------------
+-- A receipt that outlives a refund
+-- ------------------------------------------------------------
+-- A refund keeps the official receipt it was issued against: the OR number,
+-- the issue date and the UNIQUE(PaymentId) constraint all stay, because the
+-- sale genuinely happened and the BIR record of it does not evaporate when
+-- the money comes back. RefundedAt is what says the receipt is no longer a
+-- live claim on the customer's money, and it is why "existing OR marked
+-- refunded" does not need a second receipt row that the UNIQUE constraint
+-- would reject anyway.
+ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS RefundedAt TIMESTAMPTZ NULL;
+
+-- ------------------------------------------------------------
 -- Row level security
 -- ------------------------------------------------------------
 -- The VB.NET app is the only database client and authenticates as the table

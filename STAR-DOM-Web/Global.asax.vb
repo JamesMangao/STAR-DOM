@@ -24,6 +24,21 @@ Namespace STAR_DOM.Web
             If ctx Is Nothing Then Return
             If Not String.Equals(ctx.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) Then Return
 
+            ' Exactly one POST in the site is not a browser form and carries no
+            ' session token: the scheduled delivery sweep, which is called by a cron
+            ' job and authenticates with a shared-secret header instead (see
+            ' App/DeliverySweep.aspx.vb).
+            '
+            ' The exemption is an EXACT path match -- no prefix, no suffix, no query
+            ' string -- and it sits ABOVE the expired-session redirect on purpose. A
+            ' looser match (StartsWith, or matching RawUrl) would let any URL that
+            ' merely begins with this path through the single choke point that every
+            ' other POST in the site depends on.
+            If String.Equals(ctx.Request.AppRelativeCurrentExecutionFilePath,
+                             "~/App/DeliverySweep.aspx", StringComparison.OrdinalIgnoreCase) Then
+                Return
+            End If
+
             ' No token in the session means the session expired (or never existed):
             ' send the visitor to sign-in rather than showing a scary error page.
             '

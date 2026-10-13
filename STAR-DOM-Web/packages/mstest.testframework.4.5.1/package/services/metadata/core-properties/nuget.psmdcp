@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<coreProperties xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.openxmlformats.org/package/2006/metadata/core-properties">
+  <dc:creator>Microsoft</dc:creator>
+  <dc:description>This package includes the libraries for writing tests with MSTest. To ensure discovery and execution of your tests, install the MSTest.TestAdapter package.
+
+Supported platforms:
+- .NET 4.6.2+
+- .NET 8.0+
+- .NET 8.0 Windows.18362+ (WinUI)
+- UWP 10.0.16299
+- UWP 10.0.17763 with .NET 9+
+
+MSTest is Microsoft supported Test Framework.</dc:description>
+  <dc:identifier>MSTest.TestFramework</dc:identifier>
+  <version>4.5.1</version>
+  <keywords>Microsoft test testing unittest unittesting unit-testing tdd MSTest TestFramework MSTestV2 Framework</keywords>
+  <lastModifiedBy>NuGet.Packaging, Version=8.0.0.48203, Culture=neutral, PublicKeyToken=31bf3856ad364e35;Microsoft Windows NT 10.0.26100.0;.NET Framework 4.7.2</lastModifiedBy>
+</coreProperties>

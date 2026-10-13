@@ -185,6 +185,24 @@ STAR_DOM_Web
  step with the number published by the studio.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.WebUi.NoCancelNote(System.String)">
+ <summary>
+ The "this can no longer be cancelled" notice.
+ </summary>
+ <remarks>
+ The cutoff is the PAYMENT, not the courier quote. The rule table is
+ explicit: while PaymentStatus is PENDING the order can be pulled back from
+ either PENDING or CONFIRMED, and what closes the window is a submitted
+ reference. The copy used to name the shipping-fee confirmation, which was
+ wrong twice over -- it told customers they could still cancel a CONFIRMED
+ unpaid order and then refused them, and it blamed a courier fee for a rule
+ that is really about money having changed hands.
+
+ The subject is interpolated, so the caller supplies a plain noun phrase.
+ It used to be passed "an order is placed", which produced "once an order
+ is placed is processing" -- two clauses bolted together.
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Web.WebUi.CancelStillOpenNote(System.String)">
  <summary>
  The other half of the rule, for the window where cancelling IS still open.
@@ -193,6 +211,11 @@ STAR_DOM_Web
  Stated positively, because this is the window where the customer still has
  control and should be told so plainly rather than left hunting for the
  button. Pair it with the cancel button on the same card.
+
+ The boundary named here is the one the service actually enforces: no
+ submitted payment yet. Naming a different boundary (it used to say "until
+ the studio confirms it with the shipping fee") is how a customer ends up
+ being told one thing and refused another.
  </remarks>
 </member>
 <member name="M:STAR_DOM.Web.WebUi.ChannelDetailsGoneNote(System.String)">
@@ -429,6 +452,19 @@ STAR_DOM_Web
  Joins the split address inputs into the single line the orders table stores.
  </summary>
 </member>
+<member name="M:STAR_DOM.Web.OrderDetailPage.DeliveryPanel(STAR_DOM.Models.Order,System.Boolean)">
+ <summary>
+ Delivery panel for the order page: the held banner, how the order was
+ received, and the audit trail.
+ </summary>
+ <remarks>
+ The trail is the customer-facing half of this feature, not a debug aid.
+ Once a studio can close an order on the customer's behalf, "why does
+ this say received when I never clicked anything" is a question the order
+ page has to be able to answer without asking a human. It is rendered
+ newest-first and every line says who acted, in plain words.
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Web.OrderDetailPage.StudioVerifyCard(STAR_DOM.Models.Order,System.String)">
  <summary>
  Merge-verification card for staff viewing a customer's order: the
@@ -509,6 +545,42 @@ STAR_DOM_Web
  <summary>
  A 404 with a 1x1 transparent GIF so an img tag degrades to nothing
  instead of the site's error page appearing inside the photo frame.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Web.DeliverySweepPage">
+ <summary>
+ POST-only endpoint that runs the delivery sweep. Called by the scheduled
+ GitHub Action, never by a browser.
+ </summary>
+ <remarks>
+ This page is deliberately not part of the site's session/CSRF machinery.
+ It has no user, no cookie and no form: the caller is a cron job holding a
+ shared secret, so the CSRF check has to be bypassed for this one exact path
+ (see Global.asax.vb) and the request is authenticated by the
+ DELIVERY_SWEEP_TOKEN header instead.
+
+ Three things are load-bearing:
+   1. The token comes from the environment, never from git. A secret in the
+      repository is a secret everyone has.
+   2. A request with no token configured on the server is REFUSED (503) rather
+      than allowed. Failing open would turn a forgotten environment variable
+      into an unauthenticated endpoint that closes orders.
+   3. The comparison is constant-time, and the mismatching request is logged
+      with the same Context the CSRF guard uses, so a probe looks the same as
+      any other blocked request in AppErrors.
+
+ GET returns 405 rather than running anything: a sweep changes orders, and a
+ method a crawler, a prefetcher or a link can trigger must never do that.
+ </remarks>
+</member>
+<member name="F:STAR_DOM.Web.DeliverySweepPage.TokenEnvVar">
+ <summary>Environment variable holding the shared secret.</summary>
+</member>
+<member name="M:STAR_DOM.Web.DeliverySweepPage.FixedTimeEquals(System.String,System.String)">
+ <summary>
+ Length-independent comparison (no early exit on the first differing
+ byte), so the endpoint cannot be used as an oracle to guess the token one
+ character at a time.
  </summary>
 </member>
 <member name="T:STAR_DOM.Web.CommissionHubPage">
@@ -689,6 +761,29 @@ STAR_DOM_Web
  the third, so the ACTIONS column was a staircase and no two rows lined up.
  </remarks>
 </member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.CanStoreCancel(STAR_DOM.Models.Order)">
+ <summary>
+ True when the studio can still cancel this order itself.
+ </summary>
+ <remarks>
+ Mirrors OrderService.UpdateOrderState: any state the studio has not yet
+ settled (PENDING through SHIPPED), and never HELD. The row used to offer
+ Cancel on PENDING only, so the studio could not stop an order it had
+ already quoted without opening the order page.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Web.MerchantOrdersPage.ResolutionCell(STAR_DOM.Models.Order)">
+ <summary>
+ The dispute/refund outcome for one row, with the Instagram reference it was
+ resolved against.
+ </summary>
+ <remarks>
+ The stored reason already carries the reference (it is written as
+ "IG &lt;ref&gt; · reason"), so this renders the OUTCOME as a badge beside that
+ one string and adds the order-level IG column underneath, rather than
+ re-assembling two facts that could then disagree with each other.
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.ActHint(System.String)">
  <summary>The small grey caption line inside a panel.</summary>
 </member>
@@ -747,6 +842,121 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Web.MerchantOrdersPage.RenderBookJntForm(STAR_DOM.Models.Order,System.String)">
  <summary>The J&amp;T hand-off form: tracking number in, SHIPPED out.</summary>
+</member>
+<member name="T:STAR_DOM.Web.MerchantDeliveryPage">
+ <summary>
+ Per-order delivery page for the studio: record what the courier said,
+ attach the proof of delivery, close the order on the customer's behalf, or
+ resolve a dispute.
+ </summary>
+ <remarks>
+ This is a page of its own rather than more panels on Orders.aspx for one
+ reason: the proof-of-delivery upload needs enctype="multipart/form-data",
+ and Orders.aspx lives inside Site.master's single shell form, which an HTML
+ parser closes at the first nested form tag. A file input inside that shell
+ uploads nothing. The orders list links here for any order that has reached
+ DELIVERED, or that is under dispute.
+
+ Every action on this page writes to OrderStatusHistory, so the answers to
+ "who closed this order and why" live with the order rather than in a
+ support inbox.
+ </remarks>
+</member>
+<member name="F:STAR_DOM.Web.MerchantDeliveryPage._ledger">
+ <summary>Read-only here: this page shows where the order's earning stands.</summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDeliveryPage.Act(STAR_DOM.Models.Order)">
+ <summary>
+ Runs one posted action. Each branch posts back to this page with its own
+ discriminator, because the shell form publishes every form on the page at
+ once -- the same trap the orders list documents in detail.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDeliveryPage.FirstUploadedImage">
+ <summary>
+ The first image actually posted to the POD field, or Nothing.
+ </summary>
+ <remarks>
+ Returning Nothing rather than an empty array matters: the service treats
+ those differently, and an empty array would read as "an image was
+ attached but is blank".
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDeliveryPage.HeldPanel(STAR_DOM.Models.Order)">
+ <summary>
+ The dispute panel. Only rendered while the order is actually held, so
+ the studio never sees "resolve" on an order with nothing to resolve.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDeliveryPage.CanRefund(STAR_DOM.Models.Order)">
+ <summary>
+ True when a refund is still available on this order.
+ </summary>
+ <remarks>
+ Three conditions, each answering a different version of "is there anything
+ to refund": the money was actually taken (PAID -- a refund of a PENDING or
+ FAILED payment is a cancellation, not a refund), it has not already been
+ refunded, and it was not cancelled. HELD is excluded because the dispute
+ panel already carries the "Refund it" outcome, and two refund buttons on
+ one page invite the wrong one.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDeliveryPage.EarningsPanel(STAR_DOM.Models.Order)">
+ <summary>
+ Where this order's earning stands. Read-only on purpose: the ledger moves
+ with the order (hold on delivery, release on receipt, void on refund), so
+ there is nothing to press here.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDeliveryPage.PodPanel(STAR_DOM.Models.Order)">
+ <summary>
+ Courier status and proof of delivery. Saving here records evidence only:
+ it never closes the order.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDeliveryPage.ClosePanel(STAR_DOM.Models.Order)">
+ <summary>
+ Close an order on the customer's behalf. The reason box is required by
+ the service, not just the markup: a studio close with no explanation is
+ the thing the audit trail exists to prevent.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Web.MerchantDeliveryPage.RefundPanel(STAR_DOM.Models.Order)">
+ <summary>
+ Record a refund for an order. Admin only, requires reason, IG reference,
+ and password. The order status becomes REFUNDED (not CANCELLED).
+ </summary>
+</member>
+<member name="T:STAR_DOM.Web.MerchantEarningsPage">
+ <summary>
+ The studio's earnings ledger: what each order has earned, and whether that
+ money has actually been earned yet.
+ </summary>
+ <remarks>
+ This page exists because the order list answers a different question. Orders
+ tell you where a parcel is; the tally of what the studio has actually earned
+ is not visible anywhere in that view, and a refund that clawed back money
+ already released would otherwise leave no trace at all.
+
+ Read-only by design. Every row here is a consequence of the order's own
+ delivery lifecycle -- held on delivery, released when the customer confirms,
+ voided by a refund -- so there is nothing for a human to press. A ledger that
+ could be edited by hand would stop being evidence of anything.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Web.MerchantEarningsPage.Kpi(System.String,System.String,System.String)">
+ <summary>
+ One KPI tile, reusing the dashboard's own k-label / k-value / k-sub markup
+ so the strip lines up with every other tile on the site.
+ </summary>
+ <remarks>
+ The third argument is subText, not sub: `Sub` is a VB keyword and cannot be
+ used as a parameter name. Reports.aspx.vb named the same thing subText, so
+ the two pages match.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Web.MerchantEarningsPage.TimelineCell(STAR_DOM.Models.OrderCommission)">
+ <summary>The dates that matter for one row: held, released, voided.</summary>
 </member>
 <member name="T:STAR_DOM.Web.ReviewsPage">
  <summary>
@@ -1008,12 +1218,13 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Helpers.Clock.ToInstant(System.DateTime)">
  <summary>
  Treat a wall-clock Date (parsed from a form / stored without a zone) as
- Asia/Manila local time and return the absolute instant, for binding to a
+ Asia/Manila local time and return the absolute instant as UTC, for binding to a
  PostgreSQL TIMESTAMPTZ. Event windows are entered as Manila wall-clock, but
  Npgsql stores an Unspecified DateTime as-is (i.e. as if it were UTC), which
  shifted every saved window by +8h and left a running event stuck at "0 DAYS
  TO GO". Routing the value through here keeps the stored instant equal to the
  wall-clock the merchant actually typed.
+ Npgsql 8.0+ requires DateTimeOffset with offset 0 (UTC) for timestamptz.
  </summary>
 </member>
 <member name="M:STAR_DOM.Helpers.Clock.ParseTimeOfDay(System.String)">
@@ -1048,6 +1259,23 @@ STAR_DOM_Web
  member units ring up at ₱100 instead of list price.
  </summary>
 </member>
+<member name="P:STAR_DOM.Models.Order.IsHeld">
+ <summary>
+ True while a dispute is open and the order is parked. HELD is only ever
+ entered from DELIVERED: a dispute means "the studio says this landed and I
+ say it did not", so there has to be a delivery claim to disagree with.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Models.Order.HasPod">
+ <summary>True once a proof of delivery has been uploaded.</summary>
+</member>
+<member name="P:STAR_DOM.Models.Order.ReceiptSourceLabel">
+ <summary>
+ How the receipt was established, in words the customer page can show. The
+ audit trail is only worth anything if it is also said out loud, so the
+ wording lives here rather than being reinvented at each call site.
+ </summary>
+</member>
 <member name="P:STAR_DOM.Models.Order.HasFinalTotal">
  <summary>True once the order has a final, customer-facing total.</summary>
 </member>
@@ -1072,6 +1300,113 @@ STAR_DOM_Web
  Customer-facing courier sentence, J&amp;T only. Plain text: the page layer adds
  the J&amp;T tracking hyperlink when a tracking number exists. The website never
  plays courier - it just states where the parcel is in the courier journey.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Models.ReceiptSources">
+ <summary>How a delivery confirmation was established. Named because the
+ distinction is the whole point: a customer pressing a button and a studio
+ asserting on their behalf are not the same claim, and the audit trail has to
+ be able to tell them apart.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Models.OrderStatusEntry">
+ <summary>One line of an order's delivery audit trail.</summary>
+</member>
+<member name="T:STAR_DOM.Models.OrderStatuses">
+ <summary>All known order statuses, in workflow order. Mirrors CommissionStatuses.</summary>
+ <remarks>
+ Orders used bare string literals everywhere, which is how "HELD" ended up
+ needing to be spelled identically in four unrelated files to be safe. HELD is
+ new and carries rules the rest of the pipeline does not -- the delivery
+ sweep must refuse to touch it, and it must not read as either finished or
+ refunded -- so it gets a name rather than another literal.
+ </remarks>
+</member>
+<member name="F:STAR_DOM.Models.OrderStatuses.Refunded">
+ <summary>
+ Paid, then returned. Only reachable by resolving a dispute, and terminal:
+ nothing further happens to the order. The money itself moves outside the system
+ -- the studio hands it back over the phone or in person, because there is no
+ gateway here that could send it. This status records that decision; it does not
+ perform a refund.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Models.OrderStatuses.IsTerminal(System.String)">
+ <summary>
+ True once nothing more will happen to the order without a human. HELD is
+ excluded on purpose: it is unfinished by definition, and Order.IsFinal
+ independently returns False for it.
+ </summary>
+</member>
+<member name="T:STAR_DOM.Models.OrderCommission">
+ <summary>
+ The studio's earning on one order. Exactly one row per order.
+ </summary>
+ <remarks>
+ Deliberately separate from <see cref="T:STAR_DOM.Models.Order"/>. The order answers "where is
+ the parcel"; this answers "has the studio actually earned this sale yet".
+ Keeping the two apart is what lets a refund claw back an earning that was
+ already released without rewriting the order's own history, and it is why
+ the amount is frozen at accrual (Basis included) rather than recomputed
+ from a Live order whose total could be re-quoted later.
+ </remarks>
+</member>
+<member name="P:STAR_DOM.Models.OrderCommission.Basis">
+ <summary>What the amount was computed from, e.g. "GOODS_TOTAL".</summary>
+</member>
+<member name="P:STAR_DOM.Models.OrderCommission.Status">
+ <summary>HELD / RELEASED / VOID. See <see cref="T:STAR_DOM.Models.CommissionLedgerStatuses"/>.</summary>
+</member>
+<member name="P:STAR_DOM.Models.OrderCommission.Reversed">
+ <summary>True when a RELEASED row was later voided, i.e. a clawback.</summary>
+</member>
+<member name="P:STAR_DOM.Models.OrderCommission.StatusLabel">
+ <summary>"HELD", or "VOID (clawed back)" when a released row was reversed.</summary>
+</member>
+<member name="T:STAR_DOM.Models.CommissionLedgerStatuses">
+ <summary>
+ States of the studio's earning on an order. Named rather than literal
+ because the sweep, the refund path and the ledger page all have to agree
+ on them, and a mistyped string here would silently stop a clawback.
+ </summary>
+</member>
+<member name="F:STAR_DOM.Models.CommissionLedgerStatuses.Held">
+ <summary>Accrued by delivery, not yet the studio's: DELIVERED or HELD.</summary>
+</member>
+<member name="F:STAR_DOM.Models.CommissionLedgerStatuses.Released">
+ <summary>The customer confirmed the parcel arrived.</summary>
+</member>
+<member name="F:STAR_DOM.Models.CommissionLedgerStatuses.Void">
+ <summary>The order was refunded. Reversed says whether it had been released first.</summary>
+</member>
+<member name="T:STAR_DOM.Models.DeliverySweepCandidate">
+ <summary>
+ One order sitting in DELIVERED, plus the four facts the scheduled sweep
+ decides on. A narrow read on purpose: the sweep walks every delivered order
+ on every run, so it must not pull the POD image blob with it.
+ </summary>
+</member>
+<member name="P:STAR_DOM.Models.DeliverySweepCandidate.CourierStatus">
+ <summary>What the studio typed off the courier's own tracking page.</summary>
+</member>
+<member name="P:STAR_DOM.Models.DeliverySweepCandidate.DeliveredAt">
+ <summary>When the courier hand-off was recorded (Shipping.DeliveredAt).</summary>
+</member>
+<member name="P:STAR_DOM.Models.DeliverySweepCandidate.HasPod">
+ <summary>Whether a proof-of-delivery image exists, asked as a boolean server-side.</summary>
+</member>
+<member name="T:STAR_DOM.Models.CommissionLedgerTotals">
+ <summary>One order's earning, as an aggregate the ledger page can total.</summary>
+</member>
+<member name="P:STAR_DOM.Models.CommissionLedgerTotals.ReversedCount">
+ <summary>Released rows that were later clawed back, for the reversal flag.</summary>
+</member>
+<member name="P:STAR_DOM.Models.Receipt.RefundedAt">
+ <summary>
+ When the order this receipt was issued against was refunded, or Nothing
+ while the sale stands. A refund does not re-issue or delete the receipt
+ (UNIQUE(PaymentId) forbids a second row and the BIR record must survive);
+ this stamp is what says the receipt no longer represents money we hold.
  </summary>
 </member>
 <member name="T:STAR_DOM.Models.Commission">
@@ -1319,6 +1654,62 @@ STAR_DOM_Web
  empty categories in order to put products into them.
  </remarks>
 </member>
+<member name="T:STAR_DOM.Repositories.CommissionLedgerRepository">
+ <summary>
+ Reads and writes the one-row-per-order commission ledger.
+ </summary>
+ <remarks>
+ Every state change here is expressed as a guarded UPDATE rather than a
+ read-modify-write, because the delivery sweep is scheduled, retried and
+ occasionally re-run by hand. A guard in the WHERE clause means a second run
+ matches zero rows and does nothing, which is what makes the sweep safe to
+ re-run -- and is the whole reason no double commission can be accrued.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionLedgerRepository.EnsureHeld(System.Int32,System.Decimal,System.String,System.String)">
+ <summary>
+ Accrue the studio's earning on an order, if it has not been accrued yet.
+ Idempotent via UNIQUE(OrderId) + ON CONFLICT DO NOTHING.
+ </summary>
+ <remarks>
+ DO NOTHING rather than DO UPDATE on purpose: once a row exists its amount
+ and status are the record of what happened, and a re-run of the sweep must
+ not be able to rewrite that. Only a genuine state change (release, void)
+ moves a row afterwards, and each of those has its own guarded method.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionLedgerRepository.Release(System.Int32,System.String)">
+ <summary>
+ Release a held earning. Only a HELD row moves, so releasing twice (a user
+ confirming receipt after the sweep already closed the order) is a no-op.
+ Returns rows touched.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionLedgerRepository.VoidHeld(System.Int32,System.String)">
+ <summary>
+ Void an earning the studio had not yet been given. Nothing is reversed
+ because nothing was released, so Reversed stays FALSE.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionLedgerRepository.VoidReleased(System.Int32,System.String)">
+ <summary>
+ Claw back an earning that had already been released. The row becomes VOID
+ AND Reversed, because \"never earned\" and \"earned then taken back\" are
+ different entries in the books. Returns rows touched.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionLedgerRepository.GetByOrder(System.Int32)">
+ <summary>The ledger row for one order, joined for display, or Nothing.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionLedgerRepository.ListRecent(System.Int32)">
+ <summary>Newest first, bounded in SQL.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.CommissionLedgerRepository.Totals">
+ <summary>
+ One row of totals per state, so the ledger page does not have to pull the
+ whole table into memory to add it up.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Repositories.CommissionRepository.SetPaymentReference(System.Int32,System.String,System.String)">
  <summary>
  Stores the e-wallet channel and transaction number the customer paid
@@ -1379,6 +1770,21 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Repositories.NotificationRepository.CreateForRole(System.String,System.String,System.String,System.String,System.String)">
  <summary>Notify every user with the given role (e.g., every MERCHANT).</summary>
 </member>
+<member name="F:STAR_DOM.Repositories.OrderRepository.OrderSelect">
+ <summary>
+ The order read used to be SELECT o.*, which silently started pulling the
+ proof-of-delivery BYTEA down with every list page the moment that column
+ existed -- the same trap the payment-channel QR images fell into. The
+ column list is spelled out here so that adding a blob column to Orders can
+ never again cost every order page its payload, and so an accidental
+ PodImageData in the list is a visible omission rather than a hidden cost.
+ </summary>
+ <remarks>
+ PodImageData is deliberately absent. GetPodImage fetches it on demand for the
+ one request that actually shows the image. PodMime is kept because it is a
+ short string and the page needs it to decide whether the POD exists at all.
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.ListRecent(System.Int32)">
  <summary>Latest orders, bounded in SQL (used for dashboards instead of trimming full tables in memory).</summary>
 </member>
@@ -1409,6 +1815,23 @@ STAR_DOM_Web
 </member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.SetCancelReason(System.Int32,System.String)">
  <summary>Records why an order was cancelled (customer or studio).</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.SetPaymentsRefunded(System.Int32)">
+ <summary>
+ Mark this order's paid Payment rows as refunded.
+ </summary>
+ <remarks>
+ REFUNDED was deliberately reserved for an actual refund when CANCELLED
+ stopped writing it ("nothing was ever refunded"); now that refunds really
+ are recorded, the payment rows have to move with the order. This is what
+ keeps an order from reading REFUNDED while its payment still says PAID --
+ and, because gross revenue is summed over `PaymentStatus = 'PAID'`, it is
+ also what takes a refunded sale OUT of the revenue figures instead of
+ leaving the studio's top line overstated by money it gave back.
+
+ Only PAID rows are touched: a refund is money going back, and there is
+ nothing to give back on a payment that never landed.
+ </remarks>
 </member>
 <member name="M:STAR_DOM.Repositories.OrderRepository.CancelPayments(System.Int32)">
  <summary>
@@ -1446,6 +1869,105 @@ STAR_DOM_Web
  review can only be written by a customer who confirmed the parcel arrived,
  which is the verification worth having, so every review is public on submit.
  </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.AppendHistory(System.Int32,System.String,System.String,System.String,System.String,System.String)">
+ <summary>
+ Append one line to an order's delivery audit trail. Callers pass the
+ status the order was in beforehand; passing "" for a first entry is
+ normal.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.ListHistory(System.Int32)">
+ <summary>Audit trail for one order, newest first.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.GetPodImage(System.Int32)">
+ <summary>
+ The proof-of-delivery bytes for one order, or Nothing. This is the ONLY
+ query that reads PodImageData: it is called when a POD is actually being
+ displayed, never as part of a list. See the note on OrderSelect.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.SetHoldIgRef(System.Int32,System.String)">
+ <summary>Record the IG reference for a dispute resolution.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.SetRefundIgRef(System.Int32,System.String)">
+ <summary>Record the IG reference for a refund.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.SavePod(System.Int32,System.Byte[],System.String,System.String,System.String,System.String)">
+ <summary>
+ Record the courier outcome and proof of delivery for an order, as
+ transcribed by the studio from the courier's own tracking page.
+ </summary>
+ <remarks>
+ The image is required. A courier status typed in without the screenshot
+ that supports it is an assertion, and an assertion is exactly what this
+ whole feature exists to stop being the only evidence for. An empty
+ reference is likewise rejected rather than stored as a blank, because a
+ blank POD reference is indistinguishable from a missing one later.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.OpenHold(System.Int32,System.String,System.String)">
+ <summary>Park an order in HELD with the customer's stated reason.</summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.ResolveHold(System.Int32,System.String,System.String,System.String)">
+ <summary>
+ Close out a dispute. Resolution is one of RECEIVED / REFUNDED / RESHIP
+ and is recorded verbatim: the sweep and the order page both read it, and
+ they must not have to guess what the studio meant.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.StampDeliveredNotified(System.Int32)">
+ <summary>
+ Note that the customer has been told the parcel landed, and that the
+ single follow-up nudge has gone out. Both are set-once: the COALESCE
+ guard means a retried page render cannot push the reminder window
+ forward and let an order sit unclosed for ever.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.ResetDeliveryCycle(System.Int32)">
+ <summary>
+ Start a fresh delivery cycle: clear the two notification stamps so the
+ next DELIVERED announces itself again and earns its own reminder before the
+ sweep may close it. Used when a disputed parcel is reshipped.
+ </summary>
+ <remarks>
+ Both stamps are written with COALESCE (set-once), which is what stops a
+ re-render from restarting the clock. That same guard is exactly why they
+ have to be cleared explicitly here: the second parcel is a new delivery and
+ deserves its own notification, not the first parcel's.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.HasSweepFlag(System.Int32)">
+ <summary>
+ True when the sweep has already flagged this order as past the delivery
+ window with nothing to close it on. Read from the audit trail rather than a
+ dedicated column, because the flag IS an audit fact -- and it is what keeps
+ a daily job from sending the studio the same "order needs attention" note
+ every morning until somebody acts on it.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.ListDeliveredForSweep">
+ <summary>
+ Every order sitting in DELIVERED, with the inputs the sweep decides on:
+ when the courier hand-off was recorded, whether the customer was told,
+ whether the nudge went out, and whether any proof of delivery exists.
+ </summary>
+ <remarks>
+ Deliberately not OrderSelect: the list must not drag Orders.PodImageData
+ (the POD blob) into memory, so it asks only whether the column has bytes --
+ `octet_length` answers that on the server, as a boolean, for any size of
+ image. HELD orders are excluded by the WHERE clause, which is what makes a
+ dispute actually stop the automatic close rather than only recording a
+ complaint.
+
+ The age is taken from Shipping.DeliveredAt with Orders.UpdatedAt as the
+ fallback: Shipping is where the courier hand-off lives, but an order
+ delivered before the Shipping row existed still has to be sweepable
+ rather than stranded in DELIVERED for ever.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Repositories.OrderRepository.SetReceiptSource(System.Int32,System.String)">
+ <summary>Attach how this order reached RECEIVED, without moving it there.</summary>
 </member>
 <member name="T:STAR_DOM.Repositories.PaymentSettingRepository">
  <summary>
@@ -1588,6 +2110,19 @@ STAR_DOM_Web
  of keeping the OR number and issue date the customer was already given.
 
  Returns True when a receipt was found and updated.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Repositories.ReceiptRepository.MarkRefunded(System.Int32)">
+ <summary>
+ Mark every receipt raised against an order as refunded. Idempotent: the
+ COALESCE keeps the FIRST refund date, so re-running a refund record cannot
+ move the stamp. Returns the number of receipts touched.
+ </summary>
+ <remarks>
+ The receipt row itself is never deleted or re-issued. A refund keeps the OR
+ number, the issue date and the UNIQUE(PaymentId) constraint: the sale
+ genuinely happened, and the only thing that changed is whether the money is
+ still ours.
  </remarks>
 </member>
 <member name="M:STAR_DOM.Repositories.ReceiptRepository.GetByPaymentIds(System.Collections.Generic.List{System.Int32})">
@@ -1740,6 +2275,65 @@ STAR_DOM_Web
 <member name="M:STAR_DOM.Services.CatalogService.CommissionSlots">
  <summary>Open commission slot cards for merchants with capacity (drives the hub + marketplace sections).</summary>
 </member>
+<member name="T:STAR_DOM.Services.CommissionLedgerService">
+ <summary>
+ The studio's earnings ledger: one row per order, held until the parcel is
+ confirmed received, voided if the order is refunded.
+ </summary>
+ <remarks>
+ This is a record, not a payment rail. There is no gateway in this
+ application that could move money, and there is no attempt to fake one --
+ the same reason Orders.REFUNDED records a decision rather than performing a
+ refund. The value here is that the question "has the studio actually earned
+ this sale" has an answer that can be looked up, and that a refund after
+ release is visible as a reversal rather than quietly disappearing.
+
+ The state machine is deliberately small, and every edge is one-way:
+   HELD     -> RELEASED   (the customer confirmed the parcel arrived)
+   HELD     -> VOID       (refunded before confirmation; nothing to reverse)
+   RELEASED -> VOID       (refunded after confirmation; Reversed = TRUE)
+ Nothing moves out of RELEASED or VOID, so a retried sweep or a second
+ refund record cannot inflate the books.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.CommissionLedgerService.GoodsBasis(STAR_DOM.Models.Order)">
+ <summary>
+ What the studio earns on an order: the goods total, less bundle savings.
+ The courier fee is excluded because it is money collected on J&amp;T's
+ behalf and handed straight to them -- counting it as earning would
+ overstate every single delivery by the full shipping charge.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionLedgerService.HoldForOrder(STAR_DOM.Models.Order,System.String)">
+ <summary>
+ Accrue (or leave alone) the earning for an order that has reached
+ DELIVERED. Idempotent: a repeated call, a retried sweep and a dispute
+ opened later all land on the same single row.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Services.CommissionLedgerService.ReleaseForOrder(STAR_DOM.Models.Order,System.String)">
+ <summary>Release the earning because the order is now RECEIVED.</summary>
+ <remarks>
+ Accrues first, then releases. That order matters and is not belt-and-braces:
+ the release is a guarded UPDATE on a HELD row, so if the accrual never
+ happened the release matches nothing and quietly does nothing -- the order
+ becomes RECEIVED with no earning recorded anywhere. Delivery is normally the
+ accrual point, but a delivered order can predate the ledger, and the sweep
+ closes orders it did not itself deliver. Ensuring the row first makes
+ "release on RECEIVED" true on every path that can reach RECEIVED, and
+ EnsureHeld is ON CONFLICT DO NOTHING, so an already-accrued row is untouched
+ ---- no double commission.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.CommissionLedgerService.VoidForOrder(STAR_DOM.Models.Order,System.String)">
+ <summary>
+ Void the earning because the order was refunded. A row that had already
+ been released is clawed back (Reversed = TRUE); one still held is simply
+ voided. Both are attempted without knowing which applies, because each is
+ guarded on its own starting state and a mismatch is a no-op rather than an
+ error.
+ </summary>
+</member>
 <member name="M:STAR_DOM.Services.CommissionService.CanAccess(STAR_DOM.Models.Commission)">
  <summary>
  True when the signed-in user owns this commission: either they are the
@@ -1886,6 +2480,13 @@ STAR_DOM_Web
  answer available when a reference number does not check out.
  </summary>
 </member>
+<member name="F:STAR_DOM.Services.OrderService._ledger">
+ <summary>
+ The studio's earnings ledger. Every path that establishes RECEIVED
+ releases it, and every path that refunds voids it, so the two can never
+ drift apart from the order's own status.
+ </summary>
+</member>
 <member name="T:STAR_DOM.Services.OrderService.StockShortageException">
  <summary>
  Raised inside the checkout transaction when a conditional stock decrement
@@ -1956,6 +2557,151 @@ STAR_DOM_Web
  Setting RECEIVED also stamps ReceivedAt, so the row records that the
  customer saw it land rather than the store merely asserting it did.
  </summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.OpenDispute(System.Int32,System.String)">
+ <summary>
+ Open a delivery dispute. Only a customer may open one, only on their own
+ order, and only once the studio has marked it DELIVERED: a dispute means
+ "the studio says this landed and I say it did not", so there has to be a
+ delivery claim to disagree with. Anything earlier is the studio simply not
+ having updated the order yet, which is not a dispute.
+ </summary>
+ <remarks>
+ The status becomes HELD rather than CANCELLED or RECEIVED. The parcel may
+ well have arrived and nobody has decided yet, and an order in that state
+ must not read as either finished or refunded. Recording the complaint
+ without changing the status would be worse than useless: the customer
+ would still be swept up by the delivery close and their complaint would
+ arrive after the fact.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.ResolveDispute(System.Int32,System.String,System.String,System.String,System.String)">
+ <summary>
+ Close a dispute as RECEIVED, REFUNDED or RESHIP. Admin only.
+ </summary>
+ <remarks>
+ The three outcomes are deliberately blunt. There is no reviewer queue and
+ no partial state: someone has to look at the parcel and say what happened
+ to it, and each of those three is a real answer. REFUNDED records that
+ decision only -- the studio hands the money back over the phone or in
+ person, because there is no gateway here that could move it by itself.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.StudioMarkReceived(System.Int32,System.String,System.String,System.String)">
+ <summary>
+ Mark an order received on the customer's behalf. Admin only, and requires
+ a reason, a proof of delivery already on file, and the admin's password.
+ </summary>
+ <remarks>
+ This exists for the real case: the customer tells the studio over the phone
+ that the parcel arrived and never presses the button. Refusing would only
+ push people back to arguing with the courier. What it must not be is
+ silent -- so ReceiptSource records STUDIO and the reason is mandatory,
+ leaving a plain answer to "why does this order say received when nobody
+ clicked anything".
+
+ The locked spec requires POD + password for this path. An order without a
+ proof of delivery cannot be closed by the studio on the customer's behalf.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.SaveProofOfDelivery(System.Int32,System.Byte[],System.String,System.String,System.String)">
+ <summary>
+ Record the courier outcome and proof of delivery for an order. Admin only.
+ </summary>
+ <remarks>
+ Saving a POD does NOT close the order. It is evidence, and evidence is not
+ a decision: the customer normally confirms receipt, and the dispute path
+ still exists for when the evidence is wrong. Coupling the two would mean
+ the studio could end an order unilaterally by uploading a screenshot,
+ which is exactly the power this design is meant to take away.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.RecordRefund(System.Int32,System.String,System.String,System.String)">
+ <summary>
+ Record a refund for an order. Admin only. The order status becomes REFUNDED
+ (not CANCELLED), the IG reference is recorded, and the audit trail captures
+ the reason. The money itself moves outside the system -- this records the
+ decision, it does not perform a refund.
+ </summary>
+ <remarks>
+ The locked spec: "admin 'Record a refund' + reason + IG ref -> REFUNDED
+ (not CANCELLED). receipt: existing OR marked refunded. commission: clawback.
+ void commission row, flag reversal. No money moves."
+
+ Each of those three is honoured literally:
+   - REFUNDED, never CANCELLED. Cancelling an order and refunding one are
+     different facts, and writing CANCELLED over a paid order loses the
+     record that money actually changed hands.
+   - The official receipt is KEPT and stamped refunded. It cannot be
+     re-issued (UNIQUE(PaymentId)) and it must not be deleted: the sale
+     genuinely happened and the BIR record of it survives the refund.
+   - The studio's earning is voided. If it had already been released when
+     the customer confirmed receipt, the row is voided AND flagged as a
+     reversal -- a clawback rather than a row that never existed.
+
+ No money moves: there is no gateway here that could send it, so this
+ records the decision exactly as Orders.REFUNDED does.
+ </remarks>
+</member>
+<member name="F:STAR_DOM.Services.OrderService.SweepReminderAfterDays">
+ <summary>Days after the courier hand-off at which the reminder goes out.</summary>
+</member>
+<member name="F:STAR_DOM.Services.OrderService.SweepAutoCloseAfterDays">
+ <summary>Days after the courier hand-off at which the order may be closed.</summary>
+</member>
+<member name="F:STAR_DOM.Services.OrderService.SweepActor">
+ <summary>Recorded as the actor on a row the scheduled job wrote.</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.CourierConfirmsDelivery(System.String)">
+ <summary>
+ True when the studio's courier status says the parcel was delivered.
+ </summary>
+ <remarks>
+ This is a text match on what a person typed off J&amp;T's tracking page, and
+ that is deliberate: there is no courier API, so an automatic status claim
+ would be a guess. "deliver" covers J&amp;T's own wordings (Delivered,
+ DELIVERED, Delivered - left with neighbour), which is the only vocabulary
+ the studio is told to type.
+ </remarks>
+</member>
+<member name="T:STAR_DOM.Services.OrderService.DeliverySweepReport">
+ <summary>What one sweep run did. Counted so the run can be logged and read.</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.RunDeliverySweep(System.Boolean)">
+ <summary>
+ Run the delivery sweep. Safe to call twice; safe to call late.
+ </summary>
+ <remarks>
+ Idempotency comes from the data, not from a lock: the two stamps are
+ set-once, the ledger accrual is ON CONFLICT DO NOTHING, and both the close
+ and the flag are guarded on the order still being in the state they expect.
+ Two runs racing can therefore both do their job without a second
+ notification, a second history row or a double commission. A dry run reads
+ and reports without writing anything.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.OrderHistory(System.Int32)">
+ <summary>The delivery audit trail for an order, newest first.</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.DeliveryTimeline(STAR_DOM.Models.Order)">
+ <summary>
+ The delivery panel's timeline for one order: the recorded transitions,
+ each rendered in the fixed wording the locked spec lays down.
+ </summary>
+ <remarks>
+ Built from the history rows rather than from the current status, because a
+ status is only ever one moment and the questions people actually ask
+ ("who closed this, and why", "was it the courier's proof or my own click")
+ are answered by the sequence. The provenance words -- "confirmed by
+ customer", "courier POD on file", "marked by studio" -- ARE the answer, so
+ no username is appended: the line already says who acted.
+ </remarks>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.TimelineLine(STAR_DOM.Models.OrderStatusEntry,STAR_DOM.Models.Order)">
+ <summary>One timeline line, in the wording the locked spec fixes.</summary>
+</member>
+<member name="M:STAR_DOM.Services.OrderService.PodImage(System.Int32)">
+ <summary>The proof-of-delivery image for an order, or Nothing.</summary>
 </member>
 <member name="M:STAR_DOM.Services.OrderService.ConfirmWithShippingFee(System.Int32,System.String,System.String)">
  <summary>

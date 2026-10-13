@@ -139,6 +139,7 @@
     <Compile Include="App\OrderDetail.aspx.vb" />
     <Compile Include="App\PaymentQr.aspx.vb" />
     <Compile Include="App\AssetImg.aspx.vb" />
+    <Compile Include="App\DeliverySweep.aspx.vb" />
     <Compile Include="App\CommissionHub.aspx.vb" />
     <Compile Include="App\CommissionRequest.aspx.vb" />
     <Compile Include="App\CommissionDetail.aspx.vb" />
@@ -151,6 +152,8 @@
     <Compile Include="App\Merchant\EventEdit.aspx.vb" />
     <Compile Include="App\Merchant\Pipeline.aspx.vb" />
     <Compile Include="App\Merchant\Orders.aspx.vb" />
+    <Compile Include="App\Merchant\Delivery.aspx.vb" />
+    <Compile Include="App\Merchant\Earnings.aspx.vb" />
     <Compile Include="App\Merchant\Reports.aspx.vb" />
     <Compile Include="App\Merchant\Reviews.aspx.vb" />
     <Compile Include="App\Admin\Users.aspx.vb" />
@@ -191,6 +194,7 @@
     <Content Include="App\OrderDetail.aspx" />
     <Content Include="App\PaymentQr.aspx" />
     <Content Include="App\AssetImg.aspx" />
+    <Content Include="App\DeliverySweep.aspx" />
     <Content Include="App\CommissionHub.aspx" />
     <Content Include="App\CommissionRequest.aspx" />
     <Content Include="App\CommissionDetail.aspx" />
@@ -203,6 +207,8 @@
     <Content Include="App\Merchant\EventEdit.aspx" />
     <Content Include="App\Merchant\Pipeline.aspx" />
     <Content Include="App\Merchant\Orders.aspx" />
+    <Content Include="App\Merchant\Delivery.aspx" />
+    <Content Include="App\Merchant\Earnings.aspx" />
     <Content Include="App\Merchant\Reports.aspx" />
     <Content Include="App\Merchant\Reviews.aspx" />
     <Content Include="App\Admin\Users.aspx" />

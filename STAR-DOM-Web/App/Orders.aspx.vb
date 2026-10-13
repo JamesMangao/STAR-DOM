@@ -17,27 +17,10 @@ Namespace STAR_DOM.Web
         Protected Sub Page_Load(sender As Object, e As EventArgs)
             Guard.RequireLogin()
             Try
-                ' Cancel is a state change, so it is a POST: the handler requires one,
-                ' and the old ?cancel= link was a GET navigation it never saw.
-                If Guard.IsPost() AndAlso Request.Form("cancelOrder") IsNot Nothing Then
-                    Dim id As Integer = 0
-                    Integer.TryParse(Request.Form("cancelOrder"), id)
-                    If id > 0 Then
-                        Dim order As Order = _orders.GetOrder(id)
-                        If order Is Nothing Then
-                            Session("flash_msg") = "Order not found."
-                            Session("flash_ok") = False
-                        ElseIf order.UserId <> STAR_DOM.Helpers.Session.CurrentUser.Id Then
-                            Session("flash_msg") = "You can only cancel your own orders."
-                            Session("flash_ok") = False
-                        Else
-                            Dim r As ServiceResult = _orders.UpdateOrderState(id, "CANCELLED", "", Convert.ToString(Request.Form("reason")))
-                            Session("flash_msg") = r.Message
-                            Session("flash_ok") = r.Success
-                        End If
-                    End If
-                    Response.Redirect("/App/Orders.aspx", True)
-                End If
+                ' This page is a list, not a control panel: cancelling and reviewing
+                ' both happen on the order's own page, which is the one place that has
+                ' the order's state in front of it. So there is no mutating handler
+                ' here at all -- every row's only action is "View / Track".
                 RenderOrders()
             Catch ex As Exception
                 Out.Text = WebUi.AlertBox("Could not load your orders: " & ex.Message)
@@ -84,20 +67,11 @@ Namespace STAR_DOM.Web
                     sb.Append("<td>" & WebUi.Esc(DisplayPay(o.PaymentMethod)) & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.PaymentStatus) & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.Status) & "</td>")
-                    sb.Append("<td class=""rowact""><a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View / Track</a>")
-                    If o.Status = "PENDING" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso o.PaymentStatus <> "PAID" Then
-                        sb.Append("<form method=""post"" style=""display:inline"">" & STAR_DOM.Web.Csrf.HiddenField() &
-                                  "<button type=""submit"" name=""cancelOrder"" value=""" & o.Id.ToString() &
-                                  """ data-confirm=""Cancel this order?"" data-confirm-reason=""reason"" " &
-                                  "data-confirm-reason-label=""Reason for cancelling *"" data-confirm-danger " &
-                                  "style=""background:none;border:0;padding:0;font:inherit;color:var(--primary);cursor:pointer;text-decoration:underline"">Cancel</button></form>")
-                    End If
-                    ' Reviews open once the customer confirms the parcel landed, so a
-                    ' RECEIVED row is where the store offers to write one.
-                    If o.Status = "RECEIVED" AndAlso _orders.PendingReviewItems(o.Id).Count > 0 Then
-                        sb.Append("<a href=""/App/OrderDetail.aspx?id=""" & o.Id.ToString() & """>Write a review</a>")
-                    End If
-                    sb.Append("</td></tr>")
+                    ' Cancel Order and the review queue both live inside View / Track,
+                    ' so the row does not repeat them: an order's own page is the one
+                    ' place that can see what state the order is in, and two entry
+                    ' points to the same state change is one too many to keep in step.
+                    sb.Append("<td class=""rowact""><a href=""/App/OrderDetail.aspx?id=" & o.Id.ToString() & """>View / Track</a></td>")
                 Next
                 sb.Append("</tbody></table></div>")
             End If

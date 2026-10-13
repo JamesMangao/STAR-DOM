@@ -71,8 +71,8 @@ There's no separate seller registration — every new account is a customer."
 > Every number below was produced by `tools\doc-facts.bat`. Run it before a
 > presentation — these drifted once because they were typed by hand.
 
-- **30** database tables · **100** seeded products (91 active) · **3** active bundles · **7** pop-up events
-- **34** pages · **14** repositories · **9** services · **80** VB.NET files, about **15,600** lines
+- **32** database tables · **100** seeded products (91 active) · **3** active bundles · **7** pop-up events
+- **37** pages · **15** repositories · **10** services · **85** VB.NET files, about **18,000** lines
 - **93** tests (91 pass; 2 are date-dependent and unrelated to a demo)
 - **2** roles · **1** admin account · **9** customers · **5** commission steps
 - **3** payment channels live — GCash, GOtyme, BPI — and **unlimited**, because the owner

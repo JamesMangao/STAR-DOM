@@ -165,8 +165,13 @@ Namespace STAR_DOM.Web
                 sb.Append("<div class=""tblwrap""><table class=""tbl tbl-orders""><colgroup>" &
                               "<col style=""width:140px""><col style=""width:120px""><col style=""width:44px"">" &
                               "<col style=""width:116px""><col style=""width:112px""><col style=""width:104px"">" &
-                              "<col style=""width:116px""><col style=""width:302px""></colgroup><thead><tr>")
-                For Each h As String In {"ORDER", "CUSTOMER", "ITEMS", "TOTAL", "PAYMENT", "PAY STATE", "STATUS", "ACTIONS"}
+                              "<col style=""width:112px""><col style=""width:170px""><col style=""width:302px"">" &
+                              "</colgroup><thead><tr>")
+                ' RESOLUTION is the dispute/refund outcome plus its Instagram reference,
+                ' shown on the row so answering "what happened to this order" does not
+                ' require opening it. It sits next to STATUS rather than in the actions
+                ' cell because it is a fact about the order, not something to press.
+                For Each h As String In {"ORDER", "CUSTOMER", "ITEMS", "TOTAL", "PAYMENT", "PAY STATE", "STATUS", "RESOLUTION", "ACTIONS"}
                     sb.Append("<th" & If(h = "ACTIONS", " class=""col-actions""", "") & ">" & h & "</th>")
                 Next
                 sb.Append("</tr></thead><tbody>")
@@ -185,6 +190,7 @@ Namespace STAR_DOM.Web
                     sb.Append("<td>" & WebUi.Badge(o.PaymentStatus) & "</td>")
                     sb.Append("<td>" & WebUi.Badge(o.Status) &
                               "</td>")
+                    sb.Append("<td class=""resolution"">" & ResolutionCell(o) & "</td>")
                     sb.Append("<td class=""col-actions"">")
                     RenderActions(sb, o)
                     sb.Append("</td></tr>")
@@ -301,10 +307,13 @@ Namespace STAR_DOM.Web
                 End If
             End If
 
-            ' A PENDING order can still be stopped; the button is full width and sits
-            ' in the panel with the rest of the row's actions, so the View line under
-            ' it stays a single line on every row.
-            If o.Status = "PENDING" Then
+            ' The studio may stop an order at any point before it is settled. That is
+            ' deliberately wider than the customer's window: the studio is the party
+            ' who has to tell J&T to turn around, and refusing it would only push the
+            ' decision off the books. HELD is excluded because a dispute is resolved
+            ' on the Delivery page, and cancelling around it would leave the dispute
+            ' unresolved on a dead order.
+            If CanStoreCancel(o) Then
                 tail.Append(ActButton("cancel", o.Id.ToString(), "Cancel",
                                       "Cancel this order?", True, inForm, True))
             End If
@@ -341,9 +350,59 @@ Namespace STAR_DOM.Web
             Else
                 links.Append("<a href=""" & WebUi.Attr(viewUrl) & """>" & WebUi.Ic("visibility", "sm") & " View</a>")
             End If
+            ' Delivery page link for orders that need delivery attention
+            If o.Status = "DELIVERED" OrElse o.Status = "HELD" OrElse o.Status = "REFUNDED" Then
+                Dim deliveryUrl As String = "/App/Merchant/Delivery.aspx?id=" & o.Id.ToString()
+                links.Append(" | <a href=""" & WebUi.Attr(deliveryUrl) & """>" & WebUi.Ic("local_shipping", "sm") & " Delivery</a>")
+            End If
             sb.Append("<div class=""act-links"">" & links.ToString() & "</div>")
             sb.Append("</div>")
         End Sub
+
+        ''' <summary>
+        ''' True when the studio can still cancel this order itself.
+        ''' </summary>
+        ''' <remarks>
+        ''' Mirrors OrderService.UpdateOrderState: any state the studio has not yet
+        ''' settled (PENDING through SHIPPED), and never HELD. The row used to offer
+        ''' Cancel on PENDING only, so the studio could not stop an order it had
+        ''' already quoted without opening the order page.
+        ''' </remarks>
+        Private Shared Function CanStoreCancel(o As Order) As Boolean
+            If o Is Nothing Then Return False
+            If o.Status = OrderStatuses.Held Then Return False
+            Return Not OrderStatuses.IsTerminal(o.Status)
+        End Function
+
+        ''' <summary>
+        ''' The dispute/refund outcome for one row, with the Instagram reference it was
+        ''' resolved against.
+        ''' </summary>
+        ''' <remarks>
+        ''' The stored reason already carries the reference (it is written as
+        ''' "IG &lt;ref&gt; · reason"), so this renders the OUTCOME as a badge beside that
+        ''' one string and adds the order-level IG column underneath, rather than
+        ''' re-assembling two facts that could then disagree with each other.
+        ''' </remarks>
+        Private Shared Function ResolutionCell(o As Order) As String
+            If o Is Nothing Then Return "<span class=""sub"" style=""font-size:11px"">—</span>"
+            Dim sb As New StringBuilder()
+            If Not String.IsNullOrWhiteSpace(o.HoldResolution) Then
+                sb.Append(WebUi.Badge(o.HoldResolution))
+                sb.Append("<br><span class=""sub"" style=""font-size:11px"">" &
+                          WebUi.Esc(If(String.IsNullOrWhiteSpace(o.HoldReason), "under investigation",
+                                       Fmt.Truncate(o.HoldReason, 70))) & "</span>")
+            End If
+            If Not String.IsNullOrWhiteSpace(o.RefundIgRef) Then
+                sb.Append("<div class=""sub"" style=""font-size:11px"">Refund IG: " &
+                          WebUi.Esc(o.RefundIgRef) & "</div>")
+            ElseIf Not String.IsNullOrWhiteSpace(o.HoldIgRef) Then
+                sb.Append("<div class=""sub"" style=""font-size:11px"">IG: " &
+                          WebUi.Esc(o.HoldIgRef) & "</div>")
+            End If
+            If sb.Length = 0 Then Return "<span class=""sub"" style=""font-size:11px"">—</span>"
+            Return sb.ToString()
+        End Function
 
         ''' <summary>The small grey caption line inside a panel.</summary>
         Private Function ActHint(text As String) As String

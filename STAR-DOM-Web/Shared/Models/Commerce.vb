@@ -119,6 +119,10 @@ Namespace STAR_DOM.Models
         Public Property HoldReason As String
         Public Property HoldResolvedAt As Date?
         Public Property HoldResolution As String
+        ' Instagram reference recorded when the studio resolves a dispute.
+        Public Property HoldIgRef As String
+        ' Instagram reference recorded when the studio records a refund.
+        Public Property RefundIgRef As String
 
         ''' <summary>
         ''' True while a dispute is open and the order is parked. HELD is only ever
@@ -341,6 +345,104 @@ Namespace STAR_DOM.Models
         End Function
     End Module
 
+    ''' <summary>
+    ''' The studio's earning on one order. Exactly one row per order.
+    ''' </summary>
+    ''' <remarks>
+    ''' Deliberately separate from <see cref="Order"/>. The order answers "where is
+    ''' the parcel"; this answers "has the studio actually earned this sale yet".
+    ''' Keeping the two apart is what lets a refund claw back an earning that was
+    ''' already released without rewriting the order's own history, and it is why
+    ''' the amount is frozen at accrual (Basis included) rather than recomputed
+    ''' from a Live order whose total could be re-quoted later.
+    ''' </remarks>
+    Public Class OrderCommission
+        Public Property Id As Integer
+        Public Property OrderId As Integer
+        Public Property Amount As Decimal
+        ''' <summary>What the amount was computed from, e.g. "GOODS_TOTAL".</summary>
+        Public Property Basis As String
+        ''' <summary>HELD / RELEASED / VOID. See <see cref="CommissionLedgerStatuses"/>.</summary>
+        Public Property Status As String
+        ''' <summary>True when a RELEASED row was later voided, i.e. a clawback.</summary>
+        Public Property Reversed As Boolean
+        Public Property HeldAt As Date
+        Public Property ReleasedAt As Date?
+        Public Property VoidedAt As Date?
+        Public Property Reason As String
+
+        ' Joined display fields
+        Public Property OrderNumber As String
+        Public Property CustomerName As String
+
+        ''' <summary>"HELD", or "VOID (clawed back)" when a released row was reversed.</summary>
+        Public ReadOnly Property StatusLabel As String
+            Get
+                If Reversed AndAlso String.Equals(Status, CommissionLedgerStatuses.Void, StringComparison.OrdinalIgnoreCase) Then
+                    Return "VOID — clawed back"
+                End If
+                Return If(Status, "")
+            End Get
+        End Property
+
+        Public ReadOnly Property IsHeld As Boolean
+            Get
+                Return String.Equals(Status, CommissionLedgerStatuses.Held, StringComparison.OrdinalIgnoreCase)
+            End Get
+        End Property
+
+        Public ReadOnly Property IsReleased As Boolean
+            Get
+                Return String.Equals(Status, CommissionLedgerStatuses.Released, StringComparison.OrdinalIgnoreCase) AndAlso Not Reversed
+            End Get
+        End Property
+    End Class
+
+    ''' <summary>
+    ''' States of the studio's earning on an order. Named rather than literal
+    ''' because the sweep, the refund path and the ledger page all have to agree
+    ''' on them, and a mistyped string here would silently stop a clawback.
+    ''' </summary>
+    Public Module CommissionLedgerStatuses
+        ''' <summary>Accrued by delivery, not yet the studio's: DELIVERED or HELD.</summary>
+        Public Const Held As String = "HELD"
+        ''' <summary>The customer confirmed the parcel arrived.</summary>
+        Public Const Released As String = "RELEASED"
+        ''' <summary>The order was refunded. Reversed says whether it had been released first.</summary>
+        Public Const Void As String = "VOID"
+    End Module
+
+    ''' <summary>
+    ''' One order sitting in DELIVERED, plus the four facts the scheduled sweep
+    ''' decides on. A narrow read on purpose: the sweep walks every delivered order
+    ''' on every run, so it must not pull the POD image blob with it.
+    ''' </summary>
+    Public Class DeliverySweepCandidate
+        Public Property OrderId As Integer
+        Public Property OrderNumber As String
+        Public Property UserId As Integer
+        ''' <summary>What the studio typed off the courier's own tracking page.</summary>
+        Public Property CourierStatus As String
+        ''' <summary>When the courier hand-off was recorded (Shipping.DeliveredAt).</summary>
+        Public Property DeliveredAt As Date?
+        Public Property DeliveredNotifiedAt As Date?
+        Public Property ReminderSentAt As Date?
+        ''' <summary>Whether a proof-of-delivery image exists, asked as a boolean server-side.</summary>
+        Public Property HasPod As Boolean
+    End Class
+
+    ''' <summary>One order's earning, as an aggregate the ledger page can total.</summary>
+    Public Class CommissionLedgerTotals
+        Public Property HeldAmount As Decimal
+        Public Property HeldCount As Integer
+        Public Property ReleasedAmount As Decimal
+        Public Property ReleasedCount As Integer
+        Public Property VoidAmount As Decimal
+        Public Property VoidCount As Integer
+        ''' <summary>Released rows that were later clawed back, for the reversal flag.</summary>
+        Public Property ReversedCount As Integer
+    End Class
+
     Public Class OrderItem
         Public Property Id As Integer
         Public Property OrderId As Integer
@@ -402,6 +504,20 @@ Namespace STAR_DOM.Models
         Public Property IssuedAt As Date
         Public Property PaymentMethod As String
         Public Property PaidAt As Date?
+
+        ''' <summary>
+        ''' When the order this receipt was issued against was refunded, or Nothing
+        ''' while the sale stands. A refund does not re-issue or delete the receipt
+        ''' (UNIQUE(PaymentId) forbids a second row and the BIR record must survive);
+        ''' this stamp is what says the receipt no longer represents money we hold.
+        ''' </summary>
+        Public Property RefundedAt As Date?
+
+        Public ReadOnly Property IsRefunded As Boolean
+            Get
+                Return RefundedAt.HasValue
+            End Get
+        End Property
     End Class
 
     Public Class Shipping

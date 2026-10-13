@@ -22,7 +22,7 @@ Browser  →  Page  →  Service  →  Repository  →  Database
 | Layer | Job | Example |
 |---|---|---|
 | **Page** (`App\*.aspx.vb`) | Render HTML. Read what the user asked for. | "Show me the Orders page" |
-| **Service** (`Shared\Services\`) | The business rules. *"An order can only be cancelled while it is PENDING and unpaid."* | "Cancel this order" |
+| **Service** (`Shared\Services\`) | The business rules. *"An order cannot be cancelled once a payment reference has been submitted."* | "Cancel this order" |
 | **Repository** (`Shared\Repositories\`) | All the SQL. Every query in the project lives here. | `UPDATE Orders SET ...` |
 | **Model** (`Shared\Models\`) | Plain data shapes. No behaviour. | `Order`, `Commission`, `Product` |
 
@@ -59,8 +59,8 @@ flowchart TD
         end
 
         subgraph Biz["Shared\ — business logic"]
-            SVC["Services (8)<br/>Auth · Cart · Catalog · Order<br/>Commission · Event · Report · Notification"]
-            REPO["Repositories (13)<br/>all SQL lives here"]
+            SVC["Services (10)<br/>Auth · Cart · Catalog · Order<br/>Commission · Ledger · Event<br/>Report · Notification"]
+            REPO["Repositories (15)<br/>all SQL lives here"]
             MODEL["Models — plain data"]
         end
 
@@ -158,6 +158,11 @@ stateDiagram-v2
     PROCESSING --> SHIPPED: studio books J&T and types the waybill
     SHIPPED --> DELIVERED: checks the stored waybill
     DELIVERED --> RECEIVED: customer confirms it arrived
+    DELIVERED --> HELD: customer reports a delivery problem
+    HELD --> RECEIVED: studio checks with J&T,\nparcel did arrive
+    HELD --> REFUNDED: studio refunds it
+    HELD --> SHIPPED: studio reships it\n(new waybill required)
+    DELIVERED --> RECEIVED: day-7 sweep closes it\nwhen a courier POD is on file\nand no dispute was raised
 
     PENDING --> CANCELLED
     CONFIRMED --> CANCELLED
@@ -169,10 +174,30 @@ stateDiagram-v2
     end note
 
     note right of CANCELLED
-        Only the customer can cancel, only while
-        PENDING and unpaid, and only with a reason.
+        The customer may cancel while no payment
+        has been submitted -- from PENDING or
+        CONFIRMED. The studio may cancel any
+        order it has not settled. Always a reason.
+    end note
+
+    note left of DELIVERED
+        DELIVERED is not final: the customer has
+        7 days to confirm or dispute. HELD is
+        skipped by the sweep, so a dispute stops
+        the automatic close completely.
     end note
 ```
+
+**The delivery window.** Days are counted from the J&T hand-off, not from the
+status change: day 5-6 sends one reminder, and from day 7 a scheduled sweep may
+close an order that has a courier proof of delivery on file and no dispute.
+Anything else stays `DELIVERED` and is flagged to the studio instead. Nothing is
+closed against a customer who was never told the parcel had landed.
+
+**The studio's earning.** One ledger row per order, held from `DELIVERED`,
+released when the order becomes `RECEIVED`, and voided by a refund — flagged as a
+reversal (a clawback) when it had already been released. It records a decision;
+the money itself moves outside the system.
 
 **Why the payment takes two people.** The customer's submission only parks the
 payment as `SUBMITTED`. Only the studio, behind a password, can make it `PAID`.

@@ -103,6 +103,27 @@ Namespace STAR_DOM.Repositories
             End Try
         End Function
 
+        ''' <summary>
+        ''' Mark every receipt raised against an order as refunded. Idempotent: the
+        ''' COALESCE keeps the FIRST refund date, so re-running a refund record cannot
+        ''' move the stamp. Returns the number of receipts touched.
+        ''' </summary>
+        ''' <remarks>
+        ''' The receipt row itself is never deleted or re-issued. A refund keeps the OR
+        ''' number, the issue date and the UNIQUE(PaymentId) constraint: the sale
+        ''' genuinely happened, and the only thing that changed is whether the money is
+        ''' still ours.
+        ''' </remarks>
+        Public Function MarkRefunded(orderId As Integer) As Integer
+            Try
+                Return Db.Exec("UPDATE Receipts SET RefundedAt = COALESCE(RefundedAt, NOW()) WHERE OrderId = @o",
+                               Db.P("@o", orderId))
+            Catch ex As Exception
+                Db.LogError("MarkReceiptRefunded", ex)
+                Return 0
+            End Try
+        End Function
+
         Public Function GetByPaymentId(paymentId As Integer) As Receipt
             Try
                 Dim rows As List(Of DataRow) = Db.Rows(ReceiptSelect & "WHERE r.PaymentId = @p", Db.P("@p", paymentId))
@@ -180,7 +201,8 @@ Namespace STAR_DOM.Repositories
                 .VatAmount = RowReader.AsDec(r, "VatAmount"), .VatExemptAmount = RowReader.AsDec(r, "VatExemptAmount"),
                 .TotalAmount = RowReader.AsDec(r, "TotalAmount"), .ItemsSnapshot = RowReader.AsStr(r, "ItemsSnapshot"),
                 .IssuedAt = RowReader.AsDate(r, "IssuedAt"),
-                .PaymentMethod = RowReader.AsStr(r, "PaymentMethod"), .PaidAt = RowReader.AsNullableDate(r, "PaidAt")
+                .PaymentMethod = RowReader.AsStr(r, "PaymentMethod"), .PaidAt = RowReader.AsNullableDate(r, "PaidAt"),
+                .RefundedAt = RowReader.AsNullableDate(r, "RefundedAt")
             }
         End Function
 

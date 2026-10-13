@@ -505,12 +505,13 @@ Namespace STAR_DOM.Web
         ''' The "this can no longer be cancelled" notice.
         ''' </summary>
         ''' <remarks>
-        ''' The cutoff is CONFIRMED, not "processing". What actually locks an order is
-        ''' the studio entering the J&T fee, which flips it PENDING -> CONFIRMED --
-        ''' long before anything is packed, let alone shipped. Saying "processing"
-        ''' told customers an order was mid-production when in fact the studio had
-        ''' quoted a courier fee an hour earlier, which is why they thought the rule
-        ''' had sprung on them.
+        ''' The cutoff is the PAYMENT, not the courier quote. The rule table is
+        ''' explicit: while PaymentStatus is PENDING the order can be pulled back from
+        ''' either PENDING or CONFIRMED, and what closes the window is a submitted
+        ''' reference. The copy used to name the shipping-fee confirmation, which was
+        ''' wrong twice over -- it told customers they could still cancel a CONFIRMED
+        ''' unpaid order and then refused them, and it blamed a courier fee for a rule
+        ''' that is really about money having changed hands.
         '''
         ''' The subject is interpolated, so the caller supplies a plain noun phrase.
         ''' It used to be passed "an order is placed", which produced "once an order
@@ -518,8 +519,8 @@ Namespace STAR_DOM.Web
         ''' </remarks>
         Public Function NoCancelNote(Optional subject As String = "an order") As String
             Return "<div class=""sub"" style=""font-size:12px;margin-top:8px"">" &
-                   WebUi.Ic("lock", "sm") & " Note that once " & Esc(subject) &
-                   " is confirmed by the studio, it can no longer be cancelled.</div>"
+                   WebUi.Ic("lock", "sm") & " Note that once a payment has been submitted for " & Esc(subject) &
+                   ", it can no longer be cancelled here.</div>"
         End Function
 
         ''' <summary>
@@ -529,11 +530,17 @@ Namespace STAR_DOM.Web
         ''' Stated positively, because this is the window where the customer still has
         ''' control and should be told so plainly rather than left hunting for the
         ''' button. Pair it with the cancel button on the same card.
+        '''
+        ''' The boundary named here is the one the service actually enforces: no
+        ''' submitted payment yet. Naming a different boundary (it used to say "until
+        ''' the studio confirms it with the shipping fee") is how a customer ends up
+        ''' being told one thing and refused another.
         ''' </remarks>
         Public Function CancelStillOpenNote(Optional subject As String = "this order") As String
             Return "<div class=""sub"" style=""font-size:12px;margin-top:8px"">" &
                    WebUi.Ic("info", "sm") & " You can still cancel " & Esc(subject) &
-                   " until the studio confirms it with the shipping fee.</div>"
+                   " while no payment has been submitted — once your payment reference is in, " &
+                   "the studio has to sort it out with you instead.</div>"
         End Function
 
         ''' <summary>
@@ -826,3 +833,6 @@ Namespace STAR_DOM.Web
     End Module
 
 End Namespace
+
+
+

@@ -73,6 +73,8 @@ Namespace STAR_DOM.Repositories
             "o.HoldReason, " &
             "o.HoldResolvedAt, " &
             "o.HoldResolution, " &
+            "o.HoldIgRef, " &
+            "o.RefundIgRef, " &
             "u.FullName AS CustomerName, u.Email AS CustomerEmail, " &
             "s.TrackingNumber AS TrackingNumber, " &
             "(SELECT COALESCE(SUM(oi.Quantity),0) FROM OrderItems oi WHERE oi.OrderId = o.Id) AS ItemCount " &
@@ -234,6 +236,26 @@ Namespace STAR_DOM.Repositories
         End Sub
 
         ''' <summary>
+        ''' Mark this order's paid Payment rows as refunded.
+        ''' </summary>
+        ''' <remarks>
+        ''' REFUNDED was deliberately reserved for an actual refund when CANCELLED
+        ''' stopped writing it ("nothing was ever refunded"); now that refunds really
+        ''' are recorded, the payment rows have to move with the order. This is what
+        ''' keeps an order from reading REFUNDED while its payment still says PAID --
+        ''' and, because gross revenue is summed over `PaymentStatus = 'PAID'`, it is
+        ''' also what takes a refunded sale OUT of the revenue figures instead of
+        ''' leaving the studio's top line overstated by money it gave back.
+        '''
+        ''' Only PAID rows are touched: a refund is money going back, and there is
+        ''' nothing to give back on a payment that never landed.
+        ''' </remarks>
+        Public Sub SetPaymentsRefunded(orderId As Integer)
+            Db.Exec("UPDATE Payments SET Status = 'REFUNDED' WHERE OrderId = @o AND Status = 'PAID'",
+                    Db.P("@o", orderId))
+        End Sub
+
+        ''' <summary>
         ''' Cancels this order's still-open Payment rows. When an order is cancelled
         ''' the payment that was never completed must not stay PENDING, or the order
         ''' reads as both cancelled and awaiting payment. Paid/refunded rows are left
@@ -335,10 +357,17 @@ Namespace STAR_DOM.Repositories
         Public Sub UpdateShipping(orderId As Integer, courier As String, tracking As String, status As String)
             ' A later transition (e.g. SHIPPED -> DELIVERED) passes no tracking number;
             ' the empty value must never clobber the number booked at ship time.
+            '
+            ' DeliveredAt is CLEARED on a fresh SHIPPED. That single line is what makes
+            ' a reship honest: DeliveredAt is the date the delivery sweep counts the
+            ' 5/7-day window from, so leaving the old parcel's date on the row would
+            ' let the sweep close the NEW parcel days before the customer could ever
+            ' have received it.
             Db.Exec("UPDATE Shipping SET Courier = @c, " &
                     "TrackingNumber = CASE WHEN @t = '' THEN TrackingNumber ELSE @t END, Status = @s, " &
-                    "ShippedAt = CASE WHEN @s = 'SHIPPED' AND ShippedAt IS NULL THEN NOW() ELSE ShippedAt END, " &
-                    "DeliveredAt = CASE WHEN @s = 'DELIVERED' THEN NOW() ELSE DeliveredAt END WHERE OrderId = @o",
+                    "ShippedAt = CASE WHEN @s = 'SHIPPED' THEN NOW() ELSE ShippedAt END, " &
+                    "DeliveredAt = CASE WHEN @s = 'SHIPPED' THEN NULL " &
+                    "WHEN @s = 'DELIVERED' THEN NOW() ELSE DeliveredAt END WHERE OrderId = @o",
                     Db.P("@c", courier), Db.P("@t", If(tracking, "")), Db.P("@s", status), Db.P("@o", orderId))
         End Sub
 
@@ -486,6 +515,16 @@ Namespace STAR_DOM.Repositories
             Return RowReader.AsBytes(rows(0), "PodImageData")
         End Function
 
+        ''' <summary>Record the IG reference for a dispute resolution.</summary>
+        Public Sub SetHoldIgRef(orderId As Integer, igRef As String)
+            Db.Exec("UPDATE Orders SET HoldIgRef = @r WHERE Id = @o", Db.P("@r", igRef), Db.P("@o", orderId))
+        End Sub
+
+        ''' <summary>Record the IG reference for a refund.</summary>
+        Public Sub SetRefundIgRef(orderId As Integer, igRef As String)
+            Db.Exec("UPDATE Orders SET RefundIgRef = @r WHERE Id = @o", Db.P("@r", igRef), Db.P("@o", orderId))
+        End Sub
+
         ''' <summary>
         ''' Record the courier outcome and proof of delivery for an order, as
         ''' transcribed by the studio from the courier's own tracking page.
@@ -548,6 +587,74 @@ Namespace STAR_DOM.Repositories
                     Db.P("@o", orderId))
         End Sub
 
+        ''' <summary>
+        ''' Start a fresh delivery cycle: clear the two notification stamps so the
+        ''' next DELIVERED announces itself again and earns its own reminder before the
+        ''' sweep may close it. Used when a disputed parcel is reshipped.
+        ''' </summary>
+        ''' <remarks>
+        ''' Both stamps are written with COALESCE (set-once), which is what stops a
+        ''' re-render from restarting the clock. That same guard is exactly why they
+        ''' have to be cleared explicitly here: the second parcel is a new delivery and
+        ''' deserves its own notification, not the first parcel's.
+        ''' </remarks>
+        Public Sub ResetDeliveryCycle(orderId As Integer)
+            Db.Exec("UPDATE Orders SET DeliveredNotifiedAt = NULL, ReminderSentAt = NULL, " &
+                    "UpdatedAt = NOW() WHERE Id = @o", Db.P("@o", orderId))
+        End Sub
+
+        ''' <summary>
+        ''' True when the sweep has already flagged this order as past the delivery
+        ''' window with nothing to close it on. Read from the audit trail rather than a
+        ''' dedicated column, because the flag IS an audit fact -- and it is what keeps
+        ''' a daily job from sending the studio the same "order needs attention" note
+        ''' every morning until somebody acts on it.
+        ''' </summary>
+        Public Function HasSweepFlag(orderId As Integer) As Boolean
+            Return Db.ScalarInt(
+                "SELECT COUNT(*) FROM OrderStatusHistory WHERE OrderId = @o AND Source = @s AND ToStatus = @t",
+                Db.P("@o", orderId), Db.P("@s", ReceiptSources.AutoSweep),
+                Db.P("@t", OrderStatuses.Delivered)) > 0
+        End Function
+
+        ''' <summary>
+        ''' Every order sitting in DELIVERED, with the inputs the sweep decides on:
+        ''' when the courier hand-off was recorded, whether the customer was told,
+        ''' whether the nudge went out, and whether any proof of delivery exists.
+        ''' </summary>
+        ''' <remarks>
+        ''' Deliberately not OrderSelect: the list must not drag Orders.PodImageData
+        ''' (the POD blob) into memory, so it asks only whether the column has bytes --
+        ''' `octet_length` answers that on the server, as a boolean, for any size of
+        ''' image. HELD orders are excluded by the WHERE clause, which is what makes a
+        ''' dispute actually stop the automatic close rather than only recording a
+        ''' complaint.
+        '''
+        ''' The age is taken from Shipping.DeliveredAt with Orders.UpdatedAt as the
+        ''' fallback: Shipping is where the courier hand-off lives, but an order
+        ''' delivered before the Shipping row existed still has to be sweepable
+        ''' rather than stranded in DELIVERED for ever.
+        ''' </remarks>
+        Public Function ListDeliveredForSweep() As List(Of DeliverySweepCandidate)
+            Return Db.Rows(
+                "SELECT o.Id AS OrderId, o.OrderNumber, o.UserId, o.CourierStatus, " &
+                "o.DeliveredNotifiedAt, o.ReminderSentAt, " &
+                "COALESCE(s.DeliveredAt, o.UpdatedAt) AS HandedOverAt, " &
+                "(o.PodImageData IS NOT NULL AND octet_length(o.PodImageData) > 0) AS HasPod " &
+                "FROM Orders o LEFT JOIN Shipping s ON s.OrderId = o.Id " &
+                "WHERE o.Status = 'DELIVERED' ORDER BY HandedOverAt"
+            ).Select(Function(r) New DeliverySweepCandidate With {
+                .OrderId = RowReader.AsInt(r, "OrderId"),
+                .OrderNumber = RowReader.AsStr(r, "OrderNumber"),
+                .UserId = RowReader.AsInt(r, "UserId"),
+                .CourierStatus = RowReader.AsStr(r, "CourierStatus"),
+                .DeliveredNotifiedAt = RowReader.AsNullableDate(r, "DeliveredNotifiedAt"),
+                .ReminderSentAt = RowReader.AsNullableDate(r, "ReminderSentAt"),
+                .DeliveredAt = RowReader.AsNullableDate(r, "HandedOverAt"),
+                .HasPod = RowReader.AsBool(r, "HasPod")
+            }).ToList()
+        End Function
+
         ''' <summary>Attach how this order reached RECEIVED, without moving it there.</summary>
         Public Sub SetReceiptSource(orderId As Integer, source As String)
             Db.Exec("UPDATE Orders SET ReceiptSource = @s WHERE Id = @o", Db.P("@s", source), Db.P("@o", orderId))
@@ -584,7 +691,9 @@ Namespace STAR_DOM.Repositories
                 .ReceiptSource = RowReader.AsStr(r, "ReceiptSource"),
                 .HoldReason = RowReader.AsStr(r, "HoldReason"),
                 .HoldResolvedAt = RowReader.AsNullableDate(r, "HoldResolvedAt"),
-                .HoldResolution = RowReader.AsStr(r, "HoldResolution")
+                .HoldResolution = RowReader.AsStr(r, "HoldResolution"),
+                .HoldIgRef = RowReader.AsStr(r, "HoldIgRef"),
+                .RefundIgRef = RowReader.AsStr(r, "RefundIgRef")
             }
         End Function
 
