@@ -208,7 +208,18 @@ Namespace STAR_DOM.Services
                                           "once the studio returns the final total and shipping fee.")
             End If
             Dim pick As String = If(method, "").Trim().ToUpperInvariant()
-            If Not _paySettings.IsChannelEnabled(pick) Then
+
+            ' A method the order already carries is a commitment the customer made,
+            ' not a fresh choice. The owner can disable or delete the channel
+            ' afterwards -- an admin tidying up a retired bank, say -- and that must
+            ' not strand an order that is already on its way. Re-confirming the same
+            ' method changes nothing, so it is allowed even when the channel no
+            ' longer resolves. Choosing something DIFFERENT still goes through the
+            ' availability check below, because that is a new selection and has to
+            ' point at an account that exists.
+            Dim alreadyChosen As Boolean =
+                String.Equals(order.PaymentMethod, pick, StringComparison.OrdinalIgnoreCase)
+            If Not alreadyChosen AndAlso Not _paySettings.IsChannelEnabled(pick) Then
                 Return ServiceResult.Fail("That payment method is not available right now.")
             End If
             _orders.SetPaymentMethod(orderId, pick)

@@ -85,8 +85,20 @@ Namespace STAR_DOM.Web
             Dim removeChannel As String = Request.Form("deleteChannel")
             If removeChannel IsNot Nothing Then
                 Dim doomed As String = NormalizeChannel(removeChannel)
+                ' Count the live orders first. Those customers already committed to
+                ' this channel; deleting it does not block their payment, but it does
+                ' take away the account details the order page would have shown them,
+                ' so say so rather than let them discover it at the till.
+                Dim stranded As Integer = _settings.OrdersUsingChannel(doomed)
                 If _settings.DeleteChannel(doomed) Then
-                    SetFlash("Channel " & doomed & " removed. Orders already paid through it keep their record.", True)
+                    If stranded > 0 Then
+                        SetFlash("Channel " & doomed & " removed. " & stranded.ToString() &
+                                 " unpaid order(s) still point at it — those customers can still submit " &
+                                 "a reference, but the " & doomed & " account details are no longer shown to them. " &
+                                 "Re-add the channel if you need them to see the QR.", False)
+                    Else
+                        SetFlash("Channel " & doomed & " removed. No unpaid orders were pointing at it.", True)
+                    End If
                 Else
                     SetFlash("Could not remove " & If(doomed = "", "that channel", doomed) &
                              " — the built-in GCash and GOtyme wallets cannot be deleted.", False)

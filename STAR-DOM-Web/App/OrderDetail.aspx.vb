@@ -49,11 +49,22 @@ Namespace STAR_DOM.Web
                     ' ToString(Nothing) can hand back Nothing, and .Trim() on that threw
                     ' "Object reference not set" out of this page.
                     Dim picked As String = Trim(Convert.ToString(Request.Form("payMethod"))).ToUpperInvariant()
-                    Dim pickResult As ServiceResult = _orders.ChoosePaymentMethod(o.Id, picked)
-                    If Not pickResult.Success Then
-                        Session("flash_msg") = pickResult.Message
-                        Session("flash_ok") = False
-                        Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
+
+                    ' Re-validate ONLY when a channel was actually posted. The pay form
+                    ' posts only the reference and the password -- the channel was chosen
+                    ' in an earlier step and recorded on the order -- so picked is empty
+                    ' here in the normal case. Passing that empty string to
+                    ' ChoosePaymentMethod asked "is the empty channel enabled?", which is
+                    ' never true, so every single "Confirm & I've Paid" click was rejected
+                    ' with "That payment method is not available right now." on every
+                    ' order, deleted channel or not.
+                    If picked <> "" AndAlso picked <> "PENDING" Then
+                        Dim pickResult As ServiceResult = _orders.ChoosePaymentMethod(o.Id, picked)
+                        If Not pickResult.Success Then
+                            Session("flash_msg") = pickResult.Message
+                            Session("flash_ok") = False
+                            Response.Redirect("/App/OrderDetail.aspx?id=" & o.Id.ToString(), True)
+                        End If
                     End If
                     Dim r As ServiceResult = _orders.SubmitPayment(o.OrderNumber, Convert.ToString(Request.Form("payRef")), Convert.ToString(Request.Form("payPassword")))
                     Session("flash_msg") = r.Message
@@ -250,7 +261,14 @@ Namespace STAR_DOM.Web
                 Dim chosen As String = If(o.PaymentMethod, "").Trim().ToUpperInvariant()
                 Dim ps1 As New PaymentSettingRepository()
                 Dim channels As List(Of String) = ps1.ListAll().Where(Function(p) p.IsEnabled).Select(Function(p) p.Channel).ToList()
-                Dim channelChosen As Boolean = channels.Contains(chosen)
+                ' A method already recorded on the order counts as chosen even when
+            ' Payment Settings no longer lists it. Without this, deleting the
+            ' channel threw the customer back onto the "choose a method" dropdown
+            ' and silently discarded the method they had already committed to --
+            ' which is how an order becomes unpayable through no fault of the
+            ' customer. Choosing afresh still only offers enabled channels.
+            Dim hasRecordedMethod As Boolean = (chosen <> "" AndAlso chosen <> "PENDING")
+            Dim channelChosen As Boolean = hasRecordedMethod OrElse channels.Contains(chosen)
                 If canPay AndAlso Not channelChosen Then
                     ' Phase 1 — choose a payment channel. Every enabled channel from
                     ' Payment Settings is offered here: GCash, GOtyme, and any admin-
@@ -440,12 +458,23 @@ Namespace STAR_DOM.Web
             If isOwner AndAlso isEWallet AndAlso o.PaymentStatus <> "PAID" AndAlso o.PaymentStatus <> "SUBMITTED" AndAlso
                 o.PaymentStatus <> "REFUNDED" AndAlso o.Status <> "CANCELLED" Then
                 Dim ps As PaymentSetting = New PaymentSettingRepository().GetByChannel(method)
-                ' The page must never render a popup with no settings row behind it.
-                If ps Is Nothing Then ps = New PaymentSettingRepository().GetByChannel(PaymentSettingRepository.Gcash)
-                If ps IsNot Nothing Then
-                    ' Open straight away when we just came back from choosing the
-                    ' channel (?qr=1) so the customer scans without a second click.
-                    Dim openNow As Boolean = (Trim(Convert.ToString(Request.QueryString("qr"))) = "1")
+                Dim openNow As Boolean = (Trim(Convert.ToString(Request.QueryString("qr"))) = "1")
+
+                If ps Is Nothing Then
+                    ' The channel this order was placed against has since been
+                    ' removed from Payment Settings. Falling back to GCash here --
+                    ' which this block used to do, to avoid rendering an empty
+                    ' popup -- showed the customer GCash's QR under a "pay with BPI"
+                    ' heading. They would scan it, send real money to the wrong
+                    ' account, and the studio would have no way to reconcile it
+                    ' against the reference. An empty popup is a far smaller harm.
+                    '
+                    ' They are not blocked: the reference field is still right
+                    ' there, SubmitPayment never required the channel row, and the
+                    ' studio verifies whatever arrives. Say plainly that the
+                    ' details are gone and point them at a human.
+                    sb.Append(WebUi.ChannelDetailsGoneNote(method))
+                Else
                     sb.Append(WebUi.QrPaymentModal(ps, method, o.TotalAmount, openNow, False))
                 End If
             End If

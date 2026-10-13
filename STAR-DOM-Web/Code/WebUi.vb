@@ -536,6 +536,31 @@ Namespace STAR_DOM.Web
                    " until the studio confirms it with the shipping fee.</div>"
         End Function
 
+        ''' <summary>
+        ''' Shown when an order was placed against a payment channel that has since
+        ''' been removed from Payment Settings.
+        ''' </summary>
+        ''' <remarks>
+        ''' Deliberately not a QR and deliberately not another channel's account. The
+        ''' customer has already chosen where to send the money and knows that
+        ''' account; what they lost is the panel that used to show it. Handing them
+        ''' GCash's QR under a "pay with BPI" heading would move real money to the
+        ''' wrong place, so the honest answer is to name the channel, say its
+        ''' details are no longer listed, and give them the studio's contact. They
+        ''' can still submit the reference -- SubmitPayment does not require the
+        ''' channel row, and the studio verifies whatever arrives.
+        ''' </remarks>
+        Public Function ChannelDetailsGoneNote(method As String) As String
+            Dim brand As String = ChannelBrand(method)
+            Return "<div class=""card"" style=""margin-top:12px;border-color:#eec200;background:var(--yellow-soft)"">" &
+                   "<b style=""display:block;margin-bottom:6px;font-size:13px"">" &
+                   Ic("info", "sm") & " " & Esc(brand) & " is no longer listed in Payment Settings</b>" &
+                   "<p class=""sub"" style=""margin:0 0 6px;color:var(--ink)"">" &
+                   "The account details for this channel have been removed, so the QR cannot be shown here. " &
+                   "If you have already sent your payment, enter the reference number below and the studio " &
+                   "will verify it. If you have not, " & Esc(PaymentSetting.SupportContact) & "</p></div>"
+        End Function
+
         Public Function Pill(text As String, Optional kind As String = "yellow") As String
             Return "<span class=""pill " & kind & """>" & Esc(text) & "</span>"
         End Function

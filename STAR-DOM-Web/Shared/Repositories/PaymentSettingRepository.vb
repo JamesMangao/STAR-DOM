@@ -62,16 +62,35 @@ Namespace STAR_DOM.Repositories
             If String.IsNullOrWhiteSpace(ch) Then Return Nothing
 
             Dim found As PaymentSetting = FindRow(ch)
-            If found Is Nothing AndAlso ch <> LegacyMaya Then
-                ' Nothing is stored under the current key yet, so adopt the pre-rename
-                ' row if there is one. Without this the first save after the rename
-                ' reads a blank default and wipes the account number and QR image the
-                ' admin had already configured under 'MAYA'.
+
+            ' The pre-rename fallback fires ONLY for MAYA itself or for the wallet that
+            ' replaced it, because those two are the same account under two keys. It
+            ' used to fire for every channel, which meant asking for a channel that
+            ' had been deleted handed back the GOtyme row with Channel rewritten to the
+            ' one asked for. An order sitting on a removed bank was then showing the
+            ' customer GOtyme's QR and GOtyme's account number under a "pay with BPI"
+            ' heading. They would scan it, send real money to the wrong account, and
+            ' the studio could not reconcile it against the reference. One channel's
+            ' details must never be served under another channel's name.
+            If found Is Nothing AndAlso (ch = LegacyMaya OrElse ch = GOtyme) Then
+                ' Without this the first save after the rename reads a blank default
+                ' and wipes the account number and QR image the admin configured under
+                ' 'MAYA'.
                 found = FindRow(LegacyMaya)
             End If
-            If found Is Nothing Then Return DefaultFor(ch)
-            found.Channel = ch
-            Return found
+
+            If found IsNot Nothing Then
+                found.Channel = ch
+                Return found
+            End If
+
+            ' Nothing stored. The two built-ins always get a usable default so the
+            ' site still works on a half-configured install. An admin-created channel
+            ' gets Nothing instead: a blank placeholder looks configured but sends
+            ' nobody anywhere, and the caller can say plainly that the details are gone
+            ' instead of showing an empty panel the customer will try to scan.
+            If ch = Gcash OrElse ch = GOtyme Then Return DefaultFor(ch)
+            Return Nothing
         End Function
 
         ''' <summary>One mapped row for a channel key, or Nothing when there is none.</summary>
@@ -113,9 +132,29 @@ Namespace STAR_DOM.Repositories
         ''' <summary>
         ''' Removes one admin-created channel. The two built-ins are refused: GCash and
         ''' GOtyme are always offered at checkout, so ListAll would just re-add them as
-        ''' defaults and the delete would look like it silently failed. Orders and
-        ''' commissions keep the PaymentMethod string they recorded, so removing a
-        ''' channel never rewrites a historical receipt.
+        ''' defaults and the delete would look like it silently failed.
+        ''' </summary>
+        ''' <remarks>
+        ''' Orders and commissions keep the PaymentMethod string they recorded, so
+        ''' removing a channel never rewrites a historical receipt -- and the order
+        ''' stays payable. The studio simply loses the account details for a channel
+        ''' that orders are still being sent to, which is why OrdersUsingChannel
+        ''' exists and the caller warns with it.
+        ''' </remarks>
+        ''' <summary>
+        ''' Unpaid orders still pointing at this channel. Used to warn before deleting
+        ''' one, so an admin finds out they are about to strand a customer.
+        ''' </summary>
+        Public Function OrdersUsingChannel(channel As String) As Integer
+            Dim ch As String = If(channel, "").Trim().ToUpperInvariant()
+            If ch = "" Then Return 0
+            Return Db.ScalarInt(
+                "SELECT COUNT(*) FROM Orders WHERE UPPER(PaymentMethod) = @c " &
+                "AND PaymentStatus NOT IN ('PAID','REFUNDED')", Db.P("@c", ch))
+        End Function
+
+        ''' <summary>
+        ''' Removes one admin-created channel.
         ''' </summary>
         Public Function DeleteChannel(channel As String) As Boolean
             Dim ch As String = If(channel, "").Trim().ToUpperInvariant()

@@ -195,6 +195,22 @@ STAR_DOM_Web
  button. Pair it with the cancel button on the same card.
  </remarks>
 </member>
+<member name="M:STAR_DOM.Web.WebUi.ChannelDetailsGoneNote(System.String)">
+ <summary>
+ Shown when an order was placed against a payment channel that has since
+ been removed from Payment Settings.
+ </summary>
+ <remarks>
+ Deliberately not a QR and deliberately not another channel's account. The
+ customer has already chosen where to send the money and knows that
+ account; what they lost is the panel that used to show it. Handing them
+ GCash's QR under a "pay with BPI" heading would move real money to the
+ wrong place, so the honest answer is to name the channel, say its
+ details are no longer listed, and give them the studio's contact. They
+ can still submit the reference -- SubmitPayment does not require the
+ channel row, and the studio verifies whatever arrives.
+ </remarks>
+</member>
 <member name="M:STAR_DOM.Web.WebUi.BundleNote">
  <summary>
  Shopper-facing "N for ₱M" bundle legend, e.g. "Stickers Bundle — any 4 for
@@ -1459,13 +1475,27 @@ STAR_DOM_Web
  <summary>Insert or update one channel's settings. Channel can be any identifier
  (e.g., GCASH, GOTYME, ONLINEBANK, etc.). Validates only that it's not empty.</summary>
 </member>
-<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.DeleteChannel(System.String)">
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.OrdersUsingChannel(System.String)">
  <summary>
  Removes one admin-created channel. The two built-ins are refused: GCash and
  GOtyme are always offered at checkout, so ListAll would just re-add them as
- defaults and the delete would look like it silently failed. Orders and
- commissions keep the PaymentMethod string they recorded, so removing a
- channel never rewrites a historical receipt.
+ defaults and the delete would look like it silently failed.
+ </summary>
+ <remarks>
+ Orders and commissions keep the PaymentMethod string they recorded, so
+ removing a channel never rewrites a historical receipt -- and the order
+ stays payable. The studio simply loses the account details for a channel
+ that orders are still being sent to, which is why OrdersUsingChannel
+ exists and the caller warns with it.
+ </remarks>
+ <summary>
+ Unpaid orders still pointing at this channel. Used to warn before deleting
+ one, so an admin finds out they are about to strand a customer.
+ </summary>
+</member>
+<member name="M:STAR_DOM.Repositories.PaymentSettingRepository.DeleteChannel(System.String)">
+ <summary>
+ Removes one admin-created channel.
  </summary>
 </member>
 <member name="M:STAR_DOM.Repositories.PaymentSettingRepository.UpdateQrImage(System.String,System.Byte[],System.String,System.String)">
