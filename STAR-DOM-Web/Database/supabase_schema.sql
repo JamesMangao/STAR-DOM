@@ -755,6 +755,83 @@ CREATE TRIGGER trg_assetimages_updatedat
     FOR EACH ROW EXECUTE FUNCTION public.trg_star_dom_touch_updated_at();
 
 -- ------------------------------------------------------------
+-- Delivery evidence, and the audit trail for how an order closed
+-- ------------------------------------------------------------
+-- Orders could record THAT a parcel arrived but never why, and there was
+-- no history table for orders at all. CommissionStatusHistory did that job
+-- for commissions; nothing did it for Orders, which is the larger and more
+-- money-bearing of the two. So "the studio closed this on the customer's
+-- behalf" had nowhere to be written, and a courier proof of delivery had
+-- nowhere to live.
+--
+-- HELD is the state a dispute parks an order in. It is deliberately neither
+-- CANCELLED nor RECEIVED: the parcel may well have arrived, nobody has
+-- decided yet, and the order must not read as finished or refunded while
+-- that is true. The delivery sweep refuses to touch a HELD order, which is
+-- what makes a dispute actually stop the automatic close rather than only
+-- recording a complaint.
+--
+-- ReceiptSource is the column that has to answer "how do you know it
+-- arrived?". CUSTOMER is the customer pressing the button. COURIER_POD is a
+-- proof the studio uploaded from the courier's own site. STUDIO is the
+-- studio asserting it on the customer's behalf -- allowed, but it always
+-- carries a reason and always lands in the history table like everything
+-- else. It is empty until the order is genuinely RECEIVED, so it can never
+-- pre-claim a confirmation that has not happened.
+--
+-- There is no courier API. CourierStatus and the POD columns are entered by
+-- the studio from the courier's tracking page on purpose: an automatic
+-- status claim would be a guess, an uploaded screenshot is evidence. The
+-- sweep only ever reads them; it never infers them.
+CREATE TABLE IF NOT EXISTS OrderStatusHistory (
+  Id SERIAL PRIMARY KEY,
+  OrderId INT NOT NULL,
+  FromStatus VARCHAR(30) NOT NULL DEFAULT '',
+  ToStatus VARCHAR(30) NOT NULL,
+  -- CUSTOMER / ADMIN / COURIER_POD / STUDIO / SYSTEM
+  Source VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER',
+  -- Required whenever Source is STUDIO: why an order was closed on the
+  -- customer's behalf. Optional elsewhere, used for dispute notes.
+  Reason VARCHAR(500) NOT NULL DEFAULT '',
+  -- Username of whoever acted, or 'delivery-sweep' for the scheduled run.
+  ChangedBy VARCHAR(120) NOT NULL DEFAULT '',
+  CreatedAt TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT FK_OrderHistory_Order FOREIGN KEY (OrderId) REFERENCES Orders(Id) ON DELETE CASCADE
+  );
+
+CREATE INDEX IF NOT EXISTS IDX_OrderHistory_Order ON OrderStatusHistory (OrderId, CreatedAt DESC);
+
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS CourierStatus VARCHAR(40) NOT NULL DEFAULT '';
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS PodReference VARCHAR(120) NOT NULL DEFAULT '';
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS PodImageData BYTEA;
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS PodMime VARCHAR(60) NOT NULL DEFAULT '';
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS PodCapturedAt TIMESTAMPTZ;
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS PodCapturedBy VARCHAR(120) NOT NULL DEFAULT '';
+
+-- When the customer was first told the parcel had been delivered, and when
+-- the single follow-up nudge went out. The sweep requires both before it
+-- will close anything, so no order can auto-close against a customer who
+-- was never notified in the first place.
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS DeliveredNotifiedAt TIMESTAMPTZ;
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ReminderSentAt TIMESTAMPTZ;
+
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS ReceiptSource VARCHAR(20) NOT NULL DEFAULT '';
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS HoldReason VARCHAR(500) NOT NULL DEFAULT '';
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS HoldResolvedAt TIMESTAMPTZ;
+ALTER TABLE Orders ADD COLUMN IF NOT EXISTS HoldResolution VARCHAR(40) NOT NULL DEFAULT '';
+
+-- No extra index here on purpose. The sweep's driving query is
+--   Orders WHERE Status = 'DELIVERED' AND Status <> 'HELD'
+-- which IDX_Orders_Status already serves, and the delivery age it needs
+-- lives on Shipping.DeliveredAt, joined through Shipping.OrderId, which
+-- shipping_orderid_key already indexes as a unique key.
+--
+-- An index on Orders("DeliveredAt") was tried here and does not exist to
+-- be indexed: Orders has never carried that column. It is Shipping that
+-- records the hand-off, and duplicating the timestamp onto Orders would
+-- give two places for the same fact to drift apart.
+
+-- ------------------------------------------------------------
 -- Row level security
 -- ------------------------------------------------------------
 -- The VB.NET app is the only database client and authenticates as the table

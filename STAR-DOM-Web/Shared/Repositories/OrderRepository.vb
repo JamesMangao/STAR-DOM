@@ -27,8 +27,53 @@ Namespace STAR_DOM.Repositories
                 Db.P("@q", item.Quantity), Db.P("@u", item.UnitPrice), Db.P("@t", item.LineTotal))
         End Sub
 
+        ''' <summary>
+        ''' The order read used to be SELECT o.*, which silently started pulling the
+        ''' proof-of-delivery BYTEA down with every list page the moment that column
+        ''' existed -- the same trap the payment-channel QR images fell into. The
+        ''' column list is spelled out here so that adding a blob column to Orders can
+        ''' never again cost every order page its payload, and so an accidental
+        ''' PodImageData in the list is a visible omission rather than a hidden cost.
+        ''' </summary>
+        ''' <remarks>
+        ''' PodImageData is deliberately absent. GetPodImage fetches it on demand for the
+        ''' one request that actually shows the image. PodMime is kept because it is a
+        ''' short string and the page needs it to decide whether the POD exists at all.
+        ''' </remarks>
         Private Const OrderSelect As String =
-            "SELECT o.*, u.FullName AS CustomerName, u.Email AS CustomerEmail, " &
+            "SELECT o.Id, " &
+            "o.OrderNumber, " &
+            "o.UserId, " &
+            "o.EventId, " &
+            "o.Status, " &
+            "o.Subtotal, " &
+            "o.DiscountAmount, " &
+            "o.ShippingFee, " &
+            "o.TotalAmount, " &
+            "o.PaymentMethod, " &
+            "o.PaymentStatus, " &
+            "o.ShippingAddress, " &
+            "o.ContactPhone, " &
+            "o.Notes, " &
+            "o.ShippingFeeConfirmed, " &
+            "o.ShippingFeeConfirmedBy, " &
+            "o.ShippingFeeConfirmedAt, " &
+            "o.ReceivedAt, " &
+            "o.CreatedAt, " &
+            "o.UpdatedAt, " &
+            "o.CancelReason, " &
+            "o.CourierStatus, " &
+            "o.PodReference, " &
+            "o.PodMime, " &
+            "o.PodCapturedAt, " &
+            "o.PodCapturedBy, " &
+            "o.DeliveredNotifiedAt, " &
+            "o.ReminderSentAt, " &
+            "o.ReceiptSource, " &
+            "o.HoldReason, " &
+            "o.HoldResolvedAt, " &
+            "o.HoldResolution, " &
+            "u.FullName AS CustomerName, u.Email AS CustomerEmail, " &
             "s.TrackingNumber AS TrackingNumber, " &
             "(SELECT COALESCE(SUM(oi.Quantity),0) FROM OrderItems oi WHERE oi.OrderId = o.Id) AS ItemCount " &
             "FROM Orders o LEFT JOIN Users u ON u.Id = o.UserId " &
@@ -386,7 +431,132 @@ Namespace STAR_DOM.Repositories
             }
         End Function
 
+        ' ====================================================================
+        ' Delivery evidence and the order audit trail
+        ' ====================================================================
+        ' Every method here writes to OrderStatusHistory as well as to Orders.
+        ' That is not bookkeeping for its own sake: ReceiptSource on Orders says
+        ' how an order closed, but only the history rows say who closed it, when,
+        ' from what, and why. If the two ever diverge, the history is the record
+        ' that was written at the time rather than a summary assembled later.
+
+        ''' <summary>
+        ''' Append one line to an order's delivery audit trail. Callers pass the
+        ''' status the order was in beforehand; passing "" for a first entry is
+        ''' normal.
+        ''' </summary>
+        Public Sub AppendHistory(orderId As Integer, fromStatus As String, toStatus As String,
+                                 source As String, reason As String, changedBy As String)
+            Db.Exec("INSERT INTO OrderStatusHistory (OrderId, FromStatus, ToStatus, Source, Reason, ChangedBy) " &
+                    "VALUES (@o, @f, @t, @s, @r, @b)",
+                    Db.P("@o", orderId), Db.P("@f", If(fromStatus, "")), Db.P("@t", If(toStatus, "")),
+                    Db.P("@s", If(source, "")), Db.P("@r", If(reason, "")),
+                    Db.P("@b", If(changedBy, "")))
+        End Sub
+
+        ''' <summary>Audit trail for one order, newest first.</summary>
+        Public Function ListHistory(orderId As Integer) As List(Of OrderStatusEntry)
+            Dim rows As List(Of DataRow) = Db.Rows(
+                "SELECT OrderId, FromStatus, ToStatus, Source, Reason, ChangedBy, CreatedAt " &
+                "FROM OrderStatusHistory WHERE OrderId = @o ORDER BY CreatedAt DESC, Id DESC", Db.P("@o", orderId))
+            Dim out As New List(Of OrderStatusEntry)()
+            For Each r As DataRow In rows
+                out.Add(New OrderStatusEntry With {
+                    .OrderId = RowReader.AsInt(r, "OrderId"),
+                    .FromStatus = RowReader.AsStr(r, "FromStatus"),
+                    .ToStatus = RowReader.AsStr(r, "ToStatus"),
+                    .Source = RowReader.AsStr(r, "Source"),
+                    .Reason = RowReader.AsStr(r, "Reason"),
+                    .ChangedBy = RowReader.AsStr(r, "ChangedBy"),
+                    .CreatedAt = RowReader.AsDate(r, "CreatedAt")
+                })
+            Next
+            Return out
+        End Function
+
+        ''' <summary>
+        ''' The proof-of-delivery bytes for one order, or Nothing. This is the ONLY
+        ''' query that reads PodImageData: it is called when a POD is actually being
+        ''' displayed, never as part of a list. See the note on OrderSelect.
+        ''' </summary>
+        Public Function GetPodImage(orderId As Integer) As Byte()
+            Dim rows As List(Of DataRow) = Db.Rows(
+                "SELECT PodImageData FROM Orders WHERE Id = @o AND PodImageData IS NOT NULL", Db.P("@o", orderId))
+            If rows.Count = 0 Then Return Nothing
+            Return RowReader.AsBytes(rows(0), "PodImageData")
+        End Function
+
+        ''' <summary>
+        ''' Record the courier outcome and proof of delivery for an order, as
+        ''' transcribed by the studio from the courier's own tracking page.
+        ''' </summary>
+        ''' <remarks>
+        ''' The image is required. A courier status typed in without the screenshot
+        ''' that supports it is an assertion, and an assertion is exactly what this
+        ''' whole feature exists to stop being the only evidence for. An empty
+        ''' reference is likewise rejected rather than stored as a blank, because a
+        ''' blank POD reference is indistinguishable from a missing one later.
+        ''' </remarks>
+        Public Function SavePod(orderId As Integer, image As Byte(), mime As String,
+                                reference As String, courierStatus As String,
+                                capturedBy As String) As String
+            If image Is Nothing OrElse image.Length = 0 Then
+                Return "Attach the proof-of-delivery image before saving."
+            End If
+            If String.IsNullOrWhiteSpace(reference) Then
+                Return "Enter the courier's reference or tracking number for this delivery."
+            End If
+            Db.Exec("UPDATE Orders SET CourierStatus = @cs, PodReference = @ref, PodImageData = @img, " &
+                    "PodMime = @mime, PodCapturedAt = NOW(), PodCapturedBy = @by WHERE Id = @o",
+                    Db.P("@cs", If(courierStatus, "")), Db.P("@ref", reference.Trim()),
+                    Db.P("@img", image), Db.P("@mime", If(mime, "image/png")),
+                    Db.P("@by", If(capturedBy, "")), Db.P("@o", orderId))
+            Return ""
+        End Function
+
+        ''' <summary>Park an order in HELD with the customer's stated reason.</summary>
+        Public Sub OpenHold(orderId As Integer, reason As String, changedBy As String)
+            Db.Exec("UPDATE Orders SET Status = 'HELD', HoldReason = @r, " &
+                    "HoldResolvedAt = NULL, HoldResolution = '' WHERE Id = @o",
+                    Db.P("@r", If(reason, "")), Db.P("@o", orderId))
+        End Sub
+
+        ''' <summary>
+        ''' Close out a dispute. Resolution is one of RECEIVED / REFUNDED / RESHIP
+        ''' and is recorded verbatim: the sweep and the order page both read it, and
+        ''' they must not have to guess what the studio meant.
+        ''' </summary>
+        Public Sub ResolveHold(orderId As Integer, resolution As String, newStatus As String,
+                               changedBy As String)
+            Db.Exec("UPDATE Orders SET Status = @ns, HoldResolvedAt = NOW(), HoldResolution = @res WHERE Id = @o",
+                    Db.P("@ns", newStatus), Db.P("@res", resolution), Db.P("@o", orderId))
+        End Sub
+
+        ''' <summary>
+        ''' Note that the customer has been told the parcel landed, and that the
+        ''' single follow-up nudge has gone out. Both are set-once: the COALESCE
+        ''' guard means a retried page render cannot push the reminder window
+        ''' forward and let an order sit unclosed for ever.
+        ''' </summary>
+        Public Sub StampDeliveredNotified(orderId As Integer)
+            Db.Exec("UPDATE Orders SET DeliveredNotifiedAt = COALESCE(DeliveredNotifiedAt, NOW()) WHERE Id = @o",
+                    Db.P("@o", orderId))
+        End Sub
+
+        Public Sub StampReminderSent(orderId As Integer)
+            Db.Exec("UPDATE Orders SET ReminderSentAt = COALESCE(ReminderSentAt, NOW()) WHERE Id = @o",
+                    Db.P("@o", orderId))
+        End Sub
+
+        ''' <summary>Attach how this order reached RECEIVED, without moving it there.</summary>
+        Public Sub SetReceiptSource(orderId As Integer, source As String)
+            Db.Exec("UPDATE Orders SET ReceiptSource = @s WHERE Id = @o", Db.P("@s", source), Db.P("@o", orderId))
+        End Sub
+
         Private Function Map(r As DataRow) As Order
+            ' PodImageData is deliberately absent here. OrderSelect no longer fetches
+            ' the column, so it could not be mapped even if this tried; GetPodImage is
+            ' the only path that reads the bytes.
             Return New Order With {
                 .Id = RowReader.AsInt(r, "Id"), .OrderNumber = RowReader.AsStr(r, "OrderNumber"),
                 .UserId = RowReader.AsInt(r, "UserId"), .EventId = RowReader.AsNullableInt(r, "EventId"),
@@ -403,7 +573,18 @@ Namespace STAR_DOM.Repositories
                 .ShippingFeeConfirmedBy = RowReader.AsNullableInt(r, "ShippingFeeConfirmedBy"),
                 .ShippingFeeConfirmedAt = RowReader.AsNullableDate(r, "ShippingFeeConfirmedAt"),
                 .ReceivedAt = RowReader.AsNullableDate(r, "ReceivedAt"),
-                .TrackingNumber = RowReader.AsStr(r, "TrackingNumber")
+                .TrackingNumber = RowReader.AsStr(r, "TrackingNumber"),
+                .CourierStatus = RowReader.AsStr(r, "CourierStatus"),
+                .PodReference = RowReader.AsStr(r, "PodReference"),
+                .PodMime = RowReader.AsStr(r, "PodMime"),
+                .PodCapturedAt = RowReader.AsNullableDate(r, "PodCapturedAt"),
+                .PodCapturedBy = RowReader.AsStr(r, "PodCapturedBy"),
+                .DeliveredNotifiedAt = RowReader.AsNullableDate(r, "DeliveredNotifiedAt"),
+                .ReminderSentAt = RowReader.AsNullableDate(r, "ReminderSentAt"),
+                .ReceiptSource = RowReader.AsStr(r, "ReceiptSource"),
+                .HoldReason = RowReader.AsStr(r, "HoldReason"),
+                .HoldResolvedAt = RowReader.AsNullableDate(r, "HoldResolvedAt"),
+                .HoldResolution = RowReader.AsStr(r, "HoldResolution")
             }
         End Function
 

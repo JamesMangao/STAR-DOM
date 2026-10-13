@@ -95,7 +95,9 @@ Namespace STAR_DOM.Models
         Public ReadOnly Property IsFinal As Boolean
             Get
                 Select Case If(Status, "").ToUpperInvariant()
-                    Case Delivered, Received, Completed, Declined, Cancelled, PaymentDeclined
+                    Case CommissionStatuses.Delivered, CommissionStatuses.Received,
+                         CommissionStatuses.Completed, CommissionStatuses.Declined,
+                         CommissionStatuses.Cancelled, CommissionStatuses.PaymentDeclined
                         Return True
                     Case Else
                         Return False

@@ -86,6 +86,76 @@ Namespace STAR_DOM.Models
         ' rather than the store simply asserting it did.
         Public Property ReceivedAt As Date?
 
+        ' ---- Delivery evidence -------------------------------------------------
+        ' Courier outcome and proof of delivery, entered BY THE STUDIO from the
+        ' courier's own tracking page. There is no J&T API, and that absence is the
+        ' point: an automated status claim would be a guess, whereas an uploaded
+        ' screenshot is something a person actually looked at. Nothing in the
+        ' application infers any of these.
+        Public Property CourierStatus As String
+        Public Property PodReference As String
+        Public Property PodImageData As Byte()
+        Public Property PodMime As String
+        Public Property PodCapturedAt As Date?
+        Public Property PodCapturedBy As String
+
+        ' When the customer was told the parcel had landed, and when the single
+        ' follow-up nudge went out. The scheduled sweep requires BOTH before it will
+        ' close anything, so no order can auto-close against a customer who was never
+        ' notified in the first place.
+        Public Property DeliveredNotifiedAt As Date?
+        Public Property ReminderSentAt As Date?
+
+        ' How the order reached RECEIVED: CUSTOMER | COURIER_POD | STUDIO | SYSTEM.
+        ' This is the column that answers "how do you know it arrived?". It stays
+        ' empty until the order is genuinely RECEIVED, so it can never pre-claim a
+        ' confirmation that has not happened.
+        Public Property ReceiptSource As String
+
+        ' Dispute hold. HELD is neither CANCELLED nor RECEIVED: the parcel may well
+        ' have arrived and nobody has decided yet.
+        Public Property HoldReason As String
+        Public Property HoldResolvedAt As Date?
+        Public Property HoldResolution As String
+
+        ''' <summary>True while a dispute is open and the order is parked.</summary>
+        Public ReadOnly Property IsHeld As Boolean
+            Get
+                Return String.Equals(Status, OrderStatuses.Held, StringComparison.OrdinalIgnoreCase)
+            End Get
+        End Property
+
+        ''' <summary>True once a proof of delivery has been uploaded.</summary>
+        Public ReadOnly Property HasPod As Boolean
+            Get
+                Return PodImageData IsNot Nothing AndAlso PodImageData.Length > 0
+            End Get
+        End Property
+
+        Public ReadOnly Property WasReceived As Boolean
+            Get
+                Return String.Equals(Status, OrderStatuses.Received, StringComparison.OrdinalIgnoreCase)
+            End Get
+        End Property
+
+        ''' <summary>
+        ''' How the receipt was established, in words the customer page can show. The
+        ''' audit trail is only worth anything if it is also said out loud, so the
+        ''' wording lives here rather than being reinvented at each call site.
+        ''' </summary>
+        Public ReadOnly Property ReceiptSourceLabel As String
+            Get
+                Select Case If(ReceiptSource, "").Trim().ToUpperInvariant()
+                    Case "CUSTOMER" : Return "Received — confirmed by you"
+                    Case "COURIER_POD" : Return "Received — courier proof of delivery on file"
+                    Case "STUDIO" : Return "Received — marked by the studio on your behalf"
+                    Case "SYSTEM" : Return "Received — closed automatically after the delivery window"
+                    Case Else
+                        Return If(WasReceived, "Received", "")
+                End Select
+            End Get
+        End Property
+
         ''' <summary>True once the order has a final, customer-facing total.</summary>
         Public ReadOnly Property HasFinalTotal As Boolean
             Get
@@ -150,6 +220,8 @@ Namespace STAR_DOM.Models
                         Return "Order delivered — waiting for you to confirm you received it."
                     Case "RECEIVED"
                         Return "Order received. Enjoy your art!"
+                    Case "HELD"
+                        Return "Held while the studio investigates — nothing further is required from you yet."
                     Case "CANCELLED"
                         Return "Order cancelled."
                     Case "PENDING"
@@ -193,6 +265,61 @@ Namespace STAR_DOM.Models
             Return result.ToArray()
         End Function
     End Class
+
+    ''' <summary>How a delivery confirmation was established. Named because the
+    ''' distinction is the whole point: a customer pressing a button and a studio
+    ''' asserting on their behalf are not the same claim, and the audit trail has to
+    ''' be able to tell them apart.
+    ''' </summary>
+    Public Module ReceiptSources
+        Public Const Customer As String = "CUSTOMER"
+        Public Const CourierPod As String = "COURIER_POD"
+        Public Const Studio As String = "STUDIO"
+        Public Const AutoSweep As String = "SYSTEM"
+    End Module
+
+    ''' <summary>One line of an order's delivery audit trail.</summary>
+    Public Class OrderStatusEntry
+        Public Property OrderId As Integer
+        Public Property FromStatus As String
+        Public Property ToStatus As String
+        Public Property Source As String
+        Public Property Reason As String
+        Public Property ChangedBy As String
+        Public Property CreatedAt As Date
+    End Class
+
+    ''' <summary>All known order statuses, in workflow order. Mirrors CommissionStatuses.</summary>
+    ''' <remarks>
+    ''' Orders used bare string literals everywhere, which is how "HELD" ended up
+    ''' needing to be spelled identically in four unrelated files to be safe. HELD is
+    ''' new and carries rules the rest of the pipeline does not -- the delivery
+    ''' sweep must refuse to touch it, and it must not read as either finished or
+    ''' refunded -- so it gets a name rather than another literal.
+    ''' </remarks>
+    Public Module OrderStatuses
+        Public Const Pending As String = "PENDING"
+        Public Const Confirmed As String = "CONFIRMED"
+        Public Const Processing As String = "PROCESSING"
+        Public Const Shipped As String = "SHIPPED"
+        Public Const Delivered As String = "DELIVERED"
+        ''' Parked by a customer dispute. Neither finished nor cancelled.</summary>
+        Public Const Held As String = "HELD"
+        Public Const Received As String = "RECEIVED"
+        Public Const Cancelled As String = "CANCELLED"
+
+        ''' <summary>
+        ''' True once nothing more will happen to the order without a human. HELD is
+        ''' excluded on purpose: it is unfinished by definition, and Order.IsFinal
+        ''' independently returns False for it.
+        ''' </summary>
+        Public Function IsTerminal(status As String) As Boolean
+            Select Case If(status, "").Trim().ToUpperInvariant()
+                Case Delivered, Received, Cancelled : Return True
+                Case Else : Return False
+            End Select
+        End Function
+    End Module
 
     Public Class OrderItem
         Public Property Id As Integer
