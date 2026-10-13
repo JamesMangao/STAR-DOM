@@ -588,8 +588,8 @@ Namespace STAR_DOM.Services
             If newStatus = "CANCELLED" AndAlso Not isStore Then
                 If Not isOwnOrder Then Return ServiceResult.Fail("Not authorized.")
                 If order.Status <> "PENDING" Then
-                    Return ServiceResult.Fail("This order is already being processed and can no longer be " &
-                                              "cancelled here. " & PaymentSetting.SupportContact)
+                    Return ServiceResult.Fail("The studio has confirmed this order, so it can no " &
+                                              "longer be cancelled here. " & PaymentSetting.SupportContact)
                 End If
                 If order.PaymentStatus = "SUBMITTED" OrElse order.PaymentStatus = "PAID" Then
                     Return ServiceResult.Fail("A payment has already been submitted for this order, so it can no " &

@@ -243,8 +243,15 @@ Namespace STAR_DOM.Web
                 Return
             End If
 
+            ' No payment field lives here, so the old subtitle promising "how to
+            ' pay" on this page described a control that does not exist -- and then
+            ' undercut the whole flow by calling the payments simulated. Neither is
+            ' true. Placing the order writes it immediately at PENDING; the studio
+            ' confirms it with the real J&T fee, and only then do the channels open
+            ' on the order page. Say that instead: it is the more interesting story.
             sb.Append(WebUi.Section("Checkout", "SECURE ORDER",
-                                    "Enter your delivery address and how to pay. Payments are simulated for this demo — no real charge is made."))
+                                    "Enter your delivery address and contact number. The studio confirms your order with the J&T Express shipping fee, " &
+                                    "— then you pay the final total by QR on the order page."))
 
             Dim subtotal As Decimal = items.Sum(Function(i) i.LineTotal)
             Dim bundleDisc As Decimal = _cart.BundleDiscount(items)
@@ -371,7 +378,7 @@ Namespace STAR_DOM.Web
             sb.Append("<p class=""sub"" style=""margin:0 0 8px"">Place the order now with your delivery address. " &
                       "The studio then returns it to you with the <b>final price and shipping fee</b>, and only " &
                       "then do the payment methods open here.</p>")
-            sb.Append(WebUi.NoCancelNote("an order is placed"))
+            sb.Append(WebUi.NoCancelNote("an order"))
             sb.Append("<div class=""frow"">")
             sb.Append("<button class=""btn primary"" type=""submit""><span class=""ic ms"">lock</span><span>Place Order</span></button>")
             sb.Append("<button type=""button"" class=""btn ghost"" id=""btnCancelCheckout""><span class=""ic ms"">arrow_back</span><span>Back to Cart</span></button>")

@@ -502,13 +502,38 @@ Namespace STAR_DOM.Web
         End Function
 
         ''' <summary>
-        ''' "You cannot cancel from here" notice. Once the studio has the order or
-        ''' commission moving it is off the customer's hands, so say so before they
-        ''' reach for a cancel button.
+        ''' The "this can no longer be cancelled" notice.
         ''' </summary>
+        ''' <remarks>
+        ''' The cutoff is CONFIRMED, not "processing". What actually locks an order is
+        ''' the studio entering the J&T fee, which flips it PENDING -> CONFIRMED --
+        ''' long before anything is packed, let alone shipped. Saying "processing"
+        ''' told customers an order was mid-production when in fact the studio had
+        ''' quoted a courier fee an hour earlier, which is why they thought the rule
+        ''' had sprung on them.
+        '''
+        ''' The subject is interpolated, so the caller supplies a plain noun phrase.
+        ''' It used to be passed "an order is placed", which produced "once an order
+        ''' is placed is processing" -- two clauses bolted together.
+        ''' </remarks>
         Public Function NoCancelNote(Optional subject As String = "an order") As String
             Return "<div class=""sub"" style=""font-size:12px;margin-top:8px"">" &
-                   WebUi.Ic("lock", "sm") & " Note that once " & Esc(subject) & " is processing, it cannot be canceled.</div>"
+                   WebUi.Ic("lock", "sm") & " Note that once " & Esc(subject) &
+                   " is confirmed by the studio, it can no longer be cancelled.</div>"
+        End Function
+
+        ''' <summary>
+        ''' The other half of the rule, for the window where cancelling IS still open.
+        ''' </summary>
+        ''' <remarks>
+        ''' Stated positively, because this is the window where the customer still has
+        ''' control and should be told so plainly rather than left hunting for the
+        ''' button. Pair it with the cancel button on the same card.
+        ''' </remarks>
+        Public Function CancelStillOpenNote(Optional subject As String = "this order") As String
+            Return "<div class=""sub"" style=""font-size:12px;margin-top:8px"">" &
+                   WebUi.Ic("info", "sm") & " You can still cancel " & Esc(subject) &
+                   " until the studio confirms it with the shipping fee.</div>"
         End Function
 
         Public Function Pill(text As String, Optional kind As String = "yellow") As String

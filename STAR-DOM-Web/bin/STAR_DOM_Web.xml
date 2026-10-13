@@ -185,12 +185,15 @@ STAR_DOM_Web
  step with the number published by the studio.
  </summary>
 </member>
-<member name="M:STAR_DOM.Web.WebUi.NoCancelNote(System.String)">
+<member name="M:STAR_DOM.Web.WebUi.CancelStillOpenNote(System.String)">
  <summary>
- "You cannot cancel from here" notice. Once the studio has the order or
- commission moving it is off the customer's hands, so say so before they
- reach for a cancel button.
+ The other half of the rule, for the window where cancelling IS still open.
  </summary>
+ <remarks>
+ Stated positively, because this is the window where the customer still has
+ control and should be told so plainly rather than left hunting for the
+ button. Pair it with the cancel button on the same card.
+ </remarks>
 </member>
 <member name="M:STAR_DOM.Web.WebUi.BundleNote">
  <summary>

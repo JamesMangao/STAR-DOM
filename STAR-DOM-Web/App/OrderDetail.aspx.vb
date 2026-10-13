@@ -196,9 +196,17 @@ Namespace STAR_DOM.Web
             ' the only point at which they have actually held the item, so this is
             ' where they are offered.
             Dim canReviewItems As Boolean = (isOwner AndAlso o.Status = "RECEIVED")
-            ' A placed order cannot be pulled back by the customer; the studio
-            ' handles cancellations once it is processing.
-            Dim canCancel As Boolean = False
+            ' The customer may pull the order back only while the studio has not yet
+            ' confirmed it -- and "confirmed" is the moment the J&T fee is entered,
+            ' which is far earlier than it sounds. PENDING is the single state in
+            ' which Cancel exists at all.
+            '
+            ' This was declared False and never assigned, so the cancel button below
+            ' never rendered and the only way to cancel was the orders list. It now
+            ' mirrors the gate in OrderService.UpdateOrderState and the one on
+            ' App\Orders.aspx, so all three agree instead of two of them lying.
+            Dim canCancel As Boolean = (isOwner AndAlso o.Status = "PENDING" AndAlso
+                                        o.PaymentStatus <> "SUBMITTED" AndAlso o.PaymentStatus <> "PAID")
             If canPay OrElse canMarkReceived OrElse canCancel OrElse canReviewItems OrElse
                 (isOwner AndAlso Not quoted AndAlso o.Status <> "CANCELLED" AndAlso o.PaymentStatus = "PENDING") OrElse
                 (isOwner AndAlso o.PaymentStatus = "SUBMITTED") Then
@@ -209,7 +217,11 @@ Namespace STAR_DOM.Web
                     sb.Append("<p class=""sub"" style=""margin:0 0 8px;color:var(--ink)"">Your order is placed. " &
                               "The studio will return it with the <b>final price and shipping fee</b>. " &
                               "Payment methods open here once that is done.</p>")
-                    sb.Append(WebUi.NoCancelNote("an order"))
+                    ' Not the "cannot be cancelled" note: this is the one window in
+                    ' which the customer CAN still cancel, and the button is rendered
+                    ' a few lines below. Telling them it was locked while handing them
+                    ' the key is the contradiction the dead canCancel was hiding.
+                    sb.Append(WebUi.CancelStillOpenNote("this order"))
                     sb.Append("</div>")
                 End If
                 ' Submitted, not yet verified: the money left the customer's wallet but
