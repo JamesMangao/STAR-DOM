@@ -93,4 +93,30 @@
     <None Include="app.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />
+
+  <!-- The website and this test host load the same Npgsql 8.0.9 dependency
+       closure, so this project needs the same runtime DLLs beside it. Most
+       arrive as ordinary references copied to the output, but two do not.
+
+       System.Numerics.Vectors has no NuGet package under packages\ at all. It
+       is vendored as a committed binary in STAR-DOM-Web\bin, because .NET
+       Framework 4.8's GAC only carries 4.0.0.0 while System.Memory 4.0.1.2 asks
+       for 4.1.4.0, so nothing here can reference it by HintPath. System.Buffers
+       does have a package, but the web project references it too and the two
+       copies must be the same file or the assembly identities disagree again.
+
+       Without this copy the loader dies on the first connection open with
+       FileNotFoundException 4.1.4.0. Note the failure only appears once a query
+       actually connects, so it stays invisible to any test that does not touch
+       the database. -->
+  <Target Name="CopyWebRuntimeDependencies" AfterTargets="Build">
+    <ItemGroup>
+      <WebRuntimeDependency Include="$(MSBuildThisFileDirectory)..\STAR-DOM-Web\bin\System.Numerics.Vectors.dll" />
+      <WebRuntimeDependency Include="$(MSBuildThisFileDirectory)..\STAR-DOM-Web\bin\System.Buffers.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WebRuntimeDependency)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
