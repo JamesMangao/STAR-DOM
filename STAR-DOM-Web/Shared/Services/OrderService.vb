@@ -467,11 +467,183 @@ Namespace STAR_DOM.Services
             End If
 
             _orders.MarkReceived(orderId)
+            _orders.SetReceiptSource(orderId, ReceiptSources.Customer)
+            _orders.AppendHistory(orderId, order.Status, OrderStatuses.Received,
+                                  ReceiptSources.Customer, "", Session.CurrentUser.Username)
             Dim notif As New NotificationService()
             notif.NotifyRole("ADMIN", "Order received – " & order.OrderNumber,
                              "The customer confirmed this order arrived.",
                              "ORDER", "merchant-orders")
             Return ServiceResult.Ok("Thanks for confirming! Enjoy your art.")
+        End Function
+
+''' <summary>
+        ''' Open a delivery dispute. Only a customer may open one, only on their own
+        ''' order, and only once the studio has marked it DELIVERED: a dispute means
+        ''' "the studio says this landed and I say it did not", so there has to be a
+        ''' delivery claim to disagree with. Anything earlier is the studio simply not
+        ''' having updated the order yet, which is not a dispute.
+        ''' </summary>
+        ''' <remarks>
+        ''' The status becomes HELD rather than CANCELLED or RECEIVED. The parcel may
+        ''' well have arrived and nobody has decided yet, and an order in that state
+        ''' must not read as either finished or refunded. Recording the complaint
+        ''' without changing the status would be worse than useless: the customer
+        ''' would still be swept up by the delivery close and their complaint would
+        ''' arrive after the fact.
+        ''' </remarks>
+        Public Function OpenDispute(orderId As Integer, reason As String) As ServiceResult
+            If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.UserId <> Session.CurrentUser.Id Then
+                Return ServiceResult.Fail("You don't have access to this order.")
+            End If
+            If order.Status = OrderStatuses.Held Then
+                Return ServiceResult.Fail("This order is already under investigation.")
+            End If
+            If order.Status <> OrderStatuses.Delivered Then
+                Return ServiceResult.Fail("You can raise a delivery issue once the order shows as delivered.")
+            End If
+            Dim text As String = If(reason, "").Trim()
+            If text.Length < 10 Then
+                Return ServiceResult.Fail("Please describe the problem in a little more detail so the studio can look into it.")
+            End If
+
+            _orders.OpenHold(orderId, text, Session.CurrentUser.Username)
+            _orders.AppendHistory(orderId, order.Status, OrderStatuses.Held,
+                                  ReceiptSources.Customer, text, Session.CurrentUser.Username)
+            Dim notif As New NotificationService()
+            notif.NotifyRole("ADMIN", "Delivery dispute " & order.OrderNumber,
+                             "The customer reports a problem with this delivery: " & text,
+                             "ORDER", "merchant-orders")
+            Return ServiceResult.Ok("Thank you. The studio has been notified and will look into this delivery.")
+        End Function
+
+        ''' <summary>
+        ''' Close a dispute as RECEIVED, REFUNDED or RESHIP. Admin only.
+        ''' </summary>
+        ''' <remarks>
+        ''' The three outcomes are deliberately blunt. There is no reviewer queue and
+        ''' no partial state: someone has to look at the parcel and say what happened
+        ''' to it, and each of those three is a real answer. REFUNDED records that
+        ''' decision only -- the studio hands the money back over the phone or in
+        ''' person, because there is no gateway here that could move it by itself.
+        ''' </remarks>
+        Public Function ResolveDispute(orderId As Integer, resolution As String,
+                                       note As String) As ServiceResult
+            If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
+            If Not Session.IsAdmin Then Return ServiceResult.Fail("Only an administrator can resolve a dispute.")
+
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.Status <> OrderStatuses.Held Then
+                Return ServiceResult.Fail("This order is not under investigation.")
+            End If
+
+            Dim res As String = If(resolution, "").Trim().ToUpperInvariant()
+            Dim targetStatus As String
+            Select Case res
+                Case "RECEIVED"
+                    targetStatus = OrderStatuses.Received
+                Case "REFUNDED"
+                    targetStatus = OrderStatuses.Refunded
+                Case "RESHIP"
+                    targetStatus = OrderStatuses.Delivered
+                Case Else
+                    Return ServiceResult.Fail("Choose whether the parcel was received, refunded, or sent again.")
+            End Select
+
+            _orders.ResolveHold(orderId, res, targetStatus, Session.CurrentUser.Username)
+            If res = "RECEIVED" Then
+                _orders.MarkReceived(orderId)
+                _orders.SetReceiptSource(orderId, ReceiptSources.Studio)
+            End If
+            _orders.AppendHistory(orderId, OrderStatuses.Held, targetStatus,
+                                  ReceiptSources.Studio, If(note, ""), Session.CurrentUser.Username)
+
+            Dim notif As New NotificationService()
+            notif.Notify(order.UserId, "Your order " & order.OrderNumber & " has been looked into",
+                         "The studio has finished investigating your delivery. Outcome: " & res & ".",
+                         "ORDER", "order-detail")
+            Return ServiceResult.Ok("Dispute resolved.")
+        End Function
+
+        ''' <summary>
+        ''' Mark an order received on the customer's behalf. Admin only, and only with
+        ''' a reason, which is kept on the order.
+        ''' </summary>
+        ''' <remarks>
+        ''' This exists for the real case: the customer tells the studio over the phone
+        ''' that the parcel arrived and never presses the button. Refusing would only
+        ''' push people back to arguing with the courier. What it must not be is
+        ''' silent -- so ReceiptSource records STUDIO and the reason is mandatory,
+        ''' leaving a plain answer to "why does this order say received when nobody
+        ''' clicked anything".
+        ''' </remarks>
+        Public Function StudioMarkReceived(orderId As Integer, reason As String) As ServiceResult
+            If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
+            If Not Session.IsAdmin Then Return ServiceResult.Fail("Only an administrator can do that.")
+
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.Status = OrderStatuses.Received Then
+                Return ServiceResult.Fail("This order is already marked received.")
+            End If
+            If order.Status <> OrderStatuses.Delivered AndAlso order.Status <> OrderStatuses.Held Then
+                Return ServiceResult.Fail("This order has not been delivered yet.")
+            End If
+            Dim text As String = If(reason, "").Trim()
+            If text.Length = 0 Then
+                Return ServiceResult.Fail("Say how you know the parcel arrived - the reason is kept on the order.")
+            End If
+
+            _orders.MarkReceived(orderId)
+            _orders.SetReceiptSource(orderId, ReceiptSources.Studio)
+            _orders.AppendHistory(orderId, order.Status, OrderStatuses.Received,
+                                  ReceiptSources.Studio, text, Session.CurrentUser.Username)
+            Return ServiceResult.Ok("Order marked as received.")
+        End Function
+
+        ''' <summary>
+        ''' Record the courier outcome and proof of delivery for an order. Admin only.
+        ''' </summary>
+        ''' <remarks>
+        ''' Saving a POD does NOT close the order. It is evidence, and evidence is not
+        ''' a decision: the customer normally confirms receipt, and the dispute path
+        ''' still exists for when the evidence is wrong. Coupling the two would mean
+        ''' the studio could end an order unilaterally by uploading a screenshot,
+        ''' which is exactly the power this design is meant to take away.
+        ''' </remarks>
+        Public Function SaveProofOfDelivery(orderId As Integer, image As Byte(), mime As String,
+                                            reference As String, courierStatus As String) As ServiceResult
+            If Not Session.IsAuthenticated Then Return ServiceResult.Fail("Please log in first.")
+            If Not Session.IsAdmin Then Return ServiceResult.Fail("Only an administrator can do that.")
+
+            Dim order As Order = _orders.GetById(orderId)
+            If order Is Nothing Then Return ServiceResult.Fail("Order not found.")
+            If order.Status = OrderStatuses.Cancelled Then
+                Return ServiceResult.Fail("This order was cancelled.")
+            End If
+
+            Dim err As String = _orders.SavePod(orderId, image, mime, reference, courierStatus,
+                                                 Session.CurrentUser.Username)
+            If Not String.IsNullOrEmpty(err) Then Return ServiceResult.Fail(err)
+
+            _orders.AppendHistory(orderId, order.Status, order.Status, ReceiptSources.CourierPod,
+                                  "Proof of delivery on file: " & reference.Trim(),
+                                  Session.CurrentUser.Username)
+            Return ServiceResult.Ok("Proof of delivery saved.")
+        End Function
+
+        ''' <summary>The delivery audit trail for an order, newest first.</summary>
+        Public Function OrderHistory(orderId As Integer) As List(Of OrderStatusEntry)
+            Return _orders.ListHistory(orderId)
+        End Function
+
+        ''' <summary>The proof-of-delivery image for an order, or Nothing.</summary>
+        Public Function PodImage(orderId As Integer) As Byte()
+            Return _orders.GetPodImage(orderId)
         End Function
 
         Public Function ListMyOrders(Optional page As Integer = 1, Optional pageSize As Integer = 0) As List(Of Order)
@@ -521,7 +693,8 @@ Namespace STAR_DOM.Services
             ' drag it a step backwards in the pipeline. Re-quoting a CONFIRMED order is
             ' still allowed — that is how a mis-typed fee gets corrected.
             If order.Status = "PROCESSING" OrElse order.Status = "SHIPPED" OrElse
-               order.Status = "DELIVERED" OrElse order.Status = "RECEIVED" Then
+               order.Status = "DELIVERED" OrElse order.Status = "RECEIVED" OrElse
+               order.Status = "REFUNDED" OrElse order.Status = "HELD" Then
                 Return ServiceResult.Fail("This order is already on its way — the shipping fee can no longer be changed.")
             End If
             ' Once the customer has paid against a quoted total the total is settled:
@@ -610,6 +783,25 @@ Namespace STAR_DOM.Services
                 Return ServiceResult.Fail("Not authorized.")
             End If
 
+            ' A settled order does not go back into the pipeline. This was missing
+            ' before HELD and REFUNDED existed, but it was already a way to take a
+            ' RECEIVED order and walk it back to PROCESSING. CANCELLED stays reachable
+            ' from anywhere because the store is deliberately allowed to cancel an
+            ' order outright; every other settled state is final.
+            If order.Status <> "CANCELLED" AndAlso newStatus <> "CANCELLED" AndAlso
+               OrderStatuses.IsTerminal(order.Status) Then
+                Return ServiceResult.Fail("This order is already settled and cannot be changed to " &
+                                          newStatus.Replace("_", " ").ToLowerInvariant() & ".")
+            End If
+
+            ' A delivery dispute is the studio's to resolve, not to advance around.
+            ' Letting a plain status change move a HELD order on would sidestep
+            ' ResolveDispute entirely, and the dispute would be resolved by accident.
+            If order.Status = "HELD" Then
+                Return ServiceResult.Fail("This order is under investigation. Resolve the dispute " &
+                                          "before changing its status.")
+            End If
+
             ' A delivery order cannot be confirmed on a bare status change: the courier
             ' fee is what the customer is quoted, so it has to be entered through
             ' ConfirmWithShippingFee. A zero fee is still a decision worth recording, so
@@ -663,6 +855,10 @@ Namespace STAR_DOM.Services
             Try
                 Db.InTransaction(Function() As Boolean
                     _orders.UpdateStatus(orderId, newStatus)
+                    ' Written inside the transaction, so the trail can never record a
+                    ' move that then failed to commit.
+                    _orders.AppendHistory(orderId, order.Status, newStatus,
+                                          "STUDIO", why, Session.CurrentUser.Username)
                     If newStatus = "SHIPPED" OrElse newStatus = "DELIVERED" Then
                         _orders.UpdateShipping(orderId, "J&T Express", tracking, newStatus)
                     End If

@@ -432,7 +432,7 @@ Namespace STAR_DOM.Web
                      "COMPLETED", "LIVE", "AVAILABLE", "READY", "SUCCESS"
                     kind = "live"
                 Case "PENDING", "PENDING REVIEW", "PENDING APPROVAL", "SUBMITTED", "UPCOMING",
-                     "PAYMENT PENDING", "HIDDEN", "PROCESSING"
+                     "PAYMENT PENDING", "HIDDEN", "PROCESSING", "HELD"
                     kind = "warn"
                 Case "CANCELLED", "DECLINED", "SUSPENDED", "FAILED", "LOW STOCK", "ENDED", "REFUNDED"
                     kind = "muted"

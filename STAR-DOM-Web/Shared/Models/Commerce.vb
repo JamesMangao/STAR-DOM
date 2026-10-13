@@ -81,9 +81,11 @@ Namespace STAR_DOM.Models
         Public Property ShippingFeeConfirmedBy As Integer?
         Public Property ShippingFeeConfirmedAt As Date?
 
-        ' When the customer confirmed the parcel arrived. Only ever set from
-        ' DELIVERED, so its presence is proof the buyer actually saw it land
-        ' rather than the store simply asserting it did.
+        ' When the order reached RECEIVED. Only ever set on that transition, so it is
+        ' the date the order closed rather than the date the studio handed the parcel
+        ' to J&T. ReceiptSource is what distinguishes who established it: a customer
+        ' pressing the button and a studio asserting on their behalf both land here,
+        ' and conflating the two is the thing to avoid.
         Public Property ReceivedAt As Date?
 
         ' ---- Delivery evidence -------------------------------------------------
@@ -118,7 +120,11 @@ Namespace STAR_DOM.Models
         Public Property HoldResolvedAt As Date?
         Public Property HoldResolution As String
 
-        ''' <summary>True while a dispute is open and the order is parked.</summary>
+        ''' <summary>
+        ''' True while a dispute is open and the order is parked. HELD is only ever
+        ''' entered from DELIVERED: a dispute means "the studio says this landed and I
+        ''' say it did not", so there has to be a delivery claim to disagree with.
+        ''' </summary>
         Public ReadOnly Property IsHeld As Boolean
             Get
                 Return String.Equals(Status, OrderStatuses.Held, StringComparison.OrdinalIgnoreCase)
@@ -180,7 +186,7 @@ Namespace STAR_DOM.Models
         Public ReadOnly Property IsFinal As Boolean
             Get
                 Select Case If(Status, "").ToUpperInvariant()
-                    Case "DELIVERED", "RECEIVED", "CANCELLED"
+                    Case "DELIVERED", "RECEIVED", "REFUNDED", "CANCELLED"
                         Return True
                     Case Else
                         Return False
@@ -255,6 +261,12 @@ Namespace STAR_DOM.Models
                 Case "PROCESSING" : reached = 2
                 Case "SHIPPED" : reached = 3
                 Case "DELIVERED" : reached = 4
+                ' HELD has no step of its own on purpose, but it must not fall through
+                ' to Case Else: a disputed order had genuinely been delivered, and
+                ' rendering it as "Order placed" would deny that to the customer. Only
+                ' DELIVERED orders can be disputed, which is what makes 4 the honest
+                ' answer here.
+                Case "HELD" : reached = 4
                 Case "RECEIVED" : reached = 5
                 Case Else : reached = 0
             End Select
@@ -306,6 +318,14 @@ Namespace STAR_DOM.Models
         ''' Parked by a customer dispute. Neither finished nor cancelled.</summary>
         Public Const Held As String = "HELD"
         Public Const Received As String = "RECEIVED"
+        ''' <summary>
+        ''' Paid, then returned. Only reachable by resolving a dispute, and terminal:
+        ''' nothing further happens to the order. The money itself moves outside the system
+        ''' -- the studio hands it back over the phone or in person, because there is no
+        ''' gateway here that could send it. This status records that decision; it does not
+        ''' perform a refund.
+        ''' </summary>
+        Public Const Refunded As String = "REFUNDED"
         Public Const Cancelled As String = "CANCELLED"
 
         ''' <summary>
@@ -315,7 +335,7 @@ Namespace STAR_DOM.Models
         ''' </summary>
         Public Function IsTerminal(status As String) As Boolean
             Select Case If(status, "").Trim().ToUpperInvariant()
-                Case Delivered, Received, Cancelled : Return True
+                Case Delivered, Received, Refunded, Cancelled : Return True
                 Case Else : Return False
             End Select
         End Function

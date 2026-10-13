@@ -149,7 +149,8 @@ Namespace STAR_DOM.Web
             Dim shown As List(Of Order) = _orders.AllOrders("", statusFilter, page, PageSize)
 
             sb.Append("<div class=""frow"">")
-            For Each chip As String In {"", "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"}
+            For Each chip As String In {"", "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED",
+                                        "DELIVERED", "HELD", "RECEIVED", "REFUNDED", "CANCELLED"}
                 Dim label As String = If(chip = "", "ALL", chip)
                 Dim url As String = If(chip = "", "/App/Merchant/Orders.aspx", "/App/Merchant/Orders.aspx?st=" & chip)
                 sb.Append(WebUi.OutLink(url, label, String.Equals(statusFilter, chip, StringComparison.OrdinalIgnoreCase)))
